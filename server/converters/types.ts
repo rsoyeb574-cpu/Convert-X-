@@ -1,11 +1,15 @@
 export interface ConversionOptions {
   quality?: number; // 1 - 100
   resolution?: number; // scale or max dimension
+  width?: number;
+  height?: number;
+  maintainAspectRatio?: boolean;
   dpi?: number; // 72, 150, 300
   backgroundColor?: string; // hex string e.g. '#ffffff' or 'transparent'
-  pageSize?: 'a4' | 'letter' | 'legal' | 'auto';
+  pageSize?: 'a4' | 'a3' | 'a2' | 'a1' | 'a0' | 'letter' | 'legal' | 'auto';
   orientation?: 'portrait' | 'landscape';
   fitToPage?: boolean;
+  margin?: number;
   transparentBackground?: boolean;
   pageNumber?: number; // for PDF page extraction
 }

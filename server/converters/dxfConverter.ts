@@ -194,6 +194,37 @@ export class DxfConverter implements ConverterEngine {
             `<${tag} points="${pointsStr}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"/>`
           );
         }
+      } else if (entity.type === 'ELLIPSE') {
+        const { center, majorAxisEndPoint, ratio } = entity;
+        if (center && majorAxisEndPoint) {
+          const rx = Math.hypot(majorAxisEndPoint.x, majorAxisEndPoint.y);
+          const ry = rx * (ratio || 0.5);
+          const rotAngle = Math.atan2(majorAxisEndPoint.y, majorAxisEndPoint.x) * (180 / Math.PI);
+          updateBounds(center.x - rx, center.y - rx);
+          updateBounds(center.x + rx, center.y + rx);
+          elements.push(
+            `<ellipse cx="${center.x}" cy="${-center.y}" rx="${rx}" ry="${ry}" transform="rotate(${-rotAngle} ${center.x} ${-center.y})" fill="none" stroke="${color}" stroke-width="${strokeWidth}"/>`
+          );
+        }
+      } else if (entity.type === 'POINT') {
+        const { position } = entity;
+        if (position) {
+          updateBounds(position.x, position.y);
+          elements.push(
+            `<circle cx="${position.x}" cy="${-position.y}" r="2" fill="${color}"/>`
+          );
+        }
+      } else if (entity.type === 'SOLID' || entity.type === 'TRACE') {
+        const points = entity.points || [];
+        if (points.length >= 3) {
+          const pointsStr = points
+            .map((p: any) => {
+              updateBounds(p.x, p.y);
+              return `${p.x},${-p.y}`;
+            })
+            .join(' ');
+          elements.push(`<polygon points="${pointsStr}" fill="${color}" opacity="0.6"/>`);
+        }
       } else if (entity.type === 'TEXT' || entity.type === 'MTEXT') {
         const x = entity.startPoint?.x || entity.position?.x || 0;
         const y = entity.startPoint?.y || entity.position?.y || 0;

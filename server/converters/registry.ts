@@ -9,6 +9,7 @@ import {
 import { SharpImageConverter } from './sharpConverter.js';
 import { PdfConverter } from './pdfConverter.js';
 import { DxfConverter } from './dxfConverter.js';
+import { SvgConverter } from './svgConverter.js';
 import { generateTempFilePath, detectFileFormat, sanitizeFilename } from '../utils/fileSecurity.js';
 import fs from 'fs';
 
@@ -20,6 +21,7 @@ export class ConverterRegistry {
     this.registerEngine(new SharpImageConverter());
     this.registerEngine(new PdfConverter());
     this.registerEngine(new DxfConverter());
+    this.registerEngine(new SvgConverter());
   }
 
   registerEngine(engine: ConverterEngine): void {

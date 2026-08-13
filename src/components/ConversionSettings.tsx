@@ -108,6 +108,58 @@ export const ConversionSettings: React.FC<ConversionSettingsProps> = ({
           </div>
         </div>
 
+        {/* Image Dimensions Resizing Controls */}
+        {['png', 'jpg', 'webp'].includes(outputFormat) && (
+          <div className="space-y-2 md:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <label className="block text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+              Custom Dimensions (Pixels - Optional)
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-1">Width (px)</span>
+                <input
+                  type="number"
+                  placeholder="Auto"
+                  value={options.width || ''}
+                  onChange={(e) =>
+                    onChangeOptions({
+                      ...options,
+                      width: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl px-3 py-1.5 text-xs text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB]"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-1">Height (px)</span>
+                <input
+                  type="number"
+                  placeholder="Auto"
+                  value={options.height || ''}
+                  onChange={(e) =>
+                    onChangeOptions({
+                      ...options,
+                      height: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl px-3 py-1.5 text-xs text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB]"
+                />
+              </div>
+              <div className="flex items-center pt-4">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                  <input
+                    type="checkbox"
+                    checked={options.maintainAspectRatio !== false}
+                    onChange={(e) => onChangeOptions({ ...options, maintainAspectRatio: e.target.checked })}
+                    className="rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB]"
+                  />
+                  <span>Lock Aspect Ratio</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* PDF Specific Page Settings */}
         {isPdf && (
           <>
@@ -120,9 +172,13 @@ export const ConversionSettings: React.FC<ConversionSettingsProps> = ({
                 className="w-full bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl px-3 py-2 text-xs text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB]"
               >
                 <option value="a4">A4 (210 x 297 mm)</option>
+                <option value="a3">A3 (297 x 420 mm / Large)</option>
+                <option value="a2">A2 (420 x 594 mm / Poster)</option>
+                <option value="a1">A1 (594 x 841 mm / CAD Drawing)</option>
+                <option value="a0">A0 (841 x 1189 mm / Master Blueprint)</option>
                 <option value="letter">Letter (8.5 x 11 in)</option>
                 <option value="legal">Legal (8.5 x 14 in)</option>
-                <option value="auto">Auto Fit (Match Image Bounds)</option>
+                <option value="auto">Auto Fit (Match Original Bounds)</option>
               </select>
             </div>
 

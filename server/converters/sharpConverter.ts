@@ -51,8 +51,11 @@ export class SharpImageConverter implements ConverterEngine {
       pipeline = pipeline.flatten({ background: options.backgroundColor });
     }
 
-    // Resolution / scale handling if requested
-    if (options.resolution && options.resolution > 0 && options.resolution !== 100) {
+    // Custom width / height or resolution scale handling
+    if (options.width || options.height) {
+      const fitMode = options.maintainAspectRatio !== false ? 'contain' : 'fill';
+      pipeline = pipeline.resize(options.width || null, options.height || null, { fit: fitMode });
+    } else if (options.resolution && options.resolution > 0 && options.resolution !== 100) {
       const meta = await sharp(inputBuffer).metadata();
       if (meta.width && meta.height) {
         const scale = options.resolution / 100;

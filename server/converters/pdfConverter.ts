@@ -89,6 +89,18 @@ export class PdfConverter implements ConverterEngine {
     } else if (pageSizeSetting === 'legal') {
       pageWidth = isLandscape ? 1008 : 612;
       pageHeight = isLandscape ? 612 : 1008;
+    } else if (pageSizeSetting === 'a3') {
+      pageWidth = isLandscape ? 1190.55 : 841.89;
+      pageHeight = isLandscape ? 841.89 : 1190.55;
+    } else if (pageSizeSetting === 'a2') {
+      pageWidth = isLandscape ? 1683.78 : 1190.55;
+      pageHeight = isLandscape ? 1190.55 : 1683.78;
+    } else if (pageSizeSetting === 'a1') {
+      pageWidth = isLandscape ? 2383.94 : 1683.78;
+      pageHeight = isLandscape ? 1683.78 : 2383.94;
+    } else if (pageSizeSetting === 'a0') {
+      pageWidth = isLandscape ? 3370.39 : 2383.94;
+      pageHeight = isLandscape ? 2383.94 : 3370.39;
     } else if (pageSizeSetting === 'auto') {
       pageWidth = imgWidth;
       pageHeight = imgHeight;
@@ -107,7 +119,7 @@ export class PdfConverter implements ConverterEngine {
     let y = 0;
 
     if (options.fitToPage !== false && pageSizeSetting !== 'auto') {
-      const margin = 20;
+      const margin = typeof options.margin === 'number' ? options.margin : 20;
       const maxW = pageWidth - margin * 2;
       const maxH = pageHeight - margin * 2;
 
