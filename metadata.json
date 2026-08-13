@@ -1,0 +1,6 @@
+{
+  "name": "ConvertX — Universal Design File Converter",
+  "description": "Professional file conversion platform for images, PDFs, vectors, CAD, and 3D design files.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

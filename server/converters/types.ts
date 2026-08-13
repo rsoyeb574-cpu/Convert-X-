@@ -1,0 +1,75 @@
+export interface ConversionOptions {
+  quality?: number; // 1 - 100
+  resolution?: number; // scale or max dimension
+  dpi?: number; // 72, 150, 300
+  backgroundColor?: string; // hex string e.g. '#ffffff' or 'transparent'
+  pageSize?: 'a4' | 'letter' | 'legal' | 'auto';
+  orientation?: 'portrait' | 'landscape';
+  fitToPage?: boolean;
+  transparentBackground?: boolean;
+  pageNumber?: number; // for PDF page extraction
+}
+
+export interface ConvertParams {
+  inputBuffer: Buffer;
+  inputFormat: string;
+  outputFormat: string;
+  fileName: string;
+  options: ConversionOptions;
+}
+
+export interface ConvertResult {
+  buffer: Buffer;
+  mimeType: string;
+  outputExtension: string;
+  width?: number;
+  height?: number;
+  pageCount?: number;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  reason?: string;
+  detectedFormat?: string;
+  mimeType?: string;
+}
+
+export interface ConverterEngine {
+  id: string;
+  name: string;
+  description: string;
+  supportedInputFormats: string[];
+  supportedOutputFormats: string[];
+  validate(fileBuffer: Buffer, inputFormat: string): Promise<ValidationResult>;
+  convert(params: ConvertParams): Promise<ConvertResult>;
+}
+
+export interface FormatCapability {
+  id: string;
+  name: string;
+  extension: string;
+  mimeType: string;
+  category: 'images' | 'pdf' | 'vector' | 'cad' | 'adobe' | 'corel' | '3d';
+  status: 'supported' | 'coming_soon' | 'engine_unavailable';
+  supportedOutputs: string[];
+  requiresEngine?: string;
+  description: string;
+}
+
+export interface ConversionJob {
+  id: string;
+  originalName: string;
+  inputFormat: string;
+  outputFormat: string;
+  fileSize: number;
+  status: 'uploading' | 'processing' | 'converting' | 'finalizing' | 'completed' | 'failed';
+  progress: number; // 0 to 100
+  error?: string;
+  createdAt: string;
+  completedAt?: string;
+  inputPath?: string;
+  outputPath?: string;
+  outputMimeType?: string;
+  outputSize?: number;
+  options: ConversionOptions;
+}
