@@ -7,6 +7,9 @@ interface UploadZoneProps {
   onSampleSelected: (sampleKey: string) => void;
   isLoading?: boolean;
   error?: string | null;
+  maxFileSizeMB?: number;
+  isDailyLimitReached?: boolean;
+  onViewPro?: () => void;
 }
 
 export const UploadZone: React.FC<UploadZoneProps> = ({
@@ -15,13 +18,32 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   onSampleSelected,
   isLoading,
   error,
+  maxFileSizeMB = 25,
+  isDailyLimitReached = false,
+  onViewPro,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [sizeWarning, setSizeWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const maxBytes = maxFileSizeMB * 1024 * 1024;
 
   const handleFiles = (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
+    setSizeWarning(null);
+
     const fileArray = Array.from(files);
+    
+    // Check if any file exceeds maxFileSizeMB
+    const oversized = fileArray.find((f) => f.size > maxBytes);
+    if (oversized) {
+      const sizeMB = (oversized.size / (1024 * 1024)).toFixed(1);
+      setSizeWarning(
+        `"${oversized.name}" (${sizeMB}MB) exceeds the Free plan maximum file size of ${maxFileSizeMB}MB. Upgrade to Pro for 100MB conversions.`
+      );
+      return;
+    }
+
     if (onFilesSelected) {
       onFilesSelected(fileArray);
     } else if (onFileSelected && fileArray[0]) {
@@ -98,7 +120,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
               Drag & Drop your files here, or <span className="text-[#2563EB] hover:underline">Browse</span>
             </h3>
             <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] font-medium">
-              Single or multi-file batch upload (DXF CAD, PNG, JPG, WEBP, PDF, and SVG up to 50MB)
+              Single or multi-file batch upload (DXF, PNG, JPG, WEBP, PDF, and SVG up to {maxFileSizeMB}MB)
             </p>
           </div>
 
@@ -115,10 +137,25 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
           {/* Security badge */}
           <div className="flex items-center gap-2 pt-2 text-[11px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
             <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Encrypted transmission • Files auto-deleted after conversion</span>
+            <span>Encrypted transmission • Zero-retention auto file scrubbing</span>
           </div>
         </div>
       </div>
+
+      {/* Size Warning Banner */}
+      {sizeWarning && (
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700/60 text-amber-900 dark:text-amber-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <span>{sizeWarning}</span>
+          {onViewPro && (
+            <button
+              onClick={onViewPro}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 cursor-pointer shadow-sm"
+            >
+              View Pro (100MB)
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Error Banner */}
       {error && (

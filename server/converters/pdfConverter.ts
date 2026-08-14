@@ -269,6 +269,13 @@ export class PdfConverter implements ConverterEngine {
     }
 
     // Case B: Multi-Page PDF without specific pageNumber -> Package all pages in a high-res ZIP
+    const maxPdfPages = process.env.FREE_MAX_PDF_PAGES ? parseInt(process.env.FREE_MAX_PDF_PAGES, 10) : 10;
+    if (totalPages > maxPdfPages) {
+      throw new Error(
+        `This PDF document has ${totalPages} pages, exceeding the Free plan limit of ${maxPdfPages} pages for multi-page archive export. Please select a specific page in settings or upgrade to Pro.`
+      );
+    }
+
     const zip = new JSZip();
     for (let i = 1; i <= totalPages; i++) {
       const pageBuf = await renderSinglePage(i);

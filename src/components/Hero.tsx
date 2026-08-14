@@ -10,6 +10,8 @@ interface HeroProps {
   onNavigate: (view: PageView, seoSlug?: string) => void;
   isLoading?: boolean;
   error?: string | null;
+  maxFileSizeMB?: number;
+  onViewPro?: () => void;
 }
 
 export const Hero: React.FC<HeroProps> = ({
@@ -19,6 +21,8 @@ export const Hero: React.FC<HeroProps> = ({
   onNavigate,
   isLoading,
   error,
+  maxFileSizeMB = 25,
+  onViewPro,
 }) => {
   const categories = [
     { name: 'Images', icon: <Image className="w-4 h-4 text-[#2563EB]" />, desc: 'PNG, JPG, WEBP' },
@@ -69,6 +73,8 @@ export const Hero: React.FC<HeroProps> = ({
           onSampleSelected={onSampleSelected}
           isLoading={isLoading}
           error={error}
+          maxFileSizeMB={maxFileSizeMB}
+          onViewPro={onViewPro}
         />
 
         {/* Popular Converter Quicklinks */}

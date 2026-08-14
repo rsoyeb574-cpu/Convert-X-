@@ -9,7 +9,11 @@ if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+export const FREE_MAX_FILE_SIZE_MB = process.env.FREE_MAX_FILE_SIZE_MB ? parseInt(process.env.FREE_MAX_FILE_SIZE_MB, 10) : 25;
+export const FREE_MAX_FILE_SIZE_BYTES = FREE_MAX_FILE_SIZE_MB * 1024 * 1024;
+export const FREE_DAILY_CONVERSIONS = process.env.FREE_DAILY_CONVERSIONS ? parseInt(process.env.FREE_DAILY_CONVERSIONS, 10) : 10;
+export const FREE_MAX_PDF_PAGES = process.env.FREE_MAX_PDF_PAGES ? parseInt(process.env.FREE_MAX_PDF_PAGES, 10) : 10;
+export const MAX_FILE_SIZE_BYTES = Math.max(FREE_MAX_FILE_SIZE_BYTES, 50 * 1024 * 1024); // Absolute server hard limit
 
 export function sanitizeFilename(filename: string): string {
   // Remove path traversal and illegal characters

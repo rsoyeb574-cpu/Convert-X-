@@ -1,6 +1,6 @@
 import React from 'react';
-import { PageView } from '../types.js';
-import { Layers, ArrowRight, Clock, Sun, Moon } from 'lucide-react';
+import { PageView, AppLimits } from '../types.js';
+import { Layers, ArrowRight, Clock, Sun, Moon, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
   currentView: PageView;
@@ -9,6 +9,8 @@ interface HeaderProps {
   queueCount?: number;
   darkMode: boolean;
   onToggleDarkMode: () => void;
+  usedToday?: number;
+  limits?: AppLimits;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,7 +20,12 @@ export const Header: React.FC<HeaderProps> = ({
   queueCount = 0,
   darkMode,
   onToggleDarkMode,
+  usedToday = 0,
+  limits,
 }) => {
+  const maxConversions = limits?.dailyConversions || 10;
+  const isLimitReached = usedToday >= maxConversions;
+
   return (
     <header className="sticky top-0 z-40 bg-white/80 dark:bg-[#0B1120]/80 backdrop-blur-md border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -108,6 +115,24 @@ export const Header: React.FC<HeaderProps> = ({
             How It Works
           </a>
           <a
+            id="nav-pricing-btn"
+            href="/pricing"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('pricing');
+            }}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              currentView === 'pricing'
+                ? 'bg-blue-50 dark:bg-slate-800 text-[#2563EB] dark:text-white font-bold'
+                : 'hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>Pricing</span>
+            <span className="px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold">
+              Pro
+            </span>
+          </a>
+          <a
             id="nav-faq-btn"
             href="/faq"
             onClick={(e) => {
@@ -124,8 +149,24 @@ export const Header: React.FC<HeaderProps> = ({
           </a>
         </nav>
 
-        {/* Action Buttons & Theme Toggle */}
+        {/* Action Buttons, Usage Widget & Theme Toggle */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Daily Usage Counter Pill */}
+          <button
+            onClick={() => onNavigate('pricing')}
+            className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all hover:scale-[1.02] cursor-pointer ${
+              isLimitReached
+                ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+                : 'bg-slate-50 dark:bg-[#111827] border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8]'
+            }`}
+            title="Today's free conversion usage. Click to view limits & Pro."
+          >
+            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+            <span>
+              Today: <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{usedToday}</strong>/{maxConversions}
+            </span>
+          </button>
+
           {/* Dark Mode Toggle */}
           <button
             id="theme-toggle-btn"
@@ -164,20 +205,23 @@ export const Header: React.FC<HeaderProps> = ({
             ) : null}
           </a>
 
+          {/* Upgrade to Pro Button */}
           <a
-            id="nav-start-converting-btn"
-            href="/converter"
+            id="nav-pro-btn"
+            href="/pricing"
             onClick={(e) => {
               e.preventDefault();
-              onNavigate('converter');
+              onNavigate('pricing');
             }}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 rounded-xl shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 rounded-xl shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
-            <span>Start Converting</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">Upgrade</span>
+            <span className="xs:hidden">Pro</span>
           </a>
         </div>
       </div>
     </header>
   );
 };
+

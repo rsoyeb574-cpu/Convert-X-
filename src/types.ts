@@ -94,11 +94,46 @@ export type PageView =
   | 'formats'
   | 'how-it-works'
   | 'faq'
+  | 'pricing'
   | 'privacy'
   | 'terms'
   | 'contact'
   | 'dashboard'
   | 'seo';
+
+export interface AppLimits {
+  maxFileSizeMB: number;
+  maxFileSizeBytes: number;
+  dailyConversions: number;
+  maxPdfPages: number;
+}
+
+export interface PricingPlan {
+  id: 'free' | 'pro';
+  name: string;
+  amount: number;
+  currency: string;
+  formattedPrice: string;
+  period: string;
+  maxFileSizeMB: number | string;
+  dailyConversions: number | string;
+  maxPdfPages: number | string;
+}
+
+export interface MonetizationConfig {
+  paymentConfigured: boolean;
+  paymentMessage: string;
+  adsenseConfigured: boolean;
+  pricing: {
+    free: PricingPlan;
+    pro: PricingPlan;
+  };
+}
+
+export interface DailyUsage {
+  date: string;
+  count: number;
+}
 
 export interface SeoRouteConfig {
   slug: string;

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PageView } from '../types.js';
 import { UploadZone } from './UploadZone.js';
+import { AdPlaceholder } from './AdPlaceholder.js';
 import { SeoRouteConfig, SEO_ROUTES } from '../data/seoRoutes.js';
 import {
   ArrowRight,
@@ -26,6 +27,8 @@ interface SeoLandingPageProps {
   onNavigate: (view: PageView, seoSlug?: string) => void;
   isLoading?: boolean;
   error?: string | null;
+  maxFileSizeMB?: number;
+  onViewPro?: () => void;
 }
 
 export const SeoLandingPage: React.FC<SeoLandingPageProps> = ({
@@ -36,6 +39,8 @@ export const SeoLandingPage: React.FC<SeoLandingPageProps> = ({
   onNavigate,
   isLoading,
   error,
+  maxFileSizeMB = 25,
+  onViewPro,
 }) => {
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
@@ -86,6 +91,8 @@ export const SeoLandingPage: React.FC<SeoLandingPageProps> = ({
           onSampleSelected={onSampleSelected}
           isLoading={isLoading}
           error={error}
+          maxFileSizeMB={maxFileSizeMB}
+          onViewPro={onViewPro}
         />
       </section>
 
@@ -341,6 +348,11 @@ export const SeoLandingPage: React.FC<SeoLandingPageProps> = ({
             );
           })}
         </div>
+      </section>
+
+      {/* Non-intrusive Ad Placement */}
+      <section className="pt-4" aria-label="Sponsored Content">
+        <AdPlaceholder slot="seo-bottom" format="horizontal" />
       </section>
     </article>
   );

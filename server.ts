@@ -13,6 +13,10 @@ import {
   generateTempFilePath,
   detectFileFormat,
   MAX_FILE_SIZE_BYTES,
+  FREE_MAX_FILE_SIZE_MB,
+  FREE_MAX_FILE_SIZE_BYTES,
+  FREE_DAILY_CONVERSIONS,
+  FREE_MAX_PDF_PAGES,
   sanitizeFilename,
 } from './server/utils/fileSecurity.js';
 import { SAMPLE_FILES } from './server/utils/samples.js';
@@ -64,6 +68,7 @@ async function startServer() {
       { loc: 'formats', changefreq: 'weekly', priority: '0.8' },
       { loc: 'how-it-works', changefreq: 'monthly', priority: '0.7' },
       { loc: 'faq', changefreq: 'monthly', priority: '0.7' },
+      { loc: 'pricing', changefreq: 'weekly', priority: '0.8' },
       { loc: 'privacy', changefreq: 'yearly', priority: '0.4' },
       { loc: 'terms', changefreq: 'yearly', priority: '0.4' },
       { loc: 'contact', changefreq: 'monthly', priority: '0.5' },
@@ -108,6 +113,67 @@ ${routes
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', service: 'ConvertX Engine Core', timestamp: new Date().toISOString() });
+  });
+
+  // System & Monetization Configuration (Safe public parameters)
+  app.get('/api/config', (req, res) => {
+    const paymentSecret = process.env.PAYMENT_SECRET_KEY;
+    const isPaymentConfigured = Boolean(paymentSecret && paymentSecret.trim() !== '');
+    const adsenseId = process.env.ADSENSE_CLIENT_ID || '';
+
+    res.json({
+      limits: {
+        maxFileSizeMB: FREE_MAX_FILE_SIZE_MB,
+        maxFileSizeBytes: FREE_MAX_FILE_SIZE_BYTES,
+        dailyConversions: FREE_DAILY_CONVERSIONS,
+        maxPdfPages: FREE_MAX_PDF_PAGES,
+      },
+      monetization: {
+        paymentConfigured: isPaymentConfigured,
+        paymentMessage: isPaymentConfigured
+          ? 'Pro checkout is active.'
+          : 'Pro payments are coming soon.',
+        adsenseConfigured: Boolean(adsenseId && adsenseId.trim() !== ''),
+        pricing: {
+          free: {
+            id: 'free',
+            name: 'Free Plan',
+            amount: 0,
+            currency: 'INR',
+            formattedPrice: '₹0',
+            period: 'forever',
+            maxFileSizeMB: FREE_MAX_FILE_SIZE_MB,
+            dailyConversions: FREE_DAILY_CONVERSIONS,
+            maxPdfPages: FREE_MAX_PDF_PAGES,
+          },
+          pro: {
+            id: 'pro',
+            name: 'Pro Plan',
+            amount: 199,
+            currency: 'INR',
+            formattedPrice: '₹199',
+            period: 'per month',
+            maxFileSizeMB: 100,
+            dailyConversions: 'Unlimited',
+            maxPdfPages: 'Unlimited',
+          },
+        },
+      },
+    });
+  });
+
+  // Payment status endpoint (Strictly server-side verification, no private credentials exposed)
+  app.get('/api/payment/status', (req, res) => {
+    const paymentSecret = process.env.PAYMENT_SECRET_KEY;
+    const isPaymentConfigured = Boolean(paymentSecret && paymentSecret.trim() !== '');
+
+    res.json({
+      configured: isPaymentConfigured,
+      provider: process.env.PAYMENT_PROVIDER || 'stripe',
+      message: isPaymentConfigured
+        ? 'Payment provider is active and ready.'
+        : 'Pro payments are coming soon.',
+    });
   });
 
   // 1. Get supported formats and capabilities
@@ -195,8 +261,10 @@ ${routes
         return res.status(400).json({ error: 'No file uploaded or sample selected.' });
       }
 
-      if (fileBuffer.length > MAX_FILE_SIZE_BYTES) {
-        return res.status(400).json({ error: 'The file is too large. Maximum size is 50MB.' });
+      if (fileBuffer.length > FREE_MAX_FILE_SIZE_BYTES) {
+        return res.status(400).json({
+          error: `The uploaded file (${(fileBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the Free plan limit of ${FREE_MAX_FILE_SIZE_MB}MB. Please compress your file or upgrade to Pro.`,
+        });
       }
 
       const cleanName = sanitizeFilename(originalName);
@@ -387,6 +455,10 @@ ${routes
           title = 'Frequently Asked Questions (FAQ) | Convert-X';
           description =
             'Find answers to common questions about file formats, conversion quality, privacy security, and batch file processing in Convert-X.';
+        } else if (reqPath === 'pricing') {
+          title = 'Pricing Plans & Pro Limits | Convert-X';
+          description =
+            'Explore Convert-X plans. Convert files for free with standard limits, or upgrade to Pro for higher file sizes, priority queues, and ad-free conversions.';
         } else if (reqPath === 'privacy') {
           title = 'Privacy Policy & Zero-Retention Security | Convert-X';
           description =

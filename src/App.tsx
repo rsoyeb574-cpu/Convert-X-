@@ -7,6 +7,8 @@ import {
   ConversionHistoryItem,
   ConversionQueueItem,
   FormatCapability,
+  AppLimits,
+  MonetizationConfig,
 } from './types.js';
 import { Header } from './components/Header.js';
 import { Footer } from './components/Footer.js';
@@ -23,6 +25,17 @@ import { PrivacyTermsContact } from './components/PrivacyTermsContact.js';
 import { DashboardHistory } from './components/DashboardHistory.js';
 import { SeoLandingPage } from './components/SeoLandingPage.js';
 import { SeoMetaManager } from './components/SeoMetaManager.js';
+import { PricingPage } from './components/PricingPage.js';
+import { UsageWidget } from './components/UsageWidget.js';
+import { AdPlaceholder } from './components/AdPlaceholder.js';
+import {
+  fetchAppConfig,
+  getDailyConversionCount,
+  incrementDailyConversionCount,
+  isDailyLimitReached,
+  DEFAULT_LIMITS,
+  DEFAULT_MONETIZATION,
+} from './utils/usageTracker.js';
 import { SEO_ROUTES } from './data/seoRoutes.js';
 import {
   ArrowRight,
@@ -41,6 +54,11 @@ export default function App() {
   const [currentView, setCurrentView] = useState<PageView>('home');
   const [seoSlug, setSeoSlug] = useState<string>('png-to-jpg');
   const [darkMode, setDarkMode] = useState<boolean>(true);
+
+  // Monetization & Limits State
+  const [limits, setLimits] = useState<AppLimits>(DEFAULT_LIMITS);
+  const [monetization, setMonetization] = useState<MonetizationConfig>(DEFAULT_MONETIZATION);
+  const [usedToday, setUsedToday] = useState<number>(() => getDailyConversionCount());
 
   // File Upload and Single Workspace State
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
@@ -91,7 +109,7 @@ export default function App() {
         setCurrentView('seo');
         setSeoSlug(pathname);
       } else if (
-        ['converter', 'formats', 'how-it-works', 'faq', 'privacy', 'terms', 'contact', 'dashboard'].includes(
+        ['converter', 'formats', 'how-it-works', 'faq', 'privacy', 'terms', 'contact', 'dashboard', 'pricing'].includes(
           pathname
         )
       ) {
@@ -112,6 +130,28 @@ export default function App() {
     parseUrl();
     window.addEventListener('popstate', parseUrl);
     return () => window.removeEventListener('popstate', parseUrl);
+  }, []);
+
+  // Fetch App Limits and Monetization Config on Mount + Listen to usage updates
+  useEffect(() => {
+    fetchAppConfig()
+      .then((cfg) => {
+        if (cfg.limits) setLimits(cfg.limits);
+        if (cfg.monetization) setMonetization(cfg.monetization);
+      })
+      .catch((err) => console.error('Failed to load monetization config:', err));
+
+    const handleUsageUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ count: number }>;
+      if (customEvent.detail && typeof customEvent.detail.count === 'number') {
+        setUsedToday(customEvent.detail.count);
+      } else {
+        setUsedToday(getDailyConversionCount());
+      }
+    };
+
+    window.addEventListener('convertx_usage_updated', handleUsageUpdated);
+    return () => window.removeEventListener('convertx_usage_updated', handleUsageUpdated);
   }, []);
 
   // Toggle Dark Mode
@@ -351,6 +391,22 @@ export default function App() {
     const item = queue.find((q) => q.id === id);
     if (!item || !item.uploadedFile || item.status === 'converting') return;
 
+    // Check daily limit
+    if (isDailyLimitReached(limits.dailyConversions)) {
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === id
+            ? {
+                ...q,
+                status: 'failed',
+                error: `Daily limit reached (${limits.dailyConversions}/${limits.dailyConversions} conversions used). Upgrade to Pro for unlimited conversions.`,
+              }
+            : q
+        )
+      );
+      return;
+    }
+
     // Update status to converting
     setQueue((prev) =>
       prev.map((q) =>
@@ -377,6 +433,10 @@ export default function App() {
       }
 
       const resData: ConversionResultData = await response.json();
+
+      // Increment daily usage count
+      incrementDailyConversionCount(1);
+      setUsedToday(getDailyConversionCount());
 
       // Mark queue item as completed
       setQueue((prev) =>
@@ -471,6 +531,14 @@ export default function App() {
   const handleStartConversion = async () => {
     if (!uploadedFile) return;
 
+    // Check daily limit
+    if (isDailyLimitReached(limits.dailyConversions)) {
+      setError(
+        `Daily conversion limit reached (${limits.dailyConversions}/${limits.dailyConversions} conversions used today). Upgrade to Pro for unlimited conversions or try again tomorrow.`
+      );
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setStage('converting');
@@ -500,6 +568,10 @@ export default function App() {
       }
 
       const resData: ConversionResultData = await response.json();
+
+      // Increment daily usage
+      incrementDailyConversionCount(1);
+      setUsedToday(getDailyConversionCount());
 
       setProgress(100);
       setStage('completed');
@@ -606,6 +678,8 @@ export default function App() {
           queueCount={pendingQueueCount}
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
+          usedToday={usedToday}
+          limits={limits}
         />
 
         {/* View Switcher */}
@@ -620,8 +694,16 @@ export default function App() {
                 onNavigate={handleNavigate}
                 isLoading={isLoading}
                 error={error}
+                maxFileSizeMB={limits.maxFileSizeMB}
+                onViewPro={() => handleNavigate('pricing')}
               />
               <HowItWorks />
+              
+              {/* Non-intrusive Ad Placement */}
+              <div className="pt-2">
+                <AdPlaceholder slot="home-mid" format="horizontal" />
+              </div>
+
               <FaqSection />
             </div>
           )}
@@ -660,6 +742,13 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Usage Quota & Limit State Banner */}
+              <UsageWidget
+                usedToday={usedToday}
+                dailyLimit={limits.dailyConversions}
+                onUpgrade={() => handleNavigate('pricing')}
+              />
+
               {!uploadedFile ? (
                 /* No file loaded -> show Upload Zone */
                 <Hero
@@ -669,6 +758,8 @@ export default function App() {
                   onNavigate={handleNavigate}
                   isLoading={isLoading}
                   error={error}
+                  maxFileSizeMB={limits.maxFileSizeMB}
+                  onViewPro={() => handleNavigate('pricing')}
                 />
               ) : (
                 /* File Loaded -> Two Column Professional Workspace */
@@ -788,12 +879,27 @@ export default function App() {
                       }}
                     />
                   )}
+
+                  {/* Non-intrusive Ad in Converter Workspace */}
+                  <div className="pt-6">
+                    <AdPlaceholder slot="converter-bottom" format="horizontal" />
+                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* 3. Supported Formats Matrix */}
+          {/* 3. Pricing & Pro View */}
+          {currentView === 'pricing' && (
+            <PricingPage
+              limits={limits}
+              monetization={monetization}
+              usedToday={usedToday}
+              onNavigate={handleNavigate}
+            />
+          )}
+
+          {/* 4. Supported Formats Matrix */}
           {currentView === 'formats' && (
             <div className="space-y-8">
               <div className="max-w-3xl space-y-2">
@@ -815,18 +921,18 @@ export default function App() {
             </div>
           )}
 
-          {/* 4. How It Works View */}
+          {/* 5. How It Works View */}
           {currentView === 'how-it-works' && <HowItWorks />}
 
-          {/* 5. FAQ View */}
+          {/* 6. FAQ View */}
           {currentView === 'faq' && <FaqSection />}
 
-          {/* 6. Legal & Contact Views */}
+          {/* 7. Legal & Contact Views */}
           {(currentView === 'privacy' || currentView === 'terms' || currentView === 'contact') && (
             <PrivacyTermsContact view={currentView} onNavigate={handleNavigate} />
           )}
 
-          {/* 7. History & Queue Dashboard */}
+          {/* 8. History & Queue Dashboard */}
           {currentView === 'dashboard' && (
             <DashboardHistory
               queue={queue}
@@ -845,7 +951,7 @@ export default function App() {
             />
           )}
 
-          {/* 8. SEO Landing Pages */}
+          {/* 9. SEO Landing Pages */}
           {currentView === 'seo' && (
             <SeoLandingPage
               slug={seoSlug}
@@ -855,6 +961,8 @@ export default function App() {
               onNavigate={handleNavigate}
               isLoading={isLoading}
               error={error}
+              maxFileSizeMB={limits.maxFileSizeMB}
+              onViewPro={() => handleNavigate('pricing')}
             />
           )}
         </main>

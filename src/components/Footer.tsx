@@ -138,6 +138,18 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               </li>
               <li>
                 <a
+                  href="/pricing"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('pricing');
+                  }}
+                  className="hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors font-medium text-amber-600 dark:text-amber-400"
+                >
+                  Pricing & Pro
+                </a>
+              </li>
+              <li>
+                <a
                   href="/faq"
                   onClick={(e) => {
                     e.preventDefault();
