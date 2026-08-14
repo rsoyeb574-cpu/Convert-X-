@@ -25,23 +25,25 @@ export const Hero: React.FC<HeroProps> = ({
   onViewPro,
 }) => {
   const categories = [
-    { name: 'Images', icon: <Image className="w-4 h-4 text-[#2563EB]" />, desc: 'PNG, JPG, WEBP' },
-    { name: 'PDF', icon: <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />, desc: 'PDF to PNG, JPG, PDF Compilation' },
-    { name: 'Vector', icon: <Box className="w-4 h-4 text-cyan-500" />, desc: 'SVG to PNG, JPG, PDF' },
-    { name: 'CAD', icon: <Layers className="w-4 h-4 text-amber-500" />, desc: 'DXF Architectural CAD to PDF' },
+    { name: 'Universal Export', icon: <FileText className="w-4 h-4 text-[#7C3AED]" />, desc: 'DOCX, XLSX, TXT, HTML to PNG/JPG/PDF' },
+    { name: 'Images', icon: <Image className="w-4 h-4 text-[#2563EB]" />, desc: 'PNG, JPG, WEBP, GIF, BMP, TIFF' },
+    { name: 'PDF Documents', icon: <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />, desc: 'PDF to PNG, JPG, PDF Compilation' },
+    { name: 'Vector & CAD', icon: <Box className="w-4 h-4 text-cyan-500" />, desc: 'SVG, DXF, PSD, AI to PNG, JPG, PDF' },
   ];
 
   const popularQuickConverters = [
     { slug: 'png-to-jpg', label: 'PNG to JPG' },
     { slug: 'jpg-to-png', label: 'JPG to PNG' },
     { slug: 'png-to-webp', label: 'PNG to WEBP' },
-    { slug: 'jpg-to-webp', label: 'JPG to WEBP' },
     { slug: 'webp-to-png', label: 'WEBP to PNG' },
+    { slug: 'jpg-to-webp', label: 'JPG to WEBP' },
     { slug: 'png-to-pdf', label: 'PNG to PDF' },
-    { slug: 'jpg-to-pdf', label: 'JPG to PDF' },
     { slug: 'pdf-to-png', label: 'PDF to PNG' },
+    { slug: 'jpg-to-pdf', label: 'JPG to PDF' },
     { slug: 'svg-to-png', label: 'SVG to PNG' },
     { slug: 'svg-to-pdf', label: 'SVG to PDF' },
+    { slug: 'dxf-to-pdf', label: 'DXF to PDF' },
+    { slug: 'dxf-to-svg', label: 'DXF to SVG' },
   ];
 
   return (

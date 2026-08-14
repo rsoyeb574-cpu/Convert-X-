@@ -27,7 +27,10 @@ import { SeoLandingPage } from './components/SeoLandingPage.js';
 import { SeoMetaManager } from './components/SeoMetaManager.js';
 import { PricingPage } from './components/PricingPage.js';
 import { UsageWidget } from './components/UsageWidget.js';
-import { AdPlaceholder } from './components/AdPlaceholder.js';
+import { AdSlot } from './components/AdSlot.js';
+import { AffiliateSection } from './components/AffiliateSection.js';
+import { UniversalExportSection } from './components/UniversalExportSection.js';
+import { initAnalytics } from './utils/analytics.js';
 import {
   fetchAppConfig,
   getDailyConversionCount,
@@ -109,9 +112,18 @@ export default function App() {
         setCurrentView('seo');
         setSeoSlug(pathname);
       } else if (
-        ['converter', 'formats', 'how-it-works', 'faq', 'privacy', 'terms', 'contact', 'dashboard', 'pricing'].includes(
-          pathname
-        )
+        [
+          'converter',
+          'formats',
+          'how-it-works',
+          'faq',
+          'privacy',
+          'terms',
+          'contact',
+          'dashboard',
+          'pricing',
+          'affiliates',
+        ].includes(pathname)
       ) {
         setCurrentView(pathname as PageView);
       } else if (pathname.startsWith('seo-')) {
@@ -128,6 +140,7 @@ export default function App() {
     };
 
     parseUrl();
+    initAnalytics();
     window.addEventListener('popstate', parseUrl);
     return () => window.removeEventListener('popstate', parseUrl);
   }, []);
@@ -386,20 +399,24 @@ export default function App() {
     }
   };
 
+  // App Limits & Monetization Safe Defaults
+  const safeDailyLimit = limits?.dailyConversions ?? DEFAULT_LIMITS.dailyConversions;
+  const safeMaxFileSizeMB = limits?.maxFileSizeMB ?? DEFAULT_LIMITS.maxFileSizeMB;
+
   // Convert an Individual Item in Queue
   const handleConvertQueueItem = async (id: string) => {
     const item = queue.find((q) => q.id === id);
     if (!item || !item.uploadedFile || item.status === 'converting') return;
 
     // Check daily limit
-    if (isDailyLimitReached(limits.dailyConversions)) {
+    if (isDailyLimitReached(safeDailyLimit)) {
       setQueue((prev) =>
         prev.map((q) =>
           q.id === id
             ? {
                 ...q,
                 status: 'failed',
-                error: `Daily limit reached (${limits.dailyConversions}/${limits.dailyConversions} conversions used). Upgrade to Pro for unlimited conversions.`,
+                error: `Daily limit reached (${safeDailyLimit}/${safeDailyLimit} conversions used). Upgrade to Pro for unlimited conversions.`,
               }
             : q
         )
@@ -532,9 +549,9 @@ export default function App() {
     if (!uploadedFile) return;
 
     // Check daily limit
-    if (isDailyLimitReached(limits.dailyConversions)) {
+    if (isDailyLimitReached(safeDailyLimit)) {
       setError(
-        `Daily conversion limit reached (${limits.dailyConversions}/${limits.dailyConversions} conversions used today). Upgrade to Pro for unlimited conversions or try again tomorrow.`
+        `Daily conversion limit reached (${safeDailyLimit}/${safeDailyLimit} conversions used today). Upgrade to Pro for unlimited conversions or try again tomorrow.`
       );
       return;
     }
@@ -679,7 +696,7 @@ export default function App() {
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
           usedToday={usedToday}
-          limits={limits}
+          limits={limits || DEFAULT_LIMITS}
         />
 
         {/* View Switcher */}
@@ -694,15 +711,25 @@ export default function App() {
                 onNavigate={handleNavigate}
                 isLoading={isLoading}
                 error={error}
-                maxFileSizeMB={limits.maxFileSizeMB}
+                maxFileSizeMB={safeMaxFileSizeMB}
                 onViewPro={() => handleNavigate('pricing')}
+              />
+              <UniversalExportSection
+                onSelectSample={handleSampleSelected}
+                onNavigateToConverter={() => setCurrentView('converter')}
               />
               <HowItWorks />
               
-              {/* Non-intrusive Ad Placement */}
-              <div className="pt-2">
-                <AdPlaceholder slot="home-mid" format="horizontal" />
-              </div>
+              {/* Non-intrusive Ad Placement below How it Works */}
+              <AdSlot slotId="home-mid" format="leaderboard" />
+
+              {/* Curated Partner & Affiliate Tools Section */}
+              <AffiliateSection
+                title="Recommended Design & Engineering Tools"
+                subtitle="Industry-standard software for CAD, 3D modeling, vector design, and high-performance creative workflows."
+                limit={4}
+                showCategoryFilter={false}
+              />
 
               <FaqSection />
             </div>
@@ -745,8 +772,8 @@ export default function App() {
               {/* Usage Quota & Limit State Banner */}
               <UsageWidget
                 usedToday={usedToday}
-                dailyLimit={limits.dailyConversions}
-                onUpgrade={() => handleNavigate('pricing')}
+                limits={limits || DEFAULT_LIMITS}
+                onNavigate={handleNavigate}
               />
 
               {!uploadedFile ? (
@@ -758,7 +785,7 @@ export default function App() {
                   onNavigate={handleNavigate}
                   isLoading={isLoading}
                   error={error}
-                  maxFileSizeMB={limits.maxFileSizeMB}
+                  maxFileSizeMB={safeMaxFileSizeMB}
                   onViewPro={() => handleNavigate('pricing')}
                 />
               ) : (
@@ -813,6 +840,7 @@ export default function App() {
                       {/* Right: Engine Options & Conversion Trigger */}
                       <div className="space-y-6 flex flex-col justify-between">
                         <ConversionSettings
+                          inputFormat={uploadedFile.detectedFormat}
                           outputFormat={selectedOutputFormat}
                           options={options}
                           onChangeOptions={setOptions}
@@ -877,13 +905,12 @@ export default function App() {
                         setResult(null);
                         setStage('idle');
                       }}
+                      onNavigate={handleNavigate}
                     />
                   )}
 
                   {/* Non-intrusive Ad in Converter Workspace */}
-                  <div className="pt-6">
-                    <AdPlaceholder slot="converter-bottom" format="horizontal" />
-                  </div>
+                  <AdSlot slotId="converter-bottom" format="leaderboard" className="pt-2" />
                 </div>
               )}
             </div>
@@ -892,8 +919,8 @@ export default function App() {
           {/* 3. Pricing & Pro View */}
           {currentView === 'pricing' && (
             <PricingPage
-              limits={limits}
-              monetization={monetization}
+              limits={limits || DEFAULT_LIMITS}
+              monetization={monetization || DEFAULT_MONETIZATION}
               usedToday={usedToday}
               onNavigate={handleNavigate}
             />
@@ -901,15 +928,20 @@ export default function App() {
 
           {/* 4. Supported Formats Matrix */}
           {currentView === 'formats' && (
-            <div className="space-y-8">
+            <div className="space-y-12">
               <div className="max-w-3xl space-y-2">
                 <h1 className="text-2xl sm:text-4xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
                   Supported Formats Matrix
                 </h1>
                 <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8]">
-                  Explore active server-side image, PDF, vector, and CAD engines, as well as future extension modules.
+                  Explore active server-side image, PDF, vector, CAD, and document engines, as well as future extension modules.
                 </p>
               </div>
+
+              <UniversalExportSection
+                onSelectSample={handleSampleSelected}
+                onNavigateToConverter={() => setCurrentView('converter')}
+              />
 
               <FormatGrid
                 capabilities={capabilities}
@@ -941,6 +973,7 @@ export default function App() {
               onClearHistory={() => setHistory([])}
               onRemoveItem={(id) => setHistory(history.filter((item) => item.id !== id))}
               onConvertNew={() => setCurrentView('converter')}
+              onNavigate={handleNavigate}
               onAddFiles={handleFilesSelected}
               onConvertAllPending={handleConvertAllPending}
               onConvertQueueItem={handleConvertQueueItem}
@@ -951,7 +984,19 @@ export default function App() {
             />
           )}
 
-          {/* 9. SEO Landing Pages */}
+          {/* 9. Curated Partner Tools & Software Directory */}
+          {currentView === 'affiliates' && (
+            <div className="space-y-6 max-w-6xl mx-auto">
+              <AffiliateSection
+                title="Recommended Design & Engineering Software"
+                subtitle="Curated, tested software tools for CAD drafting, 3D parametric modeling, vector design, and creative productivity."
+                showCategoryFilter={true}
+              />
+              <AdSlot slotId="affiliates-bottom" format="leaderboard" />
+            </div>
+          )}
+
+          {/* 10. SEO Landing Pages */}
           {currentView === 'seo' && (
             <SeoLandingPage
               slug={seoSlug}
@@ -961,7 +1006,7 @@ export default function App() {
               onNavigate={handleNavigate}
               isLoading={isLoading}
               error={error}
-              maxFileSizeMB={limits.maxFileSizeMB}
+              maxFileSizeMB={safeMaxFileSizeMB}
               onViewPro={() => handleNavigate('pricing')}
             />
           )}

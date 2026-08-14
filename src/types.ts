@@ -1,4 +1,4 @@
-export type FormatCategory = 'images' | 'pdf' | 'vector' | 'cad' | 'adobe' | 'corel' | '3d';
+export type FormatCategory = 'images' | 'pdf' | 'documents' | 'vector' | 'cad' | 'adobe' | 'corel' | '3d';
 export type FormatStatus = 'supported' | 'coming_soon' | 'engine_unavailable';
 
 export interface FormatCapability {
@@ -9,6 +9,19 @@ export interface FormatCapability {
   category: FormatCategory;
   status: FormatStatus;
   supportedOutputs: string[];
+  requiresEngine?: string;
+  description: string;
+}
+
+export interface UniversalExportCapability {
+  inputFormat: string;
+  name: string;
+  category: string;
+  canRender: boolean;
+  outputFormats: string[];
+  renderer: string;
+  multiPageSupport: boolean;
+  status: 'supported' | 'coming_soon';
   requiresEngine?: string;
   description: string;
 }
@@ -99,6 +112,7 @@ export type PageView =
   | 'terms'
   | 'contact'
   | 'dashboard'
+  | 'affiliates'
   | 'seo';
 
 export interface AppLimits {
@@ -106,6 +120,13 @@ export interface AppLimits {
   maxFileSizeBytes: number;
   dailyConversions: number;
   maxPdfPages: number;
+}
+
+export interface UsageData {
+  dailyConversions: number;
+  dailyLimit: number;
+  maxFileSizeMB: number;
+  plan: 'free' | 'pro';
 }
 
 export interface PricingPlan {
@@ -124,10 +145,32 @@ export interface MonetizationConfig {
   paymentConfigured: boolean;
   paymentMessage: string;
   adsenseConfigured: boolean;
+  adsenseClientId?: string;
+  contactEmail?: string;
   pricing: {
     free: PricingPlan;
     pro: PricingPlan;
   };
+}
+
+export interface AffiliateTool {
+  id: string;
+  name: string;
+  category: 'Graphic Design' | 'CAD & 3D' | 'Cloud Storage' | 'Productivity';
+  description: string;
+  features: string[];
+  url: string;
+  badge?: string;
+  isAffiliate: boolean;
+  discountText?: string;
+}
+
+export interface ReferralData {
+  code: string;
+  shareUrl: string;
+  totalReferrals: number;
+  rewardTier: string;
+  isLive: boolean;
 }
 
 export interface DailyUsage {

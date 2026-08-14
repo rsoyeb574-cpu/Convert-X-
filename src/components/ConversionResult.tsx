@@ -1,13 +1,20 @@
 import React from 'react';
-import { ConversionResultData } from '../types.js';
-import { Download, RefreshCw, CheckCircle2, FileText } from 'lucide-react';
+import { ConversionResultData, PageView } from '../types.js';
+import { Download, RefreshCw, CheckCircle2, FileText, Sparkles, ArrowRight, Zap } from 'lucide-react';
+import { ViralShare } from './ViralShare.js';
+import { AdSlot } from './AdSlot.js';
 
 interface ConversionResultProps {
   result: ConversionResultData;
   onConvertAnother: () => void;
+  onNavigate?: (view: PageView) => void;
 }
 
-export const ConversionResult: React.FC<ConversionResultProps> = ({ result, onConvertAnother }) => {
+export const ConversionResult: React.FC<ConversionResultProps> = ({
+  result,
+  onConvertAnother,
+  onNavigate,
+}) => {
   const formatSize = (bytes: number): string => {
     if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -70,7 +77,7 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({ result, onCo
       <div className="space-y-2">
         <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">Output File Preview</span>
         <div className="w-full h-64 sm:h-80 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] p-2 flex items-center justify-center overflow-hidden relative">
-          {['png', 'jpg', 'jpeg', 'webp', 'svg', 'pdf'].includes(result.outputFormat) ? (
+          {['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(result.outputFormat) ? (
             <img
               src={previewUrl}
               alt="Converted file preview"
@@ -79,6 +86,14 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({ result, onCo
                 (e.target as HTMLElement).style.display = 'none';
               }}
             />
+          ) : result.outputFormat === 'zip' ? (
+            <div className="text-center space-y-2 text-[#64748B] dark:text-[#94A3B8]">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center text-[#2563EB]">
+                <FileText className="w-8 h-8" />
+              </div>
+              <p className="text-xs font-bold text-[#0F172A] dark:text-white">Multi-Page Image Archive (.ZIP)</p>
+              <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">Contains individual high-resolution rendered pages</p>
+            </div>
           ) : (
             <div className="text-center space-y-2 text-[#64748B] dark:text-[#94A3B8]">
               <FileText className="w-12 h-12 mx-auto text-[#2563EB]" />
@@ -103,12 +118,48 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({ result, onCo
         <button
           onClick={onConvertAnother}
           id="convert-another-file-btn"
-          className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] border border-[#E2E8F0] dark:border-[#1E293B] text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+          className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] border border-[#E2E8F0] dark:border-[#1E293B] text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
         >
           <RefreshCw className="w-4 h-4 text-[#2563EB]" />
           <span>Convert Another File</span>
         </button>
       </div>
+
+      {/* Pro Value CTA Card (Requirement 13) */}
+      {onNavigate && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-violet-50/70 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-violet-950/40 border border-blue-200 dark:border-blue-800/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+              <h4 className="text-xs font-bold text-[#0F172A] dark:text-white">
+                Need more conversions or 100MB file uploads?
+              </h4>
+            </div>
+            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+              Upgrade to Pro for unlimited daily conversions, priority multi-threaded speed, and ad-free workspace.
+            </p>
+          </div>
+          <button
+            onClick={() => onNavigate('pricing')}
+            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-md shadow-blue-500/20 cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Upgrade to Pro</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Subtle Viral Share Section (Requirement 10) */}
+      <ViralShare
+        conversionPair={{
+          from: result.inputFormat,
+          to: result.outputFormat,
+        }}
+      />
+
+      {/* Non-intrusive AdSlot below actions (Requirement 4) */}
+      <AdSlot slotId="conversion-result-slot" format="banner" className="mt-4" />
     </div>
   );
 };

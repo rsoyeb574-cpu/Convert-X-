@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { PageView } from '../types.js';
 import { UploadZone } from './UploadZone.js';
-import { AdPlaceholder } from './AdPlaceholder.js';
+import { AdSlot } from './AdSlot.js';
+import { AffiliateSection } from './AffiliateSection.js';
 import { SeoRouteConfig, SEO_ROUTES } from '../data/seoRoutes.js';
 import {
   ArrowRight,
@@ -350,9 +351,19 @@ export const SeoLandingPage: React.FC<SeoLandingPageProps> = ({
         </div>
       </section>
 
+      {/* 8. Recommended Software Tools for this Format Workflow */}
+      <section className="pt-4 border-t border-[#E2E8F0] dark:border-[#1E293B]">
+        <AffiliateSection
+          title="Recommended Software & Workflow Tools"
+          subtitle={`Top software companions for ${config.fromFormat.toUpperCase()} and ${config.toFormat.toUpperCase()} vector, CAD, and graphic asset workflows.`}
+          limit={4}
+          showCategoryFilter={false}
+        />
+      </section>
+
       {/* Non-intrusive Ad Placement */}
-      <section className="pt-4" aria-label="Sponsored Content">
-        <AdPlaceholder slot="seo-bottom" format="horizontal" />
+      <section className="pt-2" aria-label="Sponsored Content">
+        <AdSlot slotId="seo-bottom" format="leaderboard" />
       </section>
     </article>
   );

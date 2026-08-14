@@ -49,14 +49,30 @@ export interface ConverterEngine {
   convert(params: ConvertParams): Promise<ConvertResult>;
 }
 
+export type FormatCategory = 'images' | 'pdf' | 'documents' | 'vector' | 'cad' | 'adobe' | 'corel' | '3d';
+export type FormatStatus = 'supported' | 'coming_soon' | 'engine_unavailable';
+
 export interface FormatCapability {
   id: string;
   name: string;
   extension: string;
   mimeType: string;
-  category: 'images' | 'pdf' | 'vector' | 'cad' | 'adobe' | 'corel' | '3d';
-  status: 'supported' | 'coming_soon' | 'engine_unavailable';
+  category: FormatCategory;
+  status: FormatStatus;
   supportedOutputs: string[];
+  requiresEngine?: string;
+  description: string;
+}
+
+export interface UniversalExportCapability {
+  inputFormat: string;
+  name: string;
+  category: string;
+  canRender: boolean;
+  outputFormats: string[];
+  renderer: string;
+  multiPageSupport: boolean;
+  status: 'supported' | 'coming_soon';
   requiresEngine?: string;
   description: string;
 }

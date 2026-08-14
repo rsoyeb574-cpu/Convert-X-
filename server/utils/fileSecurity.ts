@@ -9,10 +9,16 @@ if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-export const FREE_MAX_FILE_SIZE_MB = process.env.FREE_MAX_FILE_SIZE_MB ? parseInt(process.env.FREE_MAX_FILE_SIZE_MB, 10) : 25;
+function safeParseInt(val: string | undefined, fallback: number): number {
+  if (!val || typeof val !== 'string') return fallback;
+  const parsed = parseInt(val.trim(), 10);
+  return isNaN(parsed) || parsed <= 0 ? fallback : parsed;
+}
+
+export const FREE_MAX_FILE_SIZE_MB = safeParseInt(process.env.FREE_MAX_FILE_SIZE_MB, 25);
 export const FREE_MAX_FILE_SIZE_BYTES = FREE_MAX_FILE_SIZE_MB * 1024 * 1024;
-export const FREE_DAILY_CONVERSIONS = process.env.FREE_DAILY_CONVERSIONS ? parseInt(process.env.FREE_DAILY_CONVERSIONS, 10) : 10;
-export const FREE_MAX_PDF_PAGES = process.env.FREE_MAX_PDF_PAGES ? parseInt(process.env.FREE_MAX_PDF_PAGES, 10) : 10;
+export const FREE_DAILY_CONVERSIONS = safeParseInt(process.env.FREE_DAILY_CONVERSIONS, 10);
+export const FREE_MAX_PDF_PAGES = safeParseInt(process.env.FREE_MAX_PDF_PAGES, 10);
 export const MAX_FILE_SIZE_BYTES = Math.max(FREE_MAX_FILE_SIZE_BYTES, 50 * 1024 * 1024); // Absolute server hard limit
 
 export function sanitizeFilename(filename: string): string {
@@ -77,7 +83,18 @@ export function detectFileFormat(buffer: Buffer, filename: string): MagicByteDet
     return { format: 'svg', mimeType: 'image/svg+xml', valid: true };
   }
 
+  // PSD: 8BPS (0x38 0x42 0x50 0x53)
+  if (buffer.length >= 4 && buffer[0] === 0x38 && buffer[1] === 0x42 && buffer[2] === 0x50 && buffer[3] === 0x53) {
+    return { format: 'psd', mimeType: 'image/vnd.adobe.photoshop', valid: true };
+  }
+
+  // DWG: AutoCAD binary header AC10xx (0x41 0x43 0x31 0x30)
+  if (buffer.length >= 4 && buffer[0] === 0x41 && buffer[1] === 0x43 && buffer[2] === 0x31 && buffer[3] === 0x30) {
+    return { format: 'dwg', mimeType: 'image/vnd.dwg', valid: true };
+  }
+
   // DXF: text format contains "SECTION" or "HEADER" or "ENTITIES" or 0 / SECTION
+  const fileExt = path.extname(filename).toLowerCase().replace('.', '');
   if (
     headStr.includes('section') ||
     headStr.includes('header') ||
@@ -85,28 +102,140 @@ export function detectFileFormat(buffer: Buffer, filename: string): MagicByteDet
     headStr.startsWith('0') ||
     headStr.includes('autocad')
   ) {
-    const ext = path.extname(filename).toLowerCase().replace('.', '');
-    if (ext === 'dxf' || headStr.includes('tables') || headStr.includes('dxf')) {
+    if (fileExt === 'dxf' || headStr.includes('tables') || headStr.includes('dxf')) {
       return { format: 'dxf', mimeType: 'image/vnd.dxf', valid: true };
     }
   }
 
-  // Fallback to extension matching if magic bytes are ambiguous or for text-based CAD/Vector files
-  const ext = path.extname(filename).toLowerCase().replace('.', '');
-  if (['png', 'jpg', 'jpeg', 'webp', 'pdf', 'svg', 'dxf'].includes(ext)) {
-    const normalizedExt = ext === 'jpeg' ? 'jpg' : ext;
+  // AI: Adobe Illustrator (PDF-compatible or PostScript)
+  if (fileExt === 'ai') {
+    return { format: 'ai', mimeType: 'application/postscript', valid: true };
+  }
+  if (fileExt === 'eps') {
+    return { format: 'eps', mimeType: 'application/postscript', valid: true };
+  }
+  if (fileExt === 'cdr') {
+    return { format: 'cdr', mimeType: 'application/cdr', valid: true };
+  }
+  if (fileExt === 'dwg') {
+    return { format: 'dwg', mimeType: 'image/vnd.dwg', valid: true };
+  }
+  if (fileExt === 'dwf') {
+    return { format: 'dwf', mimeType: 'model/vnd.dwf', valid: true };
+  }
+
+  // GIF: GIF87a / GIF89a (0x47 0x49 0x46)
+  if (buffer.length >= 3 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+    return { format: 'gif', mimeType: 'image/gif', valid: true };
+  }
+
+  // BMP: BM (0x42 0x4D)
+  if (buffer.length >= 2 && buffer[0] === 0x42 && buffer[1] === 0x4d) {
+    return { format: 'bmp', mimeType: 'image/bmp', valid: true };
+  }
+
+  // TIFF: II*. or MM.* (0x49 0x49 0x2A 0x00 or 0x4D 0x4D 0x00 0x2A)
+  if (
+    buffer.length >= 4 &&
+    ((buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00) ||
+      (buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a))
+  ) {
+    return { format: 'tiff', mimeType: 'image/tiff', valid: true };
+  }
+
+  // ZIP-based Office Formats (DOCX, XLSX, PPTX, ODT): PK.. (0x50 0x4B 0x03 0x04)
+  if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+    if (fileExt === 'docx') {
+      return { format: 'docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', valid: true };
+    }
+    if (fileExt === 'xlsx') {
+      return { format: 'xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', valid: true };
+    }
+    if (fileExt === 'pptx') {
+      return { format: 'pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', valid: true };
+    }
+    if (fileExt === 'odt') {
+      return { format: 'odt', mimeType: 'application/vnd.oasis.opendocument.text', valid: true };
+    }
+  }
+
+  // Fallback to extension matching if magic bytes are ambiguous or for text-based CAD/Vector/Doc files
+  if (
+    [
+      'png',
+      'jpg',
+      'jpeg',
+      'webp',
+      'gif',
+      'bmp',
+      'tiff',
+      'tif',
+      'avif',
+      'pdf',
+      'svg',
+      'docx',
+      'xlsx',
+      'txt',
+      'html',
+      'htm',
+      'pptx',
+      'odt',
+      'rtf',
+      'dxf',
+      'psd',
+      'ai',
+      'eps',
+      'dwg',
+      'dwf',
+      'cdr',
+      'obj',
+      'fbx',
+      '3ds',
+      'stl',
+      'max',
+      'aep',
+      'prproj',
+      'fla',
+    ].includes(fileExt)
+  ) {
+    const normalizedExt = fileExt === 'jpeg' ? 'jpg' : fileExt === 'tif' ? 'tiff' : fileExt === 'htm' ? 'html' : fileExt;
     const mimeMap: Record<string, string> = {
       png: 'image/png',
       jpg: 'image/jpeg',
       webp: 'image/webp',
+      gif: 'image/gif',
+      bmp: 'image/bmp',
+      tiff: 'image/tiff',
+      avif: 'image/avif',
       pdf: 'application/pdf',
       svg: 'image/svg+xml',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      txt: 'text/plain',
+      html: 'text/html',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      odt: 'application/vnd.oasis.opendocument.text',
+      rtf: 'application/rtf',
       dxf: 'image/vnd.dxf',
+      psd: 'image/vnd.adobe.photoshop',
+      ai: 'application/postscript',
+      eps: 'application/postscript',
+      dwg: 'image/vnd.dwg',
+      dwf: 'model/vnd.dwf',
+      cdr: 'application/cdr',
+      obj: 'model/obj',
+      fbx: 'application/octet-stream',
+      '3ds': 'image/x-3ds',
+      stl: 'model/stl',
+      max: 'application/x-3dsmax',
+      aep: 'application/vnd.adobe.aftereffects.project',
+      prproj: 'application/x-premiere',
+      fla: 'application/x-authorware-bin',
     };
     return { format: normalizedExt, mimeType: mimeMap[normalizedExt] || 'application/octet-stream', valid: true };
   }
 
-  return { format: ext || 'unknown', mimeType: 'application/octet-stream', valid: false };
+  return { format: fileExt || 'unknown', mimeType: 'application/octet-stream', valid: false };
 }
 
 // Scheduled periodic cleanup of old temp files (> 30 minutes old)

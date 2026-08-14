@@ -1,5 +1,6 @@
 import React from 'react';
 import { PageView, AppLimits } from '../types.js';
+import { DEFAULT_LIMITS } from '../utils/usageTracker.js';
 import { Layers, ArrowRight, Clock, Sun, Moon, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
@@ -21,10 +22,12 @@ export const Header: React.FC<HeaderProps> = ({
   darkMode,
   onToggleDarkMode,
   usedToday = 0,
-  limits,
+  limits = DEFAULT_LIMITS,
 }) => {
-  const maxConversions = limits?.dailyConversions || 10;
-  const isLimitReached = usedToday >= maxConversions;
+  const safeLimits = limits || DEFAULT_LIMITS;
+  const maxConversions = safeLimits?.dailyConversions ?? DEFAULT_LIMITS.dailyConversions;
+  const safeUsedToday = typeof usedToday === 'number' && !isNaN(usedToday) ? Math.max(0, usedToday) : 0;
+  const isLimitReached = safeUsedToday >= maxConversions;
 
   return (
     <header className="sticky top-0 z-40 bg-white/80 dark:bg-[#0B1120]/80 backdrop-blur-md border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] transition-colors">

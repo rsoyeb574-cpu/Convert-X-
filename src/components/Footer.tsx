@@ -26,7 +26,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               </span>
             </div>
             <p className="text-xs leading-relaxed text-[#64748B] dark:text-[#94A3B8] max-w-sm">
-              Convert images, PDFs, vector and professional design files with Convert-X. Real server-side vector rendering and image engines with instant automatic zero-retention file purging.
+              Your files are processed strictly for conversion and are not permanently stored. Convert-X uses real server-side engines with instant automatic memory file purging upon download.
             </p>
             <div className="flex items-center gap-3 pt-2 text-xs text-[#0F172A] dark:text-[#F8FAFC]">
               <span className="flex items-center gap-1">
@@ -134,6 +134,19 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                   className="hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors"
                 >
                   How It Works
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/affiliates"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('affiliates');
+                  }}
+                  className="hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors flex items-center gap-1 text-violet-600 dark:text-violet-400 font-medium"
+                >
+                  <span>Recommended Tools</span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300 font-bold">Partner</span>
                 </a>
               </li>
               <li>

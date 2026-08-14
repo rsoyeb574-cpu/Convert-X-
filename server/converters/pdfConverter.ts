@@ -11,14 +11,14 @@ export class PdfConverter implements ConverterEngine {
   description = 'Renders vector and text PDF pages to high-resolution PNG/JPG and embeds raster images into formatted PDF documents.';
 
   supportedInputFormats = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'svg'];
-  supportedOutputFormats = ['pdf', 'png', 'jpg'];
+  supportedOutputFormats = ['pdf', 'png', 'jpg', 'webp'];
 
   supports(inputFormat: string, outputFormat: string): boolean {
     const inFmt = inputFormat.toLowerCase() === 'jpeg' ? 'jpg' : inputFormat.toLowerCase();
     const outFmt = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
     if (inFmt === 'pdf') {
-      return ['png', 'jpg', 'pdf'].includes(outFmt);
+      return ['png', 'jpg', 'webp', 'pdf'].includes(outFmt);
     }
     if (['png', 'jpg', 'webp', 'svg'].includes(inFmt)) {
       return outFmt === 'pdf';
@@ -67,8 +67,8 @@ export class PdfConverter implements ConverterEngine {
       return this.convertImageToPdf(inputBuffer, inFmt, options);
     }
 
-    // 2. PDF -> PNG or JPG (Render actual pages)
-    if (inFmt === 'pdf' && (outFmt === 'png' || outFmt === 'jpg')) {
+    // 2. PDF -> PNG, JPG, or WEBP (Render actual pages)
+    if (inFmt === 'pdf' && (outFmt === 'png' || outFmt === 'jpg' || outFmt === 'webp')) {
       return this.convertPdfToImage(inputBuffer, outFmt, options);
     }
 
@@ -175,7 +175,7 @@ export class PdfConverter implements ConverterEngine {
 
   private async convertPdfToImage(
     buffer: Buffer,
-    outFmt: 'png' | 'jpg',
+    outFmt: 'png' | 'jpg' | 'webp',
     options: any
   ): Promise<ConvertResult> {
     const uint8 = new Uint8Array(buffer);
@@ -244,6 +244,11 @@ export class PdfConverter implements ConverterEngine {
       let pipeline = sharp(rawPng);
       if (outFmt === 'jpg') {
         return await pipeline.flatten({ background: bgColor }).jpeg({ quality, mozjpeg: true }).toBuffer();
+      } else if (outFmt === 'webp') {
+        if (options.backgroundColor && options.backgroundColor !== 'transparent') {
+          pipeline = pipeline.flatten({ background: options.backgroundColor });
+        }
+        return await pipeline.webp({ quality }).toBuffer();
       } else {
         if (options.backgroundColor && options.backgroundColor !== 'transparent') {
           pipeline = pipeline.flatten({ background: options.backgroundColor });
@@ -258,9 +263,10 @@ export class PdfConverter implements ConverterEngine {
       const imageBuf = await renderSinglePage(pageToRender);
 
       const meta = await sharp(imageBuf).metadata();
+      const mime = outFmt === 'jpg' ? 'image/jpeg' : outFmt === 'webp' ? 'image/webp' : 'image/png';
       return {
         buffer: imageBuf,
-        mimeType: outFmt === 'jpg' ? 'image/jpeg' : 'image/png',
+        mimeType: mime,
         outputExtension: outFmt,
         pageCount: totalPages,
         width: meta.width,

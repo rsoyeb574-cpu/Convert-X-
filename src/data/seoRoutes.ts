@@ -1032,4 +1032,240 @@ export const SEO_ROUTES: Record<string, SeoRouteConfig> = {
     ],
     relatedSlugs: ['svg-to-pdf', 'png-to-pdf', 'pdf-to-png', 'svg-to-png'],
   },
+
+  'psd-to-png': {
+    slug: 'psd-to-png',
+    title: 'PSD to PNG Converter - Convert Photoshop PSD to PNG Online | Convert-X',
+    h1: 'PSD to PNG Converter',
+    metaDescription: 'Convert Adobe Photoshop .PSD layered design files to high-resolution PNG images online with transparency support. No Photoshop required with Convert-X.',
+    fromFormat: 'psd',
+    toFormat: 'png',
+    category: 'images',
+    badge: 'Adobe Photoshop Engine',
+    shortExplanation: 'Render Adobe Photoshop PSD files directly into high-fidelity transparent PNG images without needing Adobe Photoshop installed.',
+    sampleKey: 'sample-psd',
+    supportedInputFormats: ['PSD (Adobe Photoshop Document)', 'image/vnd.adobe.photoshop'],
+    supportedOutputFormats: ['PNG (Portable Network Graphics)', 'image/png'],
+    features: [
+      'Extracts merged composite rendering with alpha transparency',
+      'No Adobe Photoshop or Creative Cloud subscription required',
+      'High-speed server-side Canvas rendering engine',
+      'Instant memory file scrubbing with 256-bit TLS encryption',
+    ],
+    whyConvert: {
+      title: 'Why Convert PSD to PNG?',
+      description: 'PSD files are bulky Adobe proprietary files that cannot be opened in web browsers or standard image viewers. Converting to PNG allows immediate sharing, web publishing, and embedding in design presentations.',
+      points: [
+        {
+          title: 'Universal Image Viewing',
+          text: 'PNG files open natively on every browser, smartphone, tablet, and operating system without Photoshop.',
+        },
+        {
+          title: 'Preserves Transparent Layers',
+          text: 'Convert-X renders full 8-bit alpha channel transparency from Photoshop design composites.',
+        },
+        {
+          title: 'Smaller Web-Ready File Size',
+          text: 'Drastically reduces multi-megabyte layered design files into lightweight PNG images.',
+        },
+      ],
+    },
+    comparison: {
+      fromTitle: 'PSD Photoshop Format',
+      fromPoints: [
+        'Proprietary Adobe layered document format',
+        'Requires Adobe Photoshop or heavy software to open',
+        'Large file size due to layer data and history states',
+      ],
+      toTitle: 'PNG Image Format',
+      toPoints: [
+        'Open standard supported by every web browser and OS',
+        'Crisp lossless bitmap compression with alpha channel',
+        'Lightweight and ready for web, mobile, or presentation use',
+      ],
+    },
+    howToUse: [
+      { step: 1, title: 'Upload PSD File', text: 'Select or drop your Adobe Photoshop .psd file.' },
+      { step: 2, title: 'Choose PNG Output', text: 'Select PNG format to retain crisp lines and alpha transparency.' },
+      { step: 3, title: 'Render Composite', text: 'Click Convert to execute high-fidelity composite rendering.' },
+      { step: 4, title: 'Download PNG', text: 'Instantly download your transparent PNG graphic.' },
+    ],
+    faq: [
+      {
+        question: 'Do I need Adobe Photoshop installed to convert PSD files?',
+        answer: 'No! Convert-X parses PSD composite layers server-side without requiring Adobe Photoshop or Adobe Creative Cloud.',
+      },
+      {
+        question: 'Does the PNG conversion preserve transparency?',
+        answer: 'Yes! If your PSD composite contains transparent background areas, the converted PNG will preserve the full alpha transparency.',
+      },
+    ],
+    relatedSlugs: ['psd-to-pdf', 'ai-to-png', 'svg-to-png', 'png-to-webp'],
+  },
+
+  'psd-to-pdf': {
+    slug: 'psd-to-pdf',
+    title: 'PSD to PDF Converter - Convert Photoshop to PDF Online | Convert-X',
+    h1: 'PSD to PDF Converter',
+    metaDescription: 'Convert Adobe Photoshop .PSD files into print-ready PDF documents online for free with Convert-X.',
+    fromFormat: 'psd',
+    toFormat: 'pdf',
+    category: 'pdf',
+    badge: 'Adobe to PDF Engine',
+    shortExplanation: 'Transform Adobe Photoshop graphic designs into commercial print-ready PDF documents with customizable page sizing.',
+    sampleKey: 'sample-psd',
+    supportedInputFormats: ['PSD (Adobe Photoshop Document)', 'image/vnd.adobe.photoshop'],
+    supportedOutputFormats: ['PDF (Portable Document Format)', 'application/pdf'],
+    features: [
+      'Standardized PDF document output compliant with Adobe Acrobat',
+      'Configurable page dimensions (A4, Letter, Auto-fit)',
+      'High-resolution 300 DPI print-ready rendering',
+      'Secure server processing with zero data retention',
+    ],
+    whyConvert: {
+      title: 'Why Convert PSD to PDF?',
+      description: 'PDF is the gold standard for sharing design proofs with clients, printing houses, and marketing teams.',
+      points: [
+        {
+          title: 'Client Proofing & Reviews',
+          text: 'Send clean PDF proofs to clients that can be easily reviewed and annotated on any device.',
+        },
+        {
+          title: 'Commercial Printing',
+          text: 'Wrap Photoshop artwork into standard A4, A3, or Letter paper dimensions for direct offset and digital printing.',
+        },
+      ],
+    },
+    comparison: {
+      fromTitle: 'PSD Format',
+      fromPoints: ['Adobe internal layered graphic', 'Requires Photoshop to view'],
+      toTitle: 'PDF Format',
+      toPoints: ['Universal document standard', 'Print-ready pagination and embedding'],
+    },
+    howToUse: [
+      { step: 1, title: 'Upload PSD File', text: 'Drop your .psd file into the Convert-X workspace.' },
+      { step: 2, title: 'Select PDF Output', text: 'Select PDF and configure page size preferences.' },
+      { step: 3, title: 'Compile PDF', text: 'Click Convert to generate the finalized PDF document.' },
+      { step: 4, title: 'Download File', text: 'Download your print-ready PDF document.' },
+    ],
+    faq: [
+      {
+        question: 'Can I print the converted PDF directly?',
+        answer: 'Yes! Convert-X embeds high-resolution raster composite data into standard PDF paper dimensions ready for printing.',
+      },
+    ],
+    relatedSlugs: ['psd-to-png', 'ai-to-pdf', 'png-to-pdf', 'dxf-to-pdf'],
+  },
+
+  'ai-to-pdf': {
+    slug: 'ai-to-pdf',
+    title: 'AI to PDF Converter - Convert Illustrator AI to PDF Online | Convert-X',
+    h1: 'AI to PDF Converter',
+    metaDescription: 'Convert Adobe Illustrator .AI vector graphics to universal PDF documents online without Illustrator with Convert-X.',
+    fromFormat: 'ai',
+    toFormat: 'pdf',
+    category: 'vector',
+    badge: 'Illustrator Vector Engine',
+    shortExplanation: 'Convert Adobe Illustrator vector artwork into scalable, universally viewable PDF documents with vector path preservation.',
+    sampleKey: 'sample-ai',
+    supportedInputFormats: ['AI (Adobe Illustrator Artwork)', 'application/postscript'],
+    supportedOutputFormats: ['PDF (Portable Document Format)', 'application/pdf'],
+    features: [
+      'Extracts PDF-compatible vector stream from Adobe Illustrator files',
+      'No Adobe Illustrator software or license required',
+      'High-resolution vector path clarity at any zoom level',
+      'Zero-retention security and instantaneous conversion',
+    ],
+    whyConvert: {
+      title: 'Why Convert AI to PDF?',
+      description: 'Adobe Illustrator (.ai) files cannot be viewed in standard web browsers or mobile devices. Converting to PDF creates a universal, vector-accurate file for client presentations and print shops.',
+      points: [
+        {
+          title: 'Universal Accessibility',
+          text: 'Enable clients and team members to inspect vector designs without needing Adobe Illustrator installed.',
+        },
+        {
+          title: 'Print & Laser Cutting Ready',
+          text: 'PDF vector paths can be directly consumed by print shops, CNC cutters, and engravers.',
+        },
+      ],
+    },
+    comparison: {
+      fromTitle: 'AI Illustrator Format',
+      fromPoints: ['Adobe proprietary vector format', 'Requires Illustrator to open'],
+      toTitle: 'PDF Vector Document',
+      toPoints: ['Standard ISO format', 'Opens on all phones, tablets, and computers'],
+    },
+    howToUse: [
+      { step: 1, title: 'Upload AI File', text: 'Select your Adobe Illustrator .ai design file.' },
+      { step: 2, title: 'Choose PDF Output', text: 'Select PDF as your desired export format.' },
+      { step: 3, title: 'Extract Vector Stream', text: 'Click Convert to compile the vector artwork into PDF.' },
+      { step: 4, title: 'Download PDF', text: 'Download your finalized vector PDF.' },
+    ],
+    faq: [
+      {
+        question: 'Does this require Adobe Illustrator software?',
+        answer: 'No! Convert-X parses and extracts AI vector data directly on the server.',
+      },
+      {
+        question: 'Will the paths remain sharp when zoomed in?',
+        answer: 'Yes! Vector paths in PDF-compatible AI files retain true resolution independence.',
+      },
+    ],
+    relatedSlugs: ['ai-to-png', 'psd-to-pdf', 'svg-to-pdf', 'png-to-pdf'],
+  },
+
+  'ai-to-png': {
+    slug: 'ai-to-png',
+    title: 'AI to PNG Converter - Convert Illustrator AI to PNG Online | Convert-X',
+    h1: 'AI to PNG Converter',
+    metaDescription: 'Convert Adobe Illustrator .AI vector graphics to high-resolution PNG images online with alpha transparency. Free on Convert-X.',
+    fromFormat: 'ai',
+    toFormat: 'png',
+    category: 'images',
+    badge: 'Illustrator Raster Engine',
+    shortExplanation: 'Rasterize Adobe Illustrator vector illustrations into high-DPI transparent PNG images for web, UI design, and social media.',
+    sampleKey: 'sample-ai',
+    supportedInputFormats: ['AI (Adobe Illustrator Artwork)', 'application/postscript'],
+    supportedOutputFormats: ['PNG (Portable Network Graphics)', 'image/png'],
+    features: [
+      'Converts Illustrator vectors into crisp 300 DPI transparent PNG images',
+      'Configurable DPI density and custom pixel dimensions',
+      'No Adobe Illustrator software required',
+      'Fast, secure, and private server-side processing',
+    ],
+    whyConvert: {
+      title: 'Why Convert AI to PNG?',
+      description: 'Websites, social networks, and mobile applications cannot render .ai files directly. Converting to PNG allows immediate publishing with transparent background support.',
+      points: [
+        {
+          title: 'Web & App Ready',
+          text: 'PNG is the standard format for web graphics, app UI icons, and digital advertising.',
+        },
+        {
+          title: 'High-Density DPI Rasterization',
+          text: 'Render Illustrator vectors at 72, 150, or 300 DPI for ultra-sharp Retina displays.',
+        },
+      ],
+    },
+    comparison: {
+      fromTitle: 'AI Vector Graphic',
+      fromPoints: ['Scalable bezier vector paths', 'Incompatible with web browsers'],
+      toTitle: 'PNG Raster Image',
+      toPoints: ['Lossless pixel bitmap with transparency', 'Universally supported on web and mobile'],
+    },
+    howToUse: [
+      { step: 1, title: 'Upload AI Vector File', text: 'Select your Illustrator .ai artwork.' },
+      { step: 2, title: 'Choose PNG & DPI', text: 'Select PNG and set your desired rendering resolution (e.g. 150 or 300 DPI).' },
+      { step: 3, title: 'Rasterize Artwork', text: 'Click Convert to rasterize the vector paths.' },
+      { step: 4, title: 'Download Image', text: 'Download your transparent PNG graphic.' },
+    ],
+    faq: [
+      {
+        question: 'Can I choose the output image resolution?',
+        answer: 'Yes! You can adjust the DPI slider to 72 DPI, 150 DPI, or 300 DPI to control the sharpness of the rendered PNG.',
+      },
+    ],
+    relatedSlugs: ['ai-to-pdf', 'psd-to-png', 'svg-to-png', 'dxf-to-svg'],
+  },
 };

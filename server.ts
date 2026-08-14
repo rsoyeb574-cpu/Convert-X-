@@ -122,6 +122,7 @@ ${routes
     const adsenseId = process.env.ADSENSE_CLIENT_ID || '';
 
     res.json({
+      success: true,
       limits: {
         maxFileSizeMB: FREE_MAX_FILE_SIZE_MB,
         maxFileSizeBytes: FREE_MAX_FILE_SIZE_BYTES,
@@ -134,6 +135,7 @@ ${routes
           ? 'Pro checkout is active.'
           : 'Pro payments are coming soon.',
         adsenseConfigured: Boolean(adsenseId && adsenseId.trim() !== ''),
+        adsenseClientId: adsenseId,
         pricing: {
           free: {
             id: 'free',
@@ -162,6 +164,19 @@ ${routes
     });
   });
 
+  // User Usage & Free Plan status endpoint
+  app.get('/api/usage', (req, res) => {
+    res.json({
+      success: true,
+      usage: {
+        dailyConversions: 0,
+        dailyLimit: FREE_DAILY_CONVERSIONS,
+        maxFileSizeMB: FREE_MAX_FILE_SIZE_MB,
+        plan: 'free',
+      },
+    });
+  });
+
   // Payment status endpoint (Strictly server-side verification, no private credentials exposed)
   app.get('/api/payment/status', (req, res) => {
     const paymentSecret = process.env.PAYMENT_SECRET_KEY;
@@ -183,6 +198,16 @@ ${routes
       res.json({ capabilities });
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to retrieve format capabilities.' });
+    }
+  });
+
+  // 1b. Get universal export registry capabilities
+  app.get('/api/universal-export/capabilities', (req, res) => {
+    try {
+      const capabilities = registry.getUniversalExportCapabilities();
+      res.json({ capabilities });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to retrieve universal export capabilities.' });
     }
   });
 

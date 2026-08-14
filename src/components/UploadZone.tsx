@@ -77,9 +77,13 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   };
 
   const samples = [
+    { key: 'sample-docx', label: 'Word Document (.DOCX)', icon: <FileText className="w-4 h-4 text-blue-600" />, tag: 'Executive Report' },
+    { key: 'sample-xlsx', label: 'Excel Spreadsheet (.XLSX)', icon: <FileText className="w-4 h-4 text-emerald-600" />, tag: 'Ledger Table' },
+    { key: 'sample-txt', label: 'Plain Text (.TXT)', icon: <FileText className="w-4 h-4 text-slate-500" />, tag: 'Typography Page' },
+    { key: 'sample-psd', label: 'Photoshop Design (.PSD)', icon: <Sparkles className="w-4 h-4 text-[#2563EB]" />, tag: 'Layered PSD' },
+    { key: 'sample-ai', label: 'Illustrator Artwork (.AI)', icon: <Sparkles className="w-4 h-4 text-amber-500" />, tag: 'Vector AI' },
     { key: 'sample-dxf', label: 'CAD Architecture (.DXF)', icon: <FileCode className="w-4 h-4 text-[#2563EB]" />, tag: 'CAD Blueprint' },
     { key: 'sample-svg', label: 'Vector Logo (.SVG)', icon: <Sparkles className="w-4 h-4 text-[#7C3AED]" />, tag: 'Vector Design' },
-    { key: 'sample-png', label: 'Transparent Badge (.PNG)', icon: <ImageIcon className="w-4 h-4 text-cyan-500" />, tag: 'Raster Image' },
     { key: 'sample-pdf', label: 'CAD Spec Sheet (.PDF)', icon: <FileText className="w-4 h-4 text-emerald-500" />, tag: 'PDF Document' },
   ];
 
@@ -104,7 +108,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
           onChange={handleFileInputChange}
           id="hidden-file-input"
           className="hidden"
-          accept=".png,.jpg,.jpeg,.webp,.pdf,.svg,.dxf"
+          accept=".docx,.xlsx,.txt,.html,.htm,.pptx,.odt,.rtf,.pdf,.psd,.ai,.dxf,.svg,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.avif,.eps,.dwg,.dwf,.cdr,.obj,.3ds,.stl"
           multiple
         />
 
@@ -120,7 +124,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
               Drag & Drop your files here, or <span className="text-[#2563EB] hover:underline">Browse</span>
             </h3>
             <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] font-medium">
-              Single or multi-file batch upload (DXF, PNG, JPG, WEBP, PDF, and SVG up to {maxFileSizeMB}MB)
+              Single or batch upload: DOCX, XLSX, TXT, PDF, PSD, AI, DXF, SVG, PNG, JPG up to {maxFileSizeMB}MB
             </p>
           </div>
 

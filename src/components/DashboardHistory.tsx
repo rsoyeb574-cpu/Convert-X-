@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { ConversionHistoryItem, ConversionQueueItem, FormatCapability } from '../types.js';
+import { ConversionHistoryItem, ConversionQueueItem, FormatCapability, PageView } from '../types.js';
 import {
   Clock,
   Download,
@@ -16,6 +16,8 @@ import {
   ArrowRight,
   Sparkles,
 } from 'lucide-react';
+import { ReferralWidget } from './ReferralWidget.js';
+import { AdSlot } from './AdSlot.js';
 
 interface DashboardHistoryProps {
   queue?: ConversionQueueItem[];
@@ -24,6 +26,7 @@ interface DashboardHistoryProps {
   onClearHistory: () => void;
   onRemoveItem: (id: string) => void;
   onConvertNew: () => void;
+  onNavigate?: (view: PageView) => void;
   onAddFiles?: (files: File[]) => void;
   onConvertAllPending?: () => void;
   onConvertQueueItem?: (id: string) => void;
@@ -40,6 +43,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   onClearHistory,
   onRemoveItem,
   onConvertNew,
+  onNavigate,
   onAddFiles,
   onConvertAllPending,
   onConvertQueueItem,
@@ -459,6 +463,12 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           </div>
         )}
       </div>
+
+      {/* Referral System Architecture (Requirement 11) */}
+      <ReferralWidget onUpgradeClick={() => onNavigate?.('pricing')} />
+
+      {/* Non-intrusive AdSlot (Requirement 4) */}
+      <AdSlot slotId="dashboard-bottom-slot" format="leaderboard" />
     </div>
   );
 };
