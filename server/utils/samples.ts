@@ -1,3 +1,6 @@
+import sharp from 'sharp';
+import { PDFDocument, rgb } from 'pdf-lib';
+
 export interface SampleDefinition {
   key: string;
   name: string;
@@ -5,7 +8,7 @@ export interface SampleDefinition {
   format: string;
   category: string;
   description: string;
-  getContent: () => Buffer;
+  getContent: () => Promise<Buffer> | Buffer;
 }
 
 export const SAMPLE_FILES: Record<string, SampleDefinition> = {
@@ -191,19 +194,114 @@ EOF`;
 
   sample_photo: {
     key: 'sample_photo',
-    name: 'Product Render (PNG)',
-    filename: '3d_product_render.png',
+    name: 'Transparent Badge (PNG)',
+    filename: 'convertx_badge.png',
     format: 'png',
     category: 'Images',
-    description: 'High-definition 3D product visualization with clean contrast.',
-    getContent: () => {
-      const svgPhoto = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
-  <rect width="800" height="600" fill="#1e293b"/>
-  <circle cx="400" cy="300" r="180" fill="#3b82f6" opacity="0.9"/>
-  <polygon points="400,160 520,380 280,380" fill="#f59e0b" opacity="0.85"/>
-  <text x="400" y="520" font-family="sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">PRODUCT PHOTO SAMPLE</text>
-</svg>`;
-      return Buffer.from(svgPhoto, 'utf-8');
+    description: 'High-definition 24-bit PNG raster graphic with alpha transparency.',
+    getContent: async () => {
+      const svgSource = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <circle cx="300" cy="300" r="260" fill="url(#g)"/>
+  <circle cx="300" cy="300" r="220" fill="#0F172A"/>
+  <polygon points="300,160 380,380 220,380" fill="#F59E0B"/>
+  <text x="300" y="440" font-family="sans-serif" font-size="28" font-weight="bold" fill="#FFFFFF" text-anchor="middle">CONVERTX PRO</text>
+</svg>`);
+      return await sharp(svgSource).png().toBuffer();
+    },
+  },
+
+  sample_document: {
+    key: 'sample_document',
+    name: 'Engineering Spec Sheet (PDF)',
+    filename: 'engineering_spec_sheet.pdf',
+    format: 'pdf',
+    category: 'PDF Documents',
+    description: 'Multi-element vector PDF document with headers, geometry, and specifications.',
+    getContent: async () => {
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([612, 792]); // Letter size
+
+      page.drawText('CONVERTX ENGINEERING SPECIFICATION', {
+        x: 50,
+        y: 720,
+        size: 18,
+        color: rgb(0.06, 0.09, 0.16),
+      });
+
+      page.drawText('Document ID: CX-SPEC-2026-08 • Classification: Public Vector Test', {
+        x: 50,
+        y: 695,
+        size: 10,
+        color: rgb(0.4, 0.45, 0.53),
+      });
+
+      page.drawLine({
+        start: { x: 50, y: 680 },
+        end: { x: 562, y: 680 },
+        thickness: 1.5,
+        color: rgb(0.14, 0.38, 0.92),
+      });
+
+      page.drawRectangle({
+        x: 50,
+        y: 500,
+        width: 512,
+        height: 150,
+        color: rgb(0.95, 0.97, 1.0),
+        borderColor: rgb(0.8, 0.85, 0.95),
+        borderWidth: 1,
+      });
+
+      page.drawText('Architecture Overview & Vector Coordinate Mapping', {
+        x: 70,
+        y: 620,
+        size: 14,
+        color: rgb(0.06, 0.09, 0.16),
+      });
+
+      page.drawText('This sample PDF document is rendered directly on the server to verify high-fidelity rasterization and text extraction.', {
+        x: 70,
+        y: 590,
+        size: 11,
+        color: rgb(0.2, 0.25, 0.35),
+      });
+
+      page.drawCircle({
+        x: 100,
+        y: 540,
+        size: 20,
+        color: rgb(0.14, 0.38, 0.92),
+      });
+
+      page.drawRectangle({
+        x: 150,
+        y: 525,
+        width: 80,
+        height: 30,
+        color: rgb(0.48, 0.23, 0.93),
+      });
+
+      page.drawText('High-Resolution Vector Graphics Module Active', {
+        x: 250,
+        y: 535,
+        size: 10,
+        color: rgb(0.06, 0.09, 0.16),
+      });
+
+      const pdfBytes = await pdfDoc.save();
+      return Buffer.from(pdfBytes);
     },
   },
 };
+
+// Aliases for frontend sample keys
+SAMPLE_FILES['sample-dxf'] = SAMPLE_FILES.cad_blueprint;
+SAMPLE_FILES['sample-svg'] = SAMPLE_FILES.vector_artwork;
+SAMPLE_FILES['sample-png'] = SAMPLE_FILES.sample_photo;
+SAMPLE_FILES['sample-pdf'] = SAMPLE_FILES.sample_document;

@@ -61,8 +61,52 @@ async function startServer() {
     res.json({ samples: list });
   });
 
-  // 3. Upload file or load sample file
-  app.post('/api/upload', upload.single('file'), (req, res) => {
+  // 3. Get single sample file session
+  app.get('/api/sample/:key', async (req, res) => {
+    try {
+      const sampleKey = req.params.key;
+      const sample = SAMPLE_FILES[sampleKey];
+      if (!sample) {
+        return res.status(404).json({ error: 'Sample file not found.' });
+      }
+
+      const fileBuffer = await Promise.resolve(sample.getContent());
+      const cleanName = sanitizeFilename(sample.filename);
+      const detection = detectFileFormat(fileBuffer, cleanName);
+
+      const job = registry.createJob(cleanName, detection.format, {});
+      const { filePath } = generateTempFilePath(detection.format);
+      fs.writeFileSync(filePath, fileBuffer);
+
+      registry.updateJob(job.id, {
+        inputPath: filePath,
+        fileSize: fileBuffer.length,
+        status: 'uploading',
+        progress: 100,
+      });
+
+      const capabilities = registry.getCapabilities();
+      const cap = capabilities.find((c) => c.extension === detection.format);
+
+      res.json({
+        jobId: job.id,
+        fileName: cleanName,
+        detectedFormat: detection.format,
+        mimeType: detection.mimeType,
+        fileSize: fileBuffer.length,
+        category: cap?.category || 'general',
+        status: cap?.status || 'supported',
+        requiresEngine: cap?.requiresEngine,
+        supportedOutputs: cap?.supportedOutputs || [],
+      });
+    } catch (err: any) {
+      console.error('Sample retrieval error:', err);
+      res.status(500).json({ error: 'Failed to initialize sample file.' });
+    }
+  });
+
+  // 4. Upload file or load sample file
+  app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
       let fileBuffer: Buffer;
       let originalName: string;
@@ -70,7 +114,7 @@ async function startServer() {
       const sampleKey = req.body.sampleKey;
       if (sampleKey && SAMPLE_FILES[sampleKey]) {
         const sample = SAMPLE_FILES[sampleKey];
-        fileBuffer = sample.getContent();
+        fileBuffer = await Promise.resolve(sample.getContent());
         originalName = sample.filename;
       } else if (req.file) {
         fileBuffer = req.file.buffer;
@@ -126,7 +170,7 @@ async function startServer() {
     }
   });
 
-  // 4. Trigger Conversion
+  // 5. Trigger Conversion
   app.post('/api/convert', async (req, res) => {
     try {
       const { jobId, outputFormat, options } = req.body;
@@ -140,16 +184,18 @@ async function startServer() {
         return res.status(404).json({ error: 'Conversion session expired or not found.' });
       }
 
-      // Process conversion asynchronously or await result
       const updatedJob = await registry.processConversion(jobId, outputFormat, options || {});
 
       res.json({
         jobId: updatedJob.id,
-        status: updatedJob.status,
-        progress: updatedJob.progress,
+        originalName: updatedJob.originalName,
+        inputFormat: updatedJob.inputFormat,
         outputFormat: updatedJob.outputFormat,
-        outputSize: updatedJob.outputSize,
+        originalSize: updatedJob.fileSize,
+        outputSize: updatedJob.outputSize || 0,
+        status: updatedJob.status,
         completedAt: updatedJob.completedAt,
+        downloadUrl: `/api/download/${updatedJob.id}`,
       });
     } catch (err: any) {
       console.error('Convert handler error:', err);
@@ -157,7 +203,7 @@ async function startServer() {
     }
   });
 
-  // 5. Get Conversion Status
+  // 6. Get Conversion Status
   app.get('/api/status/:jobId', (req, res) => {
     const job = registry.getJob(req.params.jobId);
     if (!job) {
@@ -176,11 +222,16 @@ async function startServer() {
     });
   });
 
-  // 6. Download Converted File
+  // 7. Download Converted File
   app.get('/api/download/:jobId', (req, res) => {
     const job = registry.getJob(req.params.jobId);
     if (!job || !job.outputPath || !fs.existsSync(job.outputPath)) {
       return res.status(404).send('Converted file not found or session expired.');
+    }
+
+    const stats = fs.statSync(job.outputPath);
+    if (stats.size === 0) {
+      return res.status(500).send('Converted output file is empty.');
     }
 
     const baseName = path.parse(job.originalName).name;
@@ -188,13 +239,14 @@ async function startServer() {
 
     res.setHeader('Content-Type', job.outputMimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${downloadFilename}"`);
+    res.setHeader('Content-Length', stats.size.toString());
     res.setHeader('Cache-Control', 'no-cache');
 
     const readStream = fs.createReadStream(job.outputPath);
     readStream.pipe(res);
   });
 
-  // 7. File Preview
+  // 8. File Preview
   app.get('/api/preview/:jobId', (req, res) => {
     const job = registry.getJob(req.params.jobId);
     if (!job) {

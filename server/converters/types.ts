@@ -44,6 +44,7 @@ export interface ConverterEngine {
   description: string;
   supportedInputFormats: string[];
   supportedOutputFormats: string[];
+  supports?(inputFormat: string, outputFormat: string): boolean;
   validate(fileBuffer: Buffer, inputFormat: string): Promise<ValidationResult>;
   convert(params: ConvertParams): Promise<ConvertResult>;
 }

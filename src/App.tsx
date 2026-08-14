@@ -83,9 +83,8 @@ export default function App() {
     fetch('/api/formats')
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setCapabilities(data);
-        }
+        const caps = data.capabilities || (Array.isArray(data) ? data : []);
+        setCapabilities(caps);
       })
       .catch((err) => console.error('Error loading format catalog:', err));
   }, []);
@@ -140,7 +139,8 @@ export default function App() {
     try {
       const response = await fetch(`/api/sample/${sampleKey}`);
       if (!response.ok) {
-        throw new Error('Failed to load sample design file');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to load sample design file');
       }
 
       const fileData: UploadedFile = await response.json();
@@ -161,29 +161,17 @@ export default function App() {
     }
   };
 
-  // Execute Conversion
+  // Execute Real Backend Conversion
   const handleStartConversion = async () => {
     if (!uploadedFile) return;
 
     setIsLoading(true);
     setError(null);
-    setProgress(15);
-    setStage('uploading');
-    setStatusText('Preparing file streams & magic byte verification...');
+    setStage('converting');
+    setProgress(50);
+    setStatusText(`Converting .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()}...`);
 
     try {
-      setTimeout(() => {
-        setProgress(45);
-        setStage('processing');
-        setStatusText('Parsing vector entities, CAD layers & image geometry...');
-      }, 500);
-
-      setTimeout(() => {
-        setProgress(75);
-        setStage('converting');
-        setStatusText('Compiling output target raster/vector buffer...');
-      }, 1000);
-
       const response = await fetch('/api/convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -201,27 +189,25 @@ export default function App() {
 
       const resData: ConversionResultData = await response.json();
 
-      setTimeout(() => {
-        setProgress(100);
-        setStage('completed');
-        setStatusText('Conversion complete! File ready for instant download.');
-        setResult(resData);
+      setProgress(100);
+      setStage('completed');
+      setStatusText('Conversion complete! File ready for instant download.');
+      setResult(resData);
 
-        // Add to history
-        const newHistoryItem: ConversionHistoryItem = {
-          id: 'hist-' + Date.now(),
-          fileName: resData.originalName,
-          inputFormat: resData.inputFormat,
-          outputFormat: resData.outputFormat,
-          originalSize: resData.originalSize,
-          outputSize: resData.outputSize,
-          date: new Date().toISOString(),
-          status: 'completed',
-          jobId: resData.jobId,
-        };
+      // Add to history
+      const newHistoryItem: ConversionHistoryItem = {
+        id: 'hist-' + Date.now(),
+        fileName: resData.originalName,
+        inputFormat: resData.inputFormat,
+        outputFormat: resData.outputFormat,
+        originalSize: resData.originalSize,
+        outputSize: resData.outputSize,
+        date: new Date().toISOString(),
+        status: 'completed',
+        jobId: resData.jobId,
+      };
 
-        setHistory((prev) => [newHistoryItem, ...prev.slice(0, 24)]);
-      }, 1400);
+      setHistory((prev) => [newHistoryItem, ...prev.slice(0, 24)]);
     } catch (err: any) {
       console.error('Conversion Error:', err);
       setError(err.message || 'Conversion failed');

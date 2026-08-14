@@ -4,27 +4,34 @@ import { ConverterEngine, ConvertParams, ConvertResult, ValidationResult } from 
 export class SharpImageConverter implements ConverterEngine {
   id = 'sharp-image-engine';
   name = 'Sharp High-Performance Image Engine';
-  description = 'Ultra-fast image processing engine supporting PNG, JPG, WEBP, and SVG vector rendering.';
+  description = 'Hardware-accelerated libvips raster engine for PNG, JPG, JPEG, and WEBP formats with precision resizing, transparency flattening, and metadata handling.';
 
-  supportedInputFormats = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
-  supportedOutputFormats = ['png', 'jpg', 'webp', 'svg'];
+  supportedInputFormats = ['png', 'jpg', 'jpeg', 'webp'];
+  supportedOutputFormats = ['png', 'jpg', 'webp'];
+
+  supports(inputFormat: string, outputFormat: string): boolean {
+    const inFmt = inputFormat.toLowerCase() === 'jpeg' ? 'jpg' : inputFormat.toLowerCase();
+    const outFmt = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
+    return ['png', 'jpg', 'webp'].includes(inFmt) && ['png', 'jpg', 'webp'].includes(outFmt);
+  }
 
   async validate(fileBuffer: Buffer, inputFormat: string): Promise<ValidationResult> {
+    const fmt = inputFormat.toLowerCase() === 'jpeg' ? 'jpg' : inputFormat.toLowerCase();
+    if (!this.supportedInputFormats.includes(fmt)) {
+      return { valid: false, reason: `Format .${inputFormat} is not supported by the raster image engine.` };
+    }
+
     try {
-      const normalized = inputFormat.toLowerCase() === 'jpeg' ? 'jpg' : inputFormat.toLowerCase();
-      if (!this.supportedInputFormats.includes(normalized)) {
-        return { valid: false, reason: `Format ${inputFormat} is not supported by Sharp engine.` };
+      if (!fileBuffer || fileBuffer.length === 0) {
+        return { valid: false, reason: 'Empty file buffer.' };
       }
-
-      // Metadata check
-      const meta = await sharp(fileBuffer).metadata();
-      if (!meta || !meta.format) {
-        return { valid: false, reason: 'Invalid or corrupt image buffer.' };
+      const metadata = await sharp(fileBuffer).metadata();
+      if (!metadata.format) {
+        return { valid: false, reason: 'Invalid or corrupt image header.' };
       }
-
-      return { valid: true, detectedFormat: meta.format };
+      return { valid: true, detectedFormat: metadata.format === 'jpeg' ? 'jpg' : metadata.format };
     } catch (err: any) {
-      return { valid: false, reason: `Image validation failed: ${err.message || 'Corrupt file'}` };
+      return { valid: false, reason: `Invalid image: ${err.message || 'Corrupted raster data'}` };
     }
   }
 
@@ -32,66 +39,55 @@ export class SharpImageConverter implements ConverterEngine {
     const { inputBuffer, outputFormat, options } = params;
     const target = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
-    // DPI & density calculation (72 default -> scale up for higher DPIs like 150 or 300)
-    const dpi = options.dpi || 72;
-    const density = Math.round((dpi / 72) * 72);
+    let pipeline = sharp(inputBuffer);
 
-    let pipeline = sharp(inputBuffer, { density: density > 72 ? density : 300 });
+    // 1. Resizing
+    if (options.width || options.height) {
+      const resizeOptions: { width?: number; height?: number; fit?: 'inside' | 'fill' | 'cover' | 'contain' | 'outside'; withoutEnlargement?: boolean } = {
+        width: options.width ? parseInt(String(options.width), 10) : undefined,
+        height: options.height ? parseInt(String(options.height), 10) : undefined,
+        fit: options.maintainAspectRatio !== false ? 'inside' : 'fill',
+        withoutEnlargement: false,
+      };
+      pipeline = pipeline.resize(resizeOptions);
+    }
+
+    // 2. Format encoding
+    let outputBuffer: Buffer;
+    let mimeType: string;
 
     const quality = options.quality && options.quality > 0 && options.quality <= 100 ? options.quality : 90;
 
-    // Background color handling
     if (target === 'jpg') {
-      // JPEG doesn't support transparency -> flatten with selected background color
       const bgColor = options.backgroundColor && options.backgroundColor !== 'transparent'
         ? options.backgroundColor
         : '#ffffff';
       pipeline = pipeline.flatten({ background: bgColor });
-    } else if (options.backgroundColor && options.backgroundColor !== 'transparent') {
-      pipeline = pipeline.flatten({ background: options.backgroundColor });
-    }
-
-    // Custom width / height or resolution scale handling
-    if (options.width || options.height) {
-      const fitMode = options.maintainAspectRatio !== false ? 'contain' : 'fill';
-      pipeline = pipeline.resize(options.width || null, options.height || null, { fit: fitMode });
-    } else if (options.resolution && options.resolution > 0 && options.resolution !== 100) {
-      const meta = await sharp(inputBuffer).metadata();
-      if (meta.width && meta.height) {
-        const scale = options.resolution / 100;
-        const targetWidth = Math.round(meta.width * scale);
-        pipeline = pipeline.resize(targetWidth, null, { fit: 'contain' });
+      outputBuffer = await pipeline.jpeg({ quality, mozjpeg: true }).toBuffer();
+      mimeType = 'image/jpeg';
+    } else if (target === 'webp') {
+      if (options.backgroundColor && options.backgroundColor !== 'transparent') {
+        pipeline = pipeline.flatten({ background: options.backgroundColor });
       }
+      outputBuffer = await pipeline.webp({ quality }).toBuffer();
+      mimeType = 'image/webp';
+    } else {
+      // Default PNG
+      if (options.backgroundColor && options.backgroundColor !== 'transparent') {
+        pipeline = pipeline.flatten({ background: options.backgroundColor });
+      }
+      outputBuffer = await pipeline.png({ quality: Math.min(100, quality) }).toBuffer();
+      mimeType = 'image/png';
     }
 
-    let outputBuffer: Buffer;
-    let mimeType: string;
-
-    switch (target) {
-      case 'png':
-        outputBuffer = await pipeline.png({ quality, compressionLevel: 8 }).toBuffer();
-        mimeType = 'image/png';
-        break;
-      case 'jpg':
-        outputBuffer = await pipeline.jpeg({ quality, mozjpeg: true }).toBuffer();
-        mimeType = 'image/jpeg';
-        break;
-      case 'webp':
-        outputBuffer = await pipeline.webp({ quality }).toBuffer();
-        mimeType = 'image/webp';
-        break;
-      default:
-        throw new Error(`Unsupported output format ${outputFormat} for Sharp engine`);
-    }
-
-    const outMeta = await sharp(outputBuffer).metadata();
+    const metadata = await sharp(outputBuffer).metadata();
 
     return {
       buffer: outputBuffer,
       mimeType,
       outputExtension: target,
-      width: outMeta.width,
-      height: outMeta.height,
+      width: metadata.width,
+      height: metadata.height,
     };
   }
 }

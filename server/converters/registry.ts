@@ -10,8 +10,9 @@ import { SharpImageConverter } from './sharpConverter.js';
 import { PdfConverter } from './pdfConverter.js';
 import { DxfConverter } from './dxfConverter.js';
 import { SvgConverter } from './svgConverter.js';
-import { generateTempFilePath, detectFileFormat, sanitizeFilename } from '../utils/fileSecurity.js';
+import { generateTempFilePath, sanitizeFilename } from '../utils/fileSecurity.js';
 import fs from 'fs';
+import crypto from 'crypto';
 
 export class ConverterRegistry {
   private engines: Map<string, ConverterEngine> = new Map();
@@ -70,7 +71,7 @@ export class ConverterRegistry {
         mimeType: 'application/pdf',
         category: 'pdf',
         status: 'supported',
-        supportedOutputs: ['png', 'jpg', 'pdf'],
+        supportedOutputs: ['png', 'jpg'],
         description: 'Universal vector document format for documents, blueprints, and artwork.',
       },
 
@@ -94,7 +95,7 @@ export class ConverterRegistry {
         mimeType: 'image/vnd.dxf',
         category: 'cad',
         status: 'supported',
-        supportedOutputs: ['svg', 'pdf', 'png', 'jpg'],
+        supportedOutputs: ['svg', 'png', 'jpg', 'pdf'],
         description: 'Autodesk CAD interchange format for architectural blueprints & engineering schematics.',
       },
       {
@@ -265,7 +266,9 @@ export class ConverterRegistry {
     const outFmt = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
     for (const engine of this.engines.values()) {
-      if (
+      if (engine.supports) {
+        if (engine.supports(inFmt, outFmt)) return engine;
+      } else if (
         engine.supportedInputFormats.includes(inFmt) &&
         engine.supportedOutputFormats.includes(outFmt)
       ) {
@@ -357,8 +360,13 @@ export class ConverterRegistry {
         options: { ...job.options, ...options },
       });
 
+      if (!convertResult.buffer || convertResult.buffer.length === 0) {
+        throw new Error('Conversion engine returned empty buffer.');
+      }
+
       // Save output
-      const { filePath: outputPath } = generateTempFilePath(outFmt);
+      const finalExt = convertResult.outputExtension || outFmt;
+      const { filePath: outputPath } = generateTempFilePath(finalExt);
       fs.writeFileSync(outputPath, convertResult.buffer);
 
       this.updateJob(jobId, {
@@ -371,6 +379,7 @@ export class ConverterRegistry {
         progress: 100,
         completedAt: new Date().toISOString(),
         outputPath,
+        outputFormat: finalExt,
         outputMimeType: convertResult.mimeType,
         outputSize: convertResult.buffer.length,
       });
