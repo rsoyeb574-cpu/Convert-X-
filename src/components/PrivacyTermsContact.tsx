@@ -4,7 +4,7 @@ import { ShieldCheck, Lock, Mail, Send, CheckCircle2, MessageSquare } from 'luci
 
 interface PrivacyTermsContactProps {
   view: PageView;
-  onNavigate: (view: PageView) => void;
+  onNavigate: (view: PageView, seoSlug?: string) => void;
 }
 
 export const PrivacyTermsContact: React.FC<PrivacyTermsContactProps> = ({ view, onNavigate }) => {

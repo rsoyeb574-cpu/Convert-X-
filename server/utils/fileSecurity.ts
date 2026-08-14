@@ -127,7 +127,10 @@ export function cleanupOldTempFiles(maxAgeMs: number = 30 * 60 * 1000): void {
   }
 }
 
-// Run cleanup every 10 minutes
-setInterval(() => {
+// Run cleanup every 10 minutes (unref so it does not block process exit)
+const cleanupTimer = setInterval(() => {
   cleanupOldTempFiles();
 }, 10 * 60 * 1000);
+if (cleanupTimer && typeof cleanupTimer.unref === 'function') {
+  cleanupTimer.unref();
+}

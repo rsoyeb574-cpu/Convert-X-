@@ -360,14 +360,36 @@ export class ConverterRegistry {
         options: { ...job.options, ...options },
       });
 
+      // 1. Check in-memory result buffer
       if (!convertResult.buffer || convertResult.buffer.length === 0) {
-        throw new Error('Conversion engine returned empty buffer.');
+        throw new Error('Conversion failed: generated output buffer is empty.');
       }
 
-      // Save output
-      const finalExt = convertResult.outputExtension || outFmt;
+      // 2. Determine file extension and MIME type
+      const finalExt = (convertResult.outputExtension || outFmt).toLowerCase();
+      const mimeType = convertResult.mimeType || this.getMimeTypeForExtension(finalExt);
+
+      // 3. Save output to disk
       const { filePath: outputPath } = generateTempFilePath(finalExt);
       fs.writeFileSync(outputPath, convertResult.buffer);
+
+      // 4. Verify output file exists on disk and is non-empty
+      if (!fs.existsSync(outputPath)) {
+        throw new Error('Conversion failed: output file was not saved to disk.');
+      }
+
+      const fileStats = fs.statSync(outputPath);
+      if (fileStats.size === 0) {
+        try { fs.unlinkSync(outputPath); } catch {}
+        throw new Error('Conversion failed: generated output file is 0 bytes.');
+      }
+
+      // 5. Verify format magic bytes and header integrity
+      const headerValid = this.validateOutputIntegrity(convertResult.buffer, finalExt);
+      if (!headerValid.valid) {
+        try { fs.unlinkSync(outputPath); } catch {}
+        throw new Error(`Conversion failed: generated output is corrupt (${headerValid.reason}).`);
+      }
 
       this.updateJob(jobId, {
         status: 'finalizing',
@@ -380,13 +402,13 @@ export class ConverterRegistry {
         completedAt: new Date().toISOString(),
         outputPath,
         outputFormat: finalExt,
-        outputMimeType: convertResult.mimeType,
-        outputSize: convertResult.buffer.length,
+        outputMimeType: mimeType,
+        outputSize: fileStats.size,
       });
 
       return updated!;
     } catch (err: any) {
-      const errMsg = err.message || 'Conversion failed. Please verify the input file.';
+      const errMsg = err.message || 'Conversion failed. Please try again.';
       this.updateJob(jobId, {
         status: 'failed',
         error: errMsg,
@@ -394,6 +416,68 @@ export class ConverterRegistry {
       });
       throw err;
     }
+  }
+
+  private getMimeTypeForExtension(ext: string): string {
+    const map: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+      pdf: 'application/pdf',
+      svg: 'image/svg+xml',
+      zip: 'application/zip',
+      dxf: 'image/vnd.dxf',
+    };
+    return map[ext.toLowerCase()] || 'application/octet-stream';
+  }
+
+  private validateOutputIntegrity(buffer: Buffer, format: string): { valid: boolean; reason?: string } {
+    if (!buffer || buffer.length === 0) {
+      return { valid: false, reason: 'Empty buffer' };
+    }
+
+    const fmt = format.toLowerCase();
+
+    if (fmt === 'png') {
+      if (buffer.length < 8 || buffer[0] !== 0x89 || buffer[1] !== 0x50 || buffer[2] !== 0x4e || buffer[3] !== 0x47) {
+        return { valid: false, reason: 'Invalid PNG header signature' };
+      }
+    } else if (fmt === 'jpg' || fmt === 'jpeg') {
+      if (buffer.length < 3 || buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
+        return { valid: false, reason: 'Invalid JPEG header signature' };
+      }
+    } else if (fmt === 'webp') {
+      if (
+        buffer.length < 12 ||
+        buffer[0] !== 0x52 ||
+        buffer[1] !== 0x49 ||
+        buffer[2] !== 0x46 ||
+        buffer[3] !== 0x46 ||
+        buffer[8] !== 0x57 ||
+        buffer[9] !== 0x45 ||
+        buffer[10] !== 0x42 ||
+        buffer[11] !== 0x50
+      ) {
+        return { valid: false, reason: 'Invalid WebP header signature' };
+      }
+    } else if (fmt === 'pdf') {
+      const head = buffer.subarray(0, 1024).toString('binary');
+      if (!head.includes('%PDF-')) {
+        return { valid: false, reason: 'Invalid PDF magic bytes (%PDF- not found)' };
+      }
+    } else if (fmt === 'zip') {
+      if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+        return { valid: false, reason: 'Invalid ZIP archive header (PK not found)' };
+      }
+    } else if (fmt === 'svg') {
+      const head = buffer.subarray(0, 1024).toString('utf-8').toLowerCase();
+      if (!head.includes('<svg')) {
+        return { valid: false, reason: 'Invalid SVG vector header' };
+      }
+    }
+
+    return { valid: true };
   }
 }
 

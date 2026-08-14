@@ -32,6 +32,77 @@ async function startServer() {
     },
   });
 
+  // --- SEO & CRAWLER ROUTES ---
+  app.get('/robots.txt', (req, res) => {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.get('host') || 'convert-x.com';
+    const siteUrl = `${protocol}://${host}`;
+
+    const robotsTxt = [
+      'User-agent: *',
+      'Allow: /',
+      'Disallow: /api/',
+      'Disallow: /admin/',
+      'Disallow: /private/',
+      '',
+      `Sitemap: ${siteUrl}/sitemap.xml`,
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(robotsTxt);
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.get('host') || 'convert-x.com';
+    const siteUrl = `${protocol}://${host}`;
+
+    const routes = [
+      { loc: '', changefreq: 'daily', priority: '1.0' },
+      { loc: 'converter', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'formats', changefreq: 'weekly', priority: '0.8' },
+      { loc: 'how-it-works', changefreq: 'monthly', priority: '0.7' },
+      { loc: 'faq', changefreq: 'monthly', priority: '0.7' },
+      { loc: 'privacy', changefreq: 'yearly', priority: '0.4' },
+      { loc: 'terms', changefreq: 'yearly', priority: '0.4' },
+      { loc: 'contact', changefreq: 'monthly', priority: '0.5' },
+      // Confirmed supported converters
+      { loc: 'png-to-jpg', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'jpg-to-png', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'png-to-webp', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'jpg-to-webp', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'webp-to-png', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'webp-to-jpg', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'png-to-pdf', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'jpg-to-pdf', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'pdf-to-png', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'pdf-to-jpg', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'svg-to-png', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'svg-to-jpg', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'svg-to-pdf', changefreq: 'weekly', priority: '0.9' },
+      { loc: 'dxf-to-pdf', changefreq: 'weekly', priority: '0.8' },
+    ];
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${routes
+  .map(
+    (r) => `  <url>
+    <loc>${siteUrl}/${r.loc}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>${r.changefreq}</changefreq>
+    <priority>${r.priority}</priority>
+  </url>`
+  )
+  .join('\n')}
+</urlset>`;
+
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.send(xml);
+  });
+
   // --- API ROUTES ---
 
   app.get('/api/health', (req, res) => {

@@ -1,18 +1,20 @@
 import React from 'react';
 import { UploadZone } from './UploadZone.js';
 import { PageView } from '../types.js';
-import { Image, FileText, Box, ShieldCheck, Sparkles, Layers, Cpu } from 'lucide-react';
+import { Image, FileText, Box, ShieldCheck, Sparkles, Layers, Cpu, ArrowRight } from 'lucide-react';
 
 interface HeroProps {
-  onFileSelected: (file: File) => void;
+  onFileSelected?: (file: File) => void;
+  onFilesSelected?: (files: File[]) => void;
   onSampleSelected: (sampleKey: string) => void;
-  onNavigate: (view: PageView) => void;
+  onNavigate: (view: PageView, seoSlug?: string) => void;
   isLoading?: boolean;
   error?: string | null;
 }
 
 export const Hero: React.FC<HeroProps> = ({
   onFileSelected,
+  onFilesSelected,
   onSampleSelected,
   onNavigate,
   isLoading,
@@ -20,11 +22,22 @@ export const Hero: React.FC<HeroProps> = ({
 }) => {
   const categories = [
     { name: 'Images', icon: <Image className="w-4 h-4 text-[#2563EB]" />, desc: 'PNG, JPG, WEBP' },
-    { name: 'PDF', icon: <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />, desc: 'PDF to Image, Image to PDF' },
-    { name: 'Vector', icon: <Box className="w-4 h-4 text-cyan-500" />, desc: 'SVG to PNG/PDF' },
-    { name: 'CAD', icon: <Layers className="w-4 h-4 text-amber-500" />, desc: 'DXF Architectural CAD' },
-    { name: 'Adobe', icon: <Sparkles className="w-4 h-4 text-pink-500" />, desc: 'PSD, AI (Engine Info)' },
-    { name: '3D', icon: <Cpu className="w-4 h-4 text-purple-500" />, desc: 'OBJ, 3DS (Engine Info)' },
+    { name: 'PDF', icon: <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />, desc: 'PDF to PNG, JPG, PDF Compilation' },
+    { name: 'Vector', icon: <Box className="w-4 h-4 text-cyan-500" />, desc: 'SVG to PNG, JPG, PDF' },
+    { name: 'CAD', icon: <Layers className="w-4 h-4 text-amber-500" />, desc: 'DXF Architectural CAD to PDF' },
+  ];
+
+  const popularQuickConverters = [
+    { slug: 'png-to-jpg', label: 'PNG to JPG' },
+    { slug: 'jpg-to-png', label: 'JPG to PNG' },
+    { slug: 'png-to-webp', label: 'PNG to WEBP' },
+    { slug: 'jpg-to-webp', label: 'JPG to WEBP' },
+    { slug: 'webp-to-png', label: 'WEBP to PNG' },
+    { slug: 'png-to-pdf', label: 'PNG to PDF' },
+    { slug: 'jpg-to-pdf', label: 'JPG to PDF' },
+    { slug: 'pdf-to-png', label: 'PDF to PNG' },
+    { slug: 'svg-to-png', label: 'SVG to PNG' },
+    { slug: 'svg-to-pdf', label: 'SVG to PDF' },
   ];
 
   return (
@@ -37,46 +50,69 @@ export const Hero: React.FC<HeroProps> = ({
         <div className="max-w-3xl mx-auto space-y-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/40 text-[#2563EB] dark:text-blue-300 text-xs font-bold">
             <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-            <span>Universal Design & CAD File Processing Engine</span>
+            <span>High-Speed Online File Converter & Image Converter</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight leading-tight">
-            Convert Your <span className="bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED] bg-clip-text text-transparent">Design Files</span>
+            Universal Online <span className="bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED] bg-clip-text text-transparent">Design File Converter</span>
           </h1>
 
           <p className="text-base sm:text-lg text-[#64748B] dark:text-[#94A3B8] leading-relaxed font-medium max-w-2xl mx-auto">
-            Convert images, PDFs, vector blueprints and CAD drawings with server-side vector rendering. Fast, secure, and easy to use.
+            Convert images, PDFs, vector blueprints and CAD drawings with server-side vector rendering. Fast, secure, and easy to use with Convert-X.
           </p>
         </div>
 
         {/* Upload Zone */}
         <UploadZone
           onFileSelected={onFileSelected}
+          onFilesSelected={onFilesSelected}
           onSampleSelected={onSampleSelected}
           isLoading={isLoading}
           error={error}
         />
 
+        {/* Popular Converter Quicklinks */}
+        <div className="pt-2">
+          <p className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider mb-3">
+            Popular Real-Time Converters
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
+            {popularQuickConverters.map((c) => (
+              <a
+                key={c.slug}
+                href={`/${c.slug}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate('seo', c.slug);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#111827] hover:bg-blue-50 dark:hover:bg-blue-950/60 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-blue-400 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] hover:text-[#2563EB] transition-all shadow-2xs"
+              >
+                {c.label}
+              </a>
+            ))}
+          </div>
+        </div>
+
         {/* Category Cards */}
-        <div className="pt-8">
+        <div className="pt-4">
           <p className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider mb-4">
-            Supported Format Categories
+            Active Server-Side Processing Engines
           </p>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-4xl mx-auto">
             {categories.map((cat) => (
               <div
                 key={cat.name}
                 onClick={() => onNavigate('formats')}
-                className="p-3.5 rounded-2xl bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] shadow-sm hover:shadow-md transition-all cursor-pointer group text-left"
+                className="p-4 rounded-2xl bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] shadow-xs hover:shadow-sm transition-all cursor-pointer group text-left"
               >
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1.5">
                   {cat.icon}
-                  <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB] transition-colors">
+                  <span className="text-xs sm:text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB] transition-colors">
                     {cat.name}
                   </span>
                 </div>
-                <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8] truncate">{cat.desc}</p>
+                <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">{cat.desc}</p>
               </div>
             ))}
           </div>
@@ -85,3 +121,4 @@ export const Hero: React.FC<HeroProps> = ({
     </section>
   );
 };
+

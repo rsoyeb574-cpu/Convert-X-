@@ -51,6 +51,22 @@ export interface ConversionResultData {
   completedAt: string;
 }
 
+export interface ConversionQueueItem {
+  id: string;
+  fileName: string;
+  inputFormat: string;
+  outputFormat: string;
+  fileSize: number;
+  uploadedFile?: UploadedFile;
+  status: 'pending' | 'uploading' | 'converting' | 'completed' | 'failed';
+  progress: number;
+  statusText?: string;
+  error?: string | null;
+  result?: ConversionResultData | null;
+  options: ConversionOptions;
+  createdAt: string;
+}
+
 export type ConversionStepStatus =
   | 'idle'
   | 'uploading'

@@ -5,6 +5,7 @@ import {
   ConversionOptions,
   ConversionResultData,
   ConversionHistoryItem,
+  ConversionQueueItem,
   FormatCapability,
 } from './types.js';
 import { Header } from './components/Header.js';
@@ -21,14 +22,27 @@ import { FaqSection } from './components/FaqSection.js';
 import { PrivacyTermsContact } from './components/PrivacyTermsContact.js';
 import { DashboardHistory } from './components/DashboardHistory.js';
 import { SeoLandingPage } from './components/SeoLandingPage.js';
-import { ArrowRight, RefreshCw, Zap, ShieldCheck, Lock, Sparkles, Layers } from 'lucide-react';
+import { SeoMetaManager } from './components/SeoMetaManager.js';
+import { SEO_ROUTES } from './data/seoRoutes.js';
+import {
+  ArrowRight,
+  RefreshCw,
+  Zap,
+  ShieldCheck,
+  Lock,
+  Sparkles,
+  Layers,
+  AlertTriangle,
+  X,
+  ListOrdered,
+} from 'lucide-react';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<PageView>('home');
-  const [seoRoute, setSeoRoute] = useState<string>('seo-dxf-to-pdf');
+  const [seoSlug, setSeoSlug] = useState<string>('png-to-jpg');
   const [darkMode, setDarkMode] = useState<boolean>(true);
 
-  // File Upload and Conversion State
+  // File Upload and Single Workspace State
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [selectedOutputFormat, setSelectedOutputFormat] = useState<string>('png');
   const [options, setOptions] = useState<ConversionOptions>({
@@ -38,6 +52,10 @@ export default function App() {
     pageSize: 'a4',
     orientation: 'portrait',
   });
+
+  // Multi-File Conversion Queue State
+  const [queue, setQueue] = useState<ConversionQueueItem[]>([]);
+  const [isConvertingAll, setIsConvertingAll] = useState<boolean>(false);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +77,42 @@ export default function App() {
 
   // Available Capabilities Catalog
   const [capabilities, setCapabilities] = useState<FormatCapability[]>([]);
+
+  // 1. Initial URL Path Parsing and PopState listener for real URL routing
+  useEffect(() => {
+    const parseUrl = () => {
+      const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
+      if (!pathname) {
+        setCurrentView('home');
+        return;
+      }
+
+      if (SEO_ROUTES[pathname]) {
+        setCurrentView('seo');
+        setSeoSlug(pathname);
+      } else if (
+        ['converter', 'formats', 'how-it-works', 'faq', 'privacy', 'terms', 'contact', 'dashboard'].includes(
+          pathname
+        )
+      ) {
+        setCurrentView(pathname as PageView);
+      } else if (pathname.startsWith('seo-')) {
+        const clean = pathname.replace(/^seo-/, '');
+        if (SEO_ROUTES[clean]) {
+          setCurrentView('seo');
+          setSeoSlug(clean);
+        } else {
+          setCurrentView('home');
+        }
+      } else {
+        setCurrentView('home');
+      }
+    };
+
+    parseUrl();
+    window.addEventListener('popstate', parseUrl);
+    return () => window.removeEventListener('popstate', parseUrl);
+  }, []);
 
   // Toggle Dark Mode
   useEffect(() => {
@@ -89,44 +143,159 @@ export default function App() {
       .catch((err) => console.error('Error loading format catalog:', err));
   }, []);
 
-  // Handle File Upload from Device
-  const handleFileSelected = async (file: File) => {
+  // Helper to parse specific backend error messages and HTTP status codes
+  const parseBackendError = async (
+    response: Response,
+    inputFormat?: string,
+    outputFormat?: string
+  ): Promise<string> => {
+    let serverErrorMsg = '';
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        const errData = await response.json();
+        serverErrorMsg = errData.error || errData.message || errData.reason || errData.details || '';
+      } catch {
+        // ignore json parse error
+      }
+    } else {
+      try {
+        const textData = await response.text();
+        if (textData && textData.trim()) {
+          serverErrorMsg = textData.trim();
+        }
+      } catch {
+        // ignore text parse error
+      }
+    }
+
+    if (!serverErrorMsg) {
+      if (response.status === 413) {
+        serverErrorMsg = 'File too large: The uploaded file exceeds the 50MB processing limit.';
+      } else if (response.status === 415) {
+        serverErrorMsg = `Unsupported format: Conversion from .${(inputFormat || '').toUpperCase()} to .${(outputFormat || '').toUpperCase()} is not supported.`;
+      } else if (response.status === 404) {
+        serverErrorMsg = 'Conversion session expired or file not found. Please upload your file again.';
+      } else if (response.status === 400) {
+        serverErrorMsg = 'Invalid conversion request. Please check your options and try again.';
+      } else if (response.status >= 500) {
+        serverErrorMsg = 'Server processing error: The conversion engine encountered an unexpected internal issue.';
+      } else {
+        serverErrorMsg = `Conversion failed with status ${response.status} (${response.statusText || 'Error'}).`;
+      }
+    }
+
+    return serverErrorMsg;
+  };
+
+  // Handle Multi-File Upload into Queue
+  const handleFilesSelected = async (files: File[]) => {
+    if (!files || files.length === 0) return;
+
     setIsLoading(true);
     setError(null);
-    setResult(null);
-    setStage('idle');
 
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to upload file to processing engine');
-      }
-
-      const fileData: UploadedFile = await response.json();
-      setUploadedFile(fileData);
-
-      // Default selected format to first supported output format
-      if (fileData.supportedOutputs && fileData.supportedOutputs.length > 0) {
-        setSelectedOutputFormat(fileData.supportedOutputs[0]);
-      } else {
-        setSelectedOutputFormat('png');
-      }
-
-      setCurrentView('converter');
-    } catch (err: any) {
-      console.error('Upload Error:', err);
-      setError(err.message || 'Error uploading file');
-    } finally {
-      setIsLoading(false);
+    // If multiple files are selected, transition to the queue dashboard
+    if (files.length > 1) {
+      setCurrentView('dashboard');
     }
+
+    // Create initial queue items
+    const newItems: ConversionQueueItem[] = files.map((file) => {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'unknown';
+      return {
+        id: 'queue-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
+        fileName: file.name,
+        inputFormat: ext,
+        outputFormat: ext === 'pdf' ? 'png' : 'pdf',
+        fileSize: file.size,
+        status: 'uploading',
+        progress: 30,
+        options: { ...options },
+        createdAt: new Date().toISOString(),
+      };
+    });
+
+    setQueue((prev) => [...newItems, ...prev]);
+
+    // Concurrently upload each file to /api/upload
+    await Promise.all(
+      files.map(async (file, index) => {
+        const item = newItems[index];
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const parsedError = await parseBackendError(response, item.inputFormat, item.outputFormat);
+            throw new Error(parsedError || 'Upload failed');
+          }
+
+          const fileData: UploadedFile = await response.json();
+
+          // Set default target output format
+          const defaultOutput =
+            fileData.supportedOutputs && fileData.supportedOutputs.length > 0
+              ? fileData.supportedOutputs[0]
+              : 'png';
+
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === item.id
+                ? {
+                    ...q,
+                    uploadedFile: fileData,
+                    inputFormat: fileData.detectedFormat,
+                    outputFormat: defaultOutput,
+                    fileSize: fileData.fileSize,
+                    status: 'pending',
+                    progress: 0,
+                    error: null,
+                  }
+                : q
+            )
+          );
+
+          // If only 1 file was selected and no single file active yet, sync single file workspace
+          if (files.length === 1) {
+            setUploadedFile(fileData);
+            setSelectedOutputFormat(defaultOutput);
+            setCurrentView('converter');
+          }
+        } catch (err: any) {
+          console.error(`Upload error for ${file.name}:`, err);
+          const errorMsg = err.message || 'Failed to upload file';
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === item.id
+                ? {
+                    ...q,
+                    status: 'failed',
+                    error: errorMsg,
+                    progress: 0,
+                  }
+                : q
+            )
+          );
+          if (files.length === 1) {
+            setError(errorMsg);
+          }
+        }
+      })
+    );
+
+    setIsLoading(false);
+  };
+
+  // Handle Single File Selection (forward to multi-file queue handler)
+  const handleFileSelected = async (file: File) => {
+    await handleFilesSelected([file]);
   };
 
   // Handle Sample File Load
@@ -139,19 +308,35 @@ export default function App() {
     try {
       const response = await fetch(`/api/sample/${sampleKey}`);
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to load sample design file');
+        const parsedError = await parseBackendError(response);
+        throw new Error(parsedError || 'Failed to load sample design file');
       }
 
       const fileData: UploadedFile = await response.json();
       setUploadedFile(fileData);
 
-      if (fileData.supportedOutputs && fileData.supportedOutputs.length > 0) {
-        setSelectedOutputFormat(fileData.supportedOutputs[0]);
-      } else {
-        setSelectedOutputFormat('png');
-      }
+      const defaultOutput =
+        fileData.supportedOutputs && fileData.supportedOutputs.length > 0
+          ? fileData.supportedOutputs[0]
+          : 'png';
 
+      setSelectedOutputFormat(defaultOutput);
+
+      // Also register in queue for batch conversion access
+      const queueItem: ConversionQueueItem = {
+        id: 'queue-sample-' + Date.now(),
+        fileName: fileData.fileName,
+        inputFormat: fileData.detectedFormat,
+        outputFormat: defaultOutput,
+        fileSize: fileData.fileSize,
+        uploadedFile: fileData,
+        status: 'pending',
+        progress: 0,
+        options: { ...options },
+        createdAt: new Date().toISOString(),
+      };
+
+      setQueue((prev) => [queueItem, ...prev]);
       setCurrentView('converter');
     } catch (err: any) {
       console.error('Sample Load Error:', err);
@@ -161,7 +346,128 @@ export default function App() {
     }
   };
 
-  // Execute Real Backend Conversion
+  // Convert an Individual Item in Queue
+  const handleConvertQueueItem = async (id: string) => {
+    const item = queue.find((q) => q.id === id);
+    if (!item || !item.uploadedFile || item.status === 'converting') return;
+
+    // Update status to converting
+    setQueue((prev) =>
+      prev.map((q) =>
+        q.id === id
+          ? { ...q, status: 'converting', progress: 45, error: null, statusText: 'Processing conversion...' }
+          : q
+      )
+    );
+
+    try {
+      const response = await fetch('/api/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId: item.uploadedFile.jobId,
+          outputFormat: item.outputFormat,
+          options: item.options || options,
+        }),
+      });
+
+      if (!response.ok) {
+        const serverErrorMsg = await parseBackendError(response, item.inputFormat, item.outputFormat);
+        throw new Error(serverErrorMsg);
+      }
+
+      const resData: ConversionResultData = await response.json();
+
+      // Mark queue item as completed
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === id
+            ? {
+                ...q,
+                status: 'completed',
+                progress: 100,
+                result: resData,
+                statusText: 'Completed',
+                error: null,
+              }
+            : q
+        )
+      );
+
+      // Add to Session History
+      const newHistoryItem: ConversionHistoryItem = {
+        id: 'hist-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        fileName: resData.originalName,
+        inputFormat: resData.inputFormat,
+        outputFormat: resData.outputFormat,
+        originalSize: resData.originalSize,
+        outputSize: resData.outputSize,
+        date: new Date().toISOString(),
+        status: 'completed',
+        jobId: resData.jobId,
+      };
+
+      setHistory((prev) => [newHistoryItem, ...prev.slice(0, 49)]);
+
+      // If this item was the active single file, update single workspace result
+      if (uploadedFile && uploadedFile.jobId === item.uploadedFile.jobId) {
+        setResult(resData);
+        setStage('completed');
+        setStatusText('Conversion complete! File ready for instant download.');
+        setProgress(100);
+      }
+    } catch (err: any) {
+      console.error(`Conversion error for ${item.fileName}:`, err);
+      const displayError = err?.message || 'Conversion failed';
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === id
+            ? {
+                ...q,
+                status: 'failed',
+                error: displayError,
+                progress: 0,
+              }
+            : q
+        )
+      );
+    }
+  };
+
+  // Convert All Pending / Failed Items in the Queue
+  const handleConvertAllPending = async () => {
+    const pendingItems = queue.filter(
+      (item) => (item.status === 'pending' || item.status === 'failed') && item.uploadedFile
+    );
+
+    if (pendingItems.length === 0) return;
+
+    setIsConvertingAll(true);
+
+    // Convert items concurrently
+    await Promise.all(pendingItems.map((item) => handleConvertQueueItem(item.id)));
+
+    setIsConvertingAll(false);
+  };
+
+  // Update target format for a specific item in queue
+  const handleUpdateQueueItemFormat = (id: string, format: string) => {
+    setQueue((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, outputFormat: format } : item))
+    );
+  };
+
+  // Remove single item from queue
+  const handleRemoveQueueItem = (id: string) => {
+    setQueue((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // Clear all items in queue
+  const handleClearQueue = () => {
+    setQueue([]);
+  };
+
+  // Execute Single Conversion (from Single Workspace)
   const handleStartConversion = async () => {
     if (!uploadedFile) return;
 
@@ -169,7 +475,9 @@ export default function App() {
     setError(null);
     setStage('converting');
     setProgress(50);
-    setStatusText(`Converting .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()}...`);
+    setStatusText(
+      `Converting .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()}...`
+    );
 
     try {
       const response = await fetch('/api/convert', {
@@ -183,8 +491,12 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Conversion engine failed to process file');
+        const serverErrorMsg = await parseBackendError(
+          response,
+          uploadedFile.detectedFormat,
+          selectedOutputFormat
+        );
+        throw new Error(serverErrorMsg);
       }
 
       const resData: ConversionResultData = await response.json();
@@ -207,12 +519,39 @@ export default function App() {
         jobId: resData.jobId,
       };
 
-      setHistory((prev) => [newHistoryItem, ...prev.slice(0, 24)]);
+      setHistory((prev) => [newHistoryItem, ...prev.slice(0, 49)]);
+
+      // Also update any matching queue item
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.uploadedFile?.jobId === uploadedFile.jobId
+            ? { ...q, status: 'completed', progress: 100, result: resData, error: null }
+            : q
+        )
+      );
     } catch (err: any) {
       console.error('Conversion Error:', err);
-      setError(err.message || 'Conversion failed');
+      let displayError = 'Conversion failed';
+      if (err?.message) {
+        if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          displayError =
+            'Network connection error: Unable to reach the conversion server. Please check your connection and retry.';
+        } else {
+          displayError = err.message;
+        }
+      }
+      setError(displayError);
       setStage('idle');
       setProgress(0);
+
+      // Also update queue item to failed state
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.uploadedFile?.jobId === uploadedFile.jobId
+            ? { ...q, status: 'failed', error: displayError, progress: 0 }
+            : q
+        )
+      );
     } finally {
       setIsLoading(false);
     }
@@ -228,24 +567,43 @@ export default function App() {
     setCurrentView('home');
   };
 
-  const handleNavigate = (view: PageView) => {
-    if (view.startsWith('seo-')) {
-      setSeoRoute(view);
+  const handleNavigate = (view: PageView, targetSeoSlug?: string) => {
+    let targetPath = '/';
+    if (view === 'seo' || view.startsWith('seo-')) {
+      const clean = targetSeoSlug || (view.startsWith('seo-') ? view.replace(/^seo-/, '') : seoSlug);
+      setSeoSlug(clean);
       setCurrentView('seo');
+      targetPath = `/${clean}`;
+    } else if (view === 'home') {
+      setCurrentView('home');
+      targetPath = '/';
     } else {
       setCurrentView(view);
+      targetPath = `/${view}`;
+    }
+
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const pendingQueueCount = queue.filter(
+    (item) => item.status === 'pending' || item.status === 'uploading'
+  ).length;
+
   return (
-    <div className={`min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] text-[#0F172A] dark:text-[#F8FAFC] font-sans antialiased transition-colors selection:bg-[#2563EB] selection:text-white flex flex-col justify-between`}>
+    <div
+      className={`min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] text-[#0F172A] dark:text-[#F8FAFC] font-sans antialiased transition-colors selection:bg-[#2563EB] selection:text-white flex flex-col justify-between`}
+    >
+      <SeoMetaManager currentView={currentView} seoSlug={seoSlug} />
       <div>
         {/* Main Header */}
         <Header
           currentView={currentView}
           onNavigate={handleNavigate}
           historyCount={history.length}
+          queueCount={pendingQueueCount}
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
         />
@@ -257,6 +615,7 @@ export default function App() {
             <div className="space-y-16">
               <Hero
                 onFileSelected={handleFileSelected}
+                onFilesSelected={handleFilesSelected}
                 onSampleSelected={handleSampleSelected}
                 onNavigate={handleNavigate}
                 isLoading={isLoading}
@@ -270,7 +629,7 @@ export default function App() {
           {/* 2. Converter Workspace View */}
           {currentView === 'converter' && (
             <div className="space-y-8 max-w-5xl mx-auto">
-              <div className="flex items-center justify-between pb-4 border-b border-[#E2E8F0] dark:border-[#1E293B]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0] dark:border-[#1E293B]">
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
                     Converter Workspace
@@ -279,20 +638,33 @@ export default function App() {
                     Configure target format, DPI, and compression options for server-side processing.
                   </p>
                 </div>
-                {uploadedFile && (
-                  <button
-                    onClick={handleReset}
-                    className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-[#0F172A] dark:text-white transition-colors"
-                  >
-                    Reset & Upload New
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {queue.length > 1 && (
+                    <button
+                      onClick={() => setCurrentView('dashboard')}
+                      id="view-queue-btn"
+                      className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-[#2563EB] dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 text-xs font-bold transition-colors flex items-center gap-1.5"
+                    >
+                      <ListOrdered className="w-3.5 h-3.5" />
+                      <span>View Batch Queue ({queue.length})</span>
+                    </button>
+                  )}
+                  {uploadedFile && (
+                    <button
+                      onClick={handleReset}
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-[#0F172A] dark:text-white transition-colors"
+                    >
+                      Reset & Upload New
+                    </button>
+                  )}
+                </div>
               </div>
 
               {!uploadedFile ? (
                 /* No file loaded -> show Upload Zone */
                 <Hero
                   onFileSelected={handleFileSelected}
+                  onFilesSelected={handleFilesSelected}
                   onSampleSelected={handleSampleSelected}
                   onNavigate={handleNavigate}
                   isLoading={isLoading}
@@ -301,6 +673,35 @@ export default function App() {
               ) : (
                 /* File Loaded -> Two Column Professional Workspace */
                 <div className="space-y-6">
+                  {/* Error Alert Banner */}
+                  {error && (
+                    <div
+                      id="conversion-error-alert"
+                      className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200"
+                      role="alert"
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-500" />
+                        <div>
+                          <h4 className="text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                            Conversion Error
+                          </h4>
+                          <p className="text-sm font-medium mt-0.5 text-rose-800 dark:text-rose-200">
+                            {error}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setError(null)}
+                        className="p-1 rounded-lg hover:bg-rose-500/20 text-rose-500 transition-colors"
+                        title="Dismiss error"
+                        aria-label="Dismiss error"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
                   {/* File Info Card */}
                   <FileCard file={uploadedFile} onReset={handleReset} />
 
@@ -313,7 +714,9 @@ export default function App() {
                         selectedOutputFormat={selectedOutputFormat}
                         onSelectFormat={setSelectedOutputFormat}
                         capabilities={capabilities}
-                        supportedOutputs={uploadedFile.supportedOutputs || ['png', 'pdf', 'jpg', 'webp', 'svg']}
+                        supportedOutputs={
+                          uploadedFile.supportedOutputs || ['png', 'pdf', 'jpg', 'webp', 'svg']
+                        }
                       />
 
                       {/* Right: Engine Options & Conversion Trigger */}
@@ -328,7 +731,9 @@ export default function App() {
                         <div className="space-y-4">
                           <button
                             onClick={handleStartConversion}
-                            disabled={isLoading || stage !== 'idle' || uploadedFile.status !== 'supported'}
+                            disabled={
+                              isLoading || stage !== 'idle' || uploadedFile.status !== 'supported'
+                            }
                             id="start-conversion-btn"
                             className={`relative overflow-hidden w-full py-4 rounded-2xl text-sm font-extrabold text-white shadow-xl flex items-center justify-center gap-2 transition-all ${
                               isLoading || stage !== 'idle'
@@ -346,7 +751,10 @@ export default function App() {
                             {isLoading || stage !== 'idle' ? (
                               <>
                                 <RefreshCw className="w-5 h-5 text-amber-300 animate-spin" />
-                                <span>Converting .{uploadedFile.detectedFormat.toUpperCase()} → .{selectedOutputFormat.toUpperCase()}...</span>
+                                <span>
+                                  Converting .{uploadedFile.detectedFormat.toUpperCase()} → .
+                                  {selectedOutputFormat.toUpperCase()}...
+                                </span>
                               </>
                             ) : (
                               <>
@@ -361,7 +769,11 @@ export default function App() {
                           </button>
 
                           {stage !== 'idle' && (
-                            <ProgressBar progress={progress} stage={stage} statusText={statusText} />
+                            <ProgressBar
+                              progress={progress}
+                              stage={stage}
+                              statusText={statusText}
+                            />
                           )}
                         </div>
                       </div>
@@ -414,23 +826,35 @@ export default function App() {
             <PrivacyTermsContact view={currentView} onNavigate={handleNavigate} />
           )}
 
-          {/* 7. History Dashboard */}
+          {/* 7. History & Queue Dashboard */}
           {currentView === 'dashboard' && (
             <DashboardHistory
+              queue={queue}
               history={history}
+              capabilities={capabilities}
               onClearHistory={() => setHistory([])}
               onRemoveItem={(id) => setHistory(history.filter((item) => item.id !== id))}
               onConvertNew={() => setCurrentView('converter')}
+              onAddFiles={handleFilesSelected}
+              onConvertAllPending={handleConvertAllPending}
+              onConvertQueueItem={handleConvertQueueItem}
+              onUpdateQueueItemFormat={handleUpdateQueueItemFormat}
+              onRemoveQueueItem={handleRemoveQueueItem}
+              onClearQueue={handleClearQueue}
+              isConvertingAll={isConvertingAll}
             />
           )}
 
           {/* 8. SEO Landing Pages */}
           {currentView === 'seo' && (
             <SeoLandingPage
-              route={seoRoute}
+              slug={seoSlug}
               onFileSelected={handleFileSelected}
+              onFilesSelected={handleFilesSelected}
               onSampleSelected={handleSampleSelected}
               onNavigate={handleNavigate}
+              isLoading={isLoading}
+              error={error}
             />
           )}
         </main>
@@ -441,3 +865,4 @@ export default function App() {
     </div>
   );
 }
+
