@@ -12,8 +12,8 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
     const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://convert-x.com';
     const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
 
-    let title = 'Convert-X | Universal Online File Converter for Images, PDFs & Design Files';
-    let description = 'Convert images, PDFs, vector and professional design files with Convert-X.';
+    let title = 'Convert-X - Free Online File Converter';
+    let description = 'Convert images, PDFs and supported design files online for free with Convert-X. Fast, simple and easy file conversion.';
     let canonicalUrl = `${origin}${pathname}`;
     let ogType = 'website';
     let jsonLdSchemas: object[] = [];
@@ -87,8 +87,8 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
     } else {
       // General view schemas
       if (currentView === 'home') {
-        title = 'Convert-X - Universal Online File Converter for Images, PDFs & Design Files';
-        description = 'Convert images, PDFs, vector and professional design files with Convert-X.';
+        title = 'Convert-X - Free Online File Converter';
+        description = 'Convert images, PDFs and supported design files online for free with Convert-X. Fast, simple and easy file conversion.';
         canonicalUrl = `${origin}/`;
 
         // WebSite Schema
@@ -97,7 +97,7 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
           '@type': 'WebSite',
           name: 'Convert-X',
           url: origin,
-          description: 'Convert images, PDFs, vector and professional design files with Convert-X.',
+          description: 'Convert images, PDFs and supported design files online for free with Convert-X. Fast, simple and easy file conversion.',
           potentialAction: {
             '@type': 'SearchAction',
             target: `${origin}/converter?q={search_term_string}`,

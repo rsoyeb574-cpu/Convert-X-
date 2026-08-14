@@ -16,6 +16,7 @@ import {
   sanitizeFilename,
 } from './server/utils/fileSecurity.js';
 import { SAMPLE_FILES } from './server/utils/samples.js';
+import { SEO_ROUTES } from './src/data/seoRoutes.js';
 
 async function startServer() {
   const app = express();
@@ -353,9 +354,98 @@ ${routes
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    // Serve static assets without intercepting root index.html
+    app.use(express.static(distPath, { index: false }));
+
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      try {
+        const rawHtml = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
+        const reqPath = req.path.replace(/^\/+|\/+$/g, '');
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const host = req.get('host') || 'convert-x.com';
+        const origin = `${protocol}://${host}`;
+
+        let title = 'Convert-X - Free Online File Converter';
+        let description =
+          'Convert images, PDFs and supported design files online for free with Convert-X. Fast, simple and easy file conversion.';
+        let canonicalUrl = `${origin}/${reqPath}`;
+
+        if (SEO_ROUTES[reqPath]) {
+          const cfg = SEO_ROUTES[reqPath];
+          title = cfg.title;
+          description = cfg.metaDescription;
+          canonicalUrl = `${origin}/${cfg.slug}`;
+        } else if (reqPath === 'formats') {
+          title = 'Supported File Formats Matrix | Convert-X';
+          description =
+            'Explore supported input and output formats in Convert-X, including PNG, JPG, WEBP, PDF, SVG, and DXF.';
+        } else if (reqPath === 'how-it-works') {
+          title = 'How It Works - Fast & Secure File Conversion | Convert-X';
+          description =
+            'Learn how Convert-X converts images, PDFs, and design files with server-side rendering and automatic zero-retention file deletion.';
+        } else if (reqPath === 'faq') {
+          title = 'Frequently Asked Questions (FAQ) | Convert-X';
+          description =
+            'Find answers to common questions about file formats, conversion quality, privacy security, and batch file processing in Convert-X.';
+        } else if (reqPath === 'privacy') {
+          title = 'Privacy Policy & Zero-Retention Security | Convert-X';
+          description =
+            'Convert-X privacy policy: 256-bit TLS encryption, strict zero-retention memory processing, and instant automated file purging.';
+        } else if (reqPath === 'terms') {
+          title = 'Terms of Service | Convert-X';
+          description = 'Convert-X terms of service, acceptable use policies, and conversion service terms.';
+        } else if (reqPath === 'contact') {
+          title = 'Contact Support & Engine Inquiries | Convert-X';
+          description =
+            'Get in touch with the Convert-X technical team for format support, engine issues, or enterprise file processing questions.';
+        } else if (!reqPath) {
+          canonicalUrl = `${origin}/`;
+        }
+
+        let injectedHtml = rawHtml
+          .replace(/<title>.*?<\/title>/, `<title>${title}</title>`)
+          .replace(
+            /<meta name="description" content=".*?" \/>/,
+            `<meta name="description" content="${description.replace(/"/g, '&quot;')}" />`
+          )
+          .replace(
+            /<meta property="og:title" content=".*?" \/>/,
+            `<meta property="og:title" content="${title.replace(/"/g, '&quot;')}" />`
+          )
+          .replace(
+            /<meta property="og:description" content=".*?" \/>/,
+            `<meta property="og:description" content="${description.replace(/"/g, '&quot;')}" />`
+          )
+          .replace(
+            /<meta property="og:url" content=".*?" \/>/,
+            `<meta property="og:url" content="${canonicalUrl}" />`
+          )
+          .replace(
+            /<meta name="twitter:title" content=".*?" \/>/,
+            `<meta name="twitter:title" content="${title.replace(/"/g, '&quot;')}" />`
+          )
+          .replace(
+            /<meta name="twitter:description" content=".*?" \/>/,
+            `<meta name="twitter:description" content="${description.replace(/"/g, '&quot;')}" />`
+          );
+
+        if (!injectedHtml.includes('<link rel="canonical"')) {
+          injectedHtml = injectedHtml.replace(
+            '</head>',
+            `  <link rel="canonical" href="${canonicalUrl}" />\n  </head>`
+          );
+        } else {
+          injectedHtml = injectedHtml.replace(
+            /<link rel="canonical" href=".*?" \/>/,
+            `<link rel="canonical" href="${canonicalUrl}" />`
+          );
+        }
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(injectedHtml);
+      } catch (e) {
+        res.sendFile(path.join(distPath, 'index.html'));
+      }
     });
   }
 
