@@ -338,28 +338,46 @@ export default function App() {
                           onChangeOptions={setOptions}
                         />
 
-                        {/* Progress Bar or Convert Button */}
-                        {stage !== 'idle' ? (
-                          <ProgressBar progress={progress} stage={stage} statusText={statusText} />
-                        ) : (
+                        {/* Progress Bar & Convert Button */}
+                        <div className="space-y-4">
                           <button
                             onClick={handleStartConversion}
-                            disabled={isLoading || uploadedFile.status !== 'supported'}
+                            disabled={isLoading || stage !== 'idle' || uploadedFile.status !== 'supported'}
                             id="start-conversion-btn"
-                            className={`w-full py-4 rounded-2xl text-sm font-extrabold text-white shadow-xl flex items-center justify-center gap-2 transition-all ${
-                              uploadedFile.status === 'supported'
+                            className={`relative overflow-hidden w-full py-4 rounded-2xl text-sm font-extrabold text-white shadow-xl flex items-center justify-center gap-2 transition-all ${
+                              isLoading || stage !== 'idle'
+                                ? 'bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED] shadow-blue-500/30 animate-pulse cursor-wait'
+                                : uploadedFile.status === 'supported'
                                 ? 'bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 shadow-blue-500/25 hover:scale-[1.01] active:scale-[0.99]'
                                 : 'bg-slate-400 dark:bg-slate-800 cursor-not-allowed opacity-70'
                             }`}
                           >
-                            <Zap className="w-5 h-5 text-amber-300" />
-                            <span>
-                              {uploadedFile.status === 'supported'
-                                ? `Convert .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()} Now`
-                                : `Engine Extension Required for .${uploadedFile.detectedFormat.toUpperCase()}`}
-                            </span>
+                            {/* Loading Shimmer Sweep Overlay */}
+                            {(isLoading || stage !== 'idle') && (
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/30 to-transparent pointer-events-none" />
+                            )}
+
+                            {isLoading || stage !== 'idle' ? (
+                              <>
+                                <RefreshCw className="w-5 h-5 text-amber-300 animate-spin" />
+                                <span>Converting .{uploadedFile.detectedFormat.toUpperCase()} → .{selectedOutputFormat.toUpperCase()}...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="w-5 h-5 text-amber-300" />
+                                <span>
+                                  {uploadedFile.status === 'supported'
+                                    ? `Convert .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()} Now`
+                                    : `Engine Extension Required for .${uploadedFile.detectedFormat.toUpperCase()}`}
+                                </span>
+                              </>
+                            )}
                           </button>
-                        )}
+
+                          {stage !== 'idle' && (
+                            <ProgressBar progress={progress} stage={stage} statusText={statusText} />
+                          )}
+                        </div>
                       </div>
                     </div>
                   ) : (
