@@ -36,6 +36,21 @@ import {
   BUSINESS_MAX_FILE_MB,
   PLAN_LIMITS,
 } from './server/utils/entitlements.js';
+import {
+  getUserPlan,
+  isProUser,
+  canShowAds,
+  getDailyUsage,
+  getRemainingDailyQuota,
+  canCreateConversion,
+  canUseBatchConversion,
+  recordSuccessfulConversion,
+  refundConversionOnFailure,
+  isJobAlreadyAccounted,
+  APP_TIMEZONE,
+  FREE_BATCH_LIMIT,
+  PRO_BATCH_LIMIT,
+} from './server/utils/usageService.js';
 
 async function startServer() {
   const app = express();
@@ -253,13 +268,22 @@ ${routes
 
   // User Usage & Free Plan status endpoint
   app.get('/api/usage', (req, res) => {
+    const plan = getUserPlan(req);
+    const isPro = isProUser(req);
+    const used = getDailyUsage(req);
+    const remaining = getRemainingDailyQuota(req);
+
     res.json({
       success: true,
       usage: {
-        dailyConversions: 0,
-        dailyLimit: FREE_DAILY_LIMIT,
-        maxFileSizeMB: FREE_MAX_FILE_MB,
-        plan: 'free',
+        dailyConversions: used,
+        dailyLimit: isPro ? 'unlimited' : FREE_DAILY_LIMIT,
+        maxFileSizeMB: isPro ? PRO_MAX_FILE_MB : FREE_MAX_FILE_MB,
+        batchLimit: isPro ? PRO_BATCH_LIMIT : FREE_BATCH_LIMIT,
+        plan,
+        remaining,
+        timezone: APP_TIMEZONE,
+        canShowAds: canShowAds(req),
       },
     });
   });
@@ -457,11 +481,16 @@ ${routes
           return res.status(400).json({ success: false, code: 'NO_FILE', error: 'No file uploaded or sample selected.' });
         }
 
-        if (fileBuffer.length > FREE_MAX_FILE_SIZE_BYTES) {
+        const userPlan = getUserPlan(req);
+        const maxAllowedMB = userPlan === 'pro' || userPlan === 'business' ? PRO_MAX_FILE_MB : FREE_MAX_FILE_MB;
+        const maxAllowedBytes = maxAllowedMB * 1024 * 1024;
+
+        if (fileBuffer.length > maxAllowedBytes) {
           return res.status(400).json({
             success: false,
             code: 'FILE_TOO_LARGE',
-            error: `The uploaded file (${(fileBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the Free plan limit of ${FREE_MAX_FILE_SIZE_MB}MB. Please compress your file or upgrade to Pro.`,
+            error: `The uploaded file (${(fileBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the ${userPlan === 'pro' ? 'Pro' : 'Free'} plan limit of ${maxAllowedMB}MB. Please compress your file or upgrade to Pro.`,
+            upgrade: userPlan === 'free' ? { available: true, plan: 'Pro' } : undefined,
           });
         }
 
@@ -481,7 +510,7 @@ ${routes
         fs.writeFileSync(filePath, fileBuffer);
 
         const sessionId = (req.headers['x-session-id'] as string) || req.ip || 'anonymous';
-        const isPro = req.headers['authorization']?.includes('pro_') || false;
+        const isPro = isProUser(req);
 
         const job = jobStorage.createJob({
           originalName: cleanName,
@@ -531,8 +560,30 @@ ${routes
         return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', error: 'Conversion session expired or not found. Please re-upload your file.' });
       }
 
+      // Check quota if this job was not already accounted for (e.g. retry)
+      const alreadyAccounted = isJobAlreadyAccounted(req, jobId);
+      if (!alreadyAccounted) {
+        const quotaCheck = canCreateConversion(req, 1);
+        if (!quotaCheck.allowed) {
+          return res.status(403).json({
+            success: false,
+            code: quotaCheck.code || 'FREE_LIMIT_REACHED',
+            error: quotaCheck.error || "You have reached today's free conversion limit.",
+            upgrade: quotaCheck.upgrade || {
+              available: true,
+              plan: 'Pro',
+            },
+          });
+        }
+      }
+
       // Enqueue job into durable worker queue
       const enqueuedJob = jobQueue.enqueue(jobId, outputFormat, options || {});
+
+      // Record conversion against daily quota
+      if (!alreadyAccounted) {
+        recordSuccessfulConversion(req, jobId, 1);
+      }
 
       res.json({
         success: true,
@@ -562,6 +613,19 @@ ${routes
           success: false,
           code: 'INVALID_REQUEST',
           error: 'Please provide an array of file session job IDs to combine into PDF.',
+        });
+      }
+
+      const quotaCheck = canCreateConversion(req, 1);
+      if (!quotaCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: quotaCheck.code || 'FREE_LIMIT_REACHED',
+          error: quotaCheck.error || "You have reached today's free conversion limit.",
+          upgrade: quotaCheck.upgrade || {
+            available: true,
+            plan: 'Pro',
+          },
         });
       }
 
@@ -688,6 +752,8 @@ ${routes
         progressStage: 'PDF merged successfully',
         completedAt: new Date().toISOString(),
       });
+
+      recordSuccessfulConversion(req, newJob.id, 1);
 
       res.json({
         success: true,

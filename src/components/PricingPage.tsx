@@ -282,7 +282,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
             className="w-full py-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
-            <span>{isPaymentConfigured ? 'Upgrade to Pro' : 'Notify Me When Pro Launches'}</span>
+            <span>{isPaymentConfigured ? 'Upgrade to Pro' : 'Pro — Coming Soon'}</span>
           </button>
         </div>
 
@@ -359,7 +359,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
             className="w-full py-3 rounded-xl bg-slate-900 dark:bg-slate-100 hover:bg-black dark:hover:bg-white text-white dark:text-slate-900 font-bold text-xs shadow-md flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
-            <span>{isPaymentConfigured ? 'Get Business Plan' : 'Notify Me for Business'}</span>
+            <span>{isPaymentConfigured ? 'Get Business Plan' : 'Business — Coming Soon'}</span>
           </button>
         </div>
       </div>

@@ -39,7 +39,7 @@ export const PLAN_LIMITS: Record<UserPlan, TierLimits> = {
   free: {
     maxFileSizeMB: FREE_MAX_FILE_MB,
     maxFileSizeBytes: FREE_MAX_FILE_MB * 1024 * 1024,
-    maxBatchSize: 3,
+    maxBatchSize: 5,
     allowPriorityQueue: false,
     allowAdRemoval: false,
     dailyConversionLimit: FREE_DAILY_LIMIT,
