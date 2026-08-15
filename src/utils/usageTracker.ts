@@ -3,20 +3,20 @@ import { AppLimits, MonetizationConfig, UsageData } from '../types.js';
 export const DEFAULT_LIMITS: AppLimits = {
   maxFileSizeMB: 25,
   maxFileSizeBytes: 25 * 1024 * 1024,
-  dailyConversions: 10,
+  dailyConversions: 5,
   maxPdfPages: 10,
 };
 
 export const DEFAULT_USAGE: UsageData = {
   dailyConversions: 0,
-  dailyLimit: 10,
+  dailyLimit: 5,
   maxFileSizeMB: 25,
   plan: 'free',
 };
 
 export const DEFAULT_MONETIZATION: MonetizationConfig = {
   paymentConfigured: false,
-  paymentMessage: 'Pro payments are coming soon.',
+  paymentMessage: 'Pro and Business payments are coming soon.',
   adsenseConfigured: false,
   pricing: {
     free: {
@@ -27,19 +27,54 @@ export const DEFAULT_MONETIZATION: MonetizationConfig = {
       formattedPrice: '₹0',
       period: 'forever',
       maxFileSizeMB: 25,
-      dailyConversions: 10,
+      dailyConversions: 5,
       maxPdfPages: 10,
+      features: [
+        '5 conversions per day',
+        '25 MB maximum file size',
+        'Standard JPG/PNG/PDF/WEBP conversions',
+        'Basic compression tuning',
+        'Normal queue priority',
+        'Non-intrusive advertisements',
+      ],
     },
     pro: {
       id: 'pro',
       name: 'Pro Plan',
-      amount: 199,
+      amount: 99,
       currency: 'INR',
-      formattedPrice: '₹199',
+      formattedPrice: '₹99',
       period: 'per month',
       maxFileSizeMB: 100,
       dailyConversions: 'Unlimited',
       maxPdfPages: 'Unlimited',
+      features: [
+        '100 MB maximum file size',
+        'Unlimited daily conversions',
+        'Batch conversion queue (up to 20 files)',
+        '300 DPI high-resolution export',
+        '100% Ad-Free workspace',
+        'Priority queue processing',
+      ],
+    },
+    business: {
+      id: 'business',
+      name: 'Business Plan',
+      amount: 499,
+      currency: 'INR',
+      formattedPrice: '₹499',
+      period: 'per month',
+      maxFileSizeMB: 250,
+      dailyConversions: 'Unlimited',
+      maxPdfPages: 'Unlimited',
+      features: [
+        '250 MB maximum file size',
+        'Unlimited high-speed batch conversions (up to 50 files)',
+        'Dedicated multi-threaded priority queue',
+        'Dedicated API access tokens',
+        'Team collaboration & shared workspace',
+        '100% Ad-Free workspace & VIP support',
+      ],
     },
   },
 };

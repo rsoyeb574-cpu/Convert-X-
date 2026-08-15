@@ -23,6 +23,15 @@ import {
 } from './server/utils/fileSecurity.js';
 import { SAMPLE_FILES } from './server/utils/samples.js';
 import { SEO_ROUTES } from './src/data/seoRoutes.js';
+import { metricsTracker } from './server/utils/metricsTracker.js';
+import { paymentService } from './server/utils/paymentService.js';
+import {
+  FREE_DAILY_LIMIT,
+  FREE_MAX_FILE_MB,
+  PRO_MAX_FILE_MB,
+  BUSINESS_MAX_FILE_MB,
+  PLAN_LIMITS,
+} from './server/utils/entitlements.js';
 
 async function startServer() {
   const app = express();
@@ -139,23 +148,22 @@ ${routes
 
   // System & Monetization Configuration (Safe public parameters)
   app.get('/api/config', (req, res) => {
-    const paymentSecret = process.env.PAYMENT_SECRET_KEY;
-    const isPaymentConfigured = Boolean(paymentSecret && paymentSecret.trim() !== '');
-    const adsenseId = process.env.ADSENSE_CLIENT_ID || '';
+    const paymentStatus = paymentService.getStatus();
+    const adsenseId = process.env.ADSENSE_CLIENT_ID || 'pub-8954286467084824';
+    const proMonthly = Number(process.env.PRO_PRICE_MONTHLY_INR) || 99;
+    const bizMonthly = Number(process.env.BUSINESS_PRICE_MONTHLY_INR) || 499;
 
     res.json({
       success: true,
       limits: {
-        maxFileSizeMB: FREE_MAX_FILE_SIZE_MB,
-        maxFileSizeBytes: FREE_MAX_FILE_SIZE_BYTES,
-        dailyConversions: FREE_DAILY_CONVERSIONS,
+        maxFileSizeMB: FREE_MAX_FILE_MB,
+        maxFileSizeBytes: FREE_MAX_FILE_MB * 1024 * 1024,
+        dailyConversions: FREE_DAILY_LIMIT,
         maxPdfPages: FREE_MAX_PDF_PAGES,
       },
       monetization: {
-        paymentConfigured: isPaymentConfigured,
-        paymentMessage: isPaymentConfigured
-          ? 'Pro checkout is active.'
-          : 'Pro payments are coming soon.',
+        paymentConfigured: paymentStatus.isConfigured,
+        paymentMessage: paymentStatus.message,
         adsenseConfigured: Boolean(adsenseId && adsenseId.trim() !== ''),
         adsenseClientId: adsenseId,
         pricing: {
@@ -166,20 +174,55 @@ ${routes
             currency: 'INR',
             formattedPrice: '₹0',
             period: 'forever',
-            maxFileSizeMB: FREE_MAX_FILE_SIZE_MB,
-            dailyConversions: FREE_DAILY_CONVERSIONS,
+            maxFileSizeMB: FREE_MAX_FILE_MB,
+            dailyConversions: FREE_DAILY_LIMIT,
             maxPdfPages: FREE_MAX_PDF_PAGES,
+            features: [
+              '5 conversions per day',
+              '25 MB maximum file size',
+              'Standard JPG/PNG/PDF/WEBP conversions',
+              'Basic compression tuning',
+              'Normal queue priority',
+              'Non-intrusive advertisements',
+            ],
           },
           pro: {
             id: 'pro',
             name: 'Pro Plan',
-            amount: 199,
+            amount: proMonthly,
             currency: 'INR',
-            formattedPrice: '₹199',
+            formattedPrice: `₹${proMonthly}`,
             period: 'per month',
-            maxFileSizeMB: 100,
+            maxFileSizeMB: PRO_MAX_FILE_MB,
             dailyConversions: 'Unlimited',
             maxPdfPages: 'Unlimited',
+            features: [
+              '100 MB maximum file size',
+              'Unlimited daily conversions',
+              'Batch conversion queue (up to 20 files)',
+              '300 DPI high-resolution export',
+              '100% Ad-Free workspace',
+              'Priority queue processing',
+            ],
+          },
+          business: {
+            id: 'business',
+            name: 'Business Plan',
+            amount: bizMonthly,
+            currency: 'INR',
+            formattedPrice: `₹${bizMonthly}`,
+            period: 'per month',
+            maxFileSizeMB: BUSINESS_MAX_FILE_MB,
+            dailyConversions: 'Unlimited',
+            maxPdfPages: 'Unlimited',
+            features: [
+              '250 MB maximum file size',
+              'Unlimited high-speed batch conversions (up to 50 files)',
+              'Dedicated multi-threaded priority queue',
+              'Dedicated API access tokens',
+              'Team collaboration & shared workspace',
+              '100% Ad-Free workspace & VIP support',
+            ],
           },
         },
       },
@@ -192,25 +235,69 @@ ${routes
       success: true,
       usage: {
         dailyConversions: 0,
-        dailyLimit: FREE_DAILY_CONVERSIONS,
-        maxFileSizeMB: FREE_MAX_FILE_SIZE_MB,
+        dailyLimit: FREE_DAILY_LIMIT,
+        maxFileSizeMB: FREE_MAX_FILE_MB,
         plan: 'free',
       },
     });
   });
 
-  // Payment status endpoint (Strictly server-side verification, no private credentials exposed)
+  // Payment status endpoint
   app.get('/api/payment/status', (req, res) => {
-    const paymentSecret = process.env.PAYMENT_SECRET_KEY;
-    const isPaymentConfigured = Boolean(paymentSecret && paymentSecret.trim() !== '');
+    const status = paymentService.getStatus();
+    res.json(status);
+  });
 
-    res.json({
-      configured: isPaymentConfigured,
-      provider: process.env.PAYMENT_PROVIDER || 'stripe',
-      message: isPaymentConfigured
-        ? 'Payment provider is active and ready.'
-        : 'Pro payments are coming soon.',
-    });
+  // Create payment checkout order
+  app.post('/api/payment/create-order', async (req, res) => {
+    try {
+      const { planId = 'pro', billingPeriod = 'monthly', userEmail } = req.body;
+      const order = await paymentService.createPaymentOrder({ planId, billingPeriod, userEmail });
+      if (!order.success) {
+        return res.status(order.code === 'PAYMENTS_NOT_CONFIGURED' ? 200 : 400).json(order);
+      }
+      res.json(order);
+    } catch (err: any) {
+      res.status(500).json({ success: false, code: 'INTERNAL_ERROR', error: err.message || 'Payment initiation failed.' });
+    }
+  });
+
+  // Verify payment
+  app.post('/api/payment/verify', async (req, res) => {
+    try {
+      const { orderId, paymentId, signature } = req.body;
+      const result = await paymentService.verifyPayment({ orderId, paymentId, signature });
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, code: 'VERIFICATION_ERROR', error: err.message || 'Payment verification failed.' });
+    }
+  });
+
+  // Cancel subscription
+  app.post('/api/payment/cancel', async (req, res) => {
+    try {
+      const { subscriptionId } = req.body;
+      const result = await paymentService.cancelSubscription(subscriptionId || '');
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Admin Operational Metrics & Telemetry (Honest tracking of real metrics)
+  app.get('/api/admin/metrics', (req, res) => {
+    try {
+      const metrics = metricsTracker.getMetrics();
+      res.json({
+        success: true,
+        metrics,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: 'Failed to retrieve server telemetry metrics.' });
+    }
   });
 
   // 1. Get supported formats and capabilities
@@ -353,6 +440,8 @@ ${routes
         const { filePath } = generateTempFilePath(detection.format);
         fs.writeFileSync(filePath, fileBuffer);
 
+        metricsTracker.recordUpload(detection.format, fileBuffer.length);
+
         registry.updateJob(job.id, {
           inputPath: filePath,
           fileSize: fileBuffer.length,
@@ -397,7 +486,10 @@ ${routes
         return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', error: 'Conversion session expired or not found. Please re-upload your file.' });
       }
 
+      metricsTracker.recordConversion(job.inputFormat, outputFormat);
+
       const updatedJob = await registry.processConversion(jobId, outputFormat, options || {});
+      metricsTracker.recordSuccess();
 
       res.json({
         success: true,
@@ -412,6 +504,7 @@ ${routes
         downloadUrl: `/api/download/${updatedJob.id}`,
       });
     } catch (err: any) {
+      metricsTracker.recordFailure();
       console.error('Convert handler error:', err);
       res.status(400).json({ success: false, code: 'CONVERSION_FAILED', error: err.message || 'Conversion failed. Please try again.' });
     }
@@ -599,6 +692,8 @@ ${routes
     if (stats.size === 0) {
       return res.status(500).send('Converted output file is empty.');
     }
+
+    metricsTracker.recordDownload();
 
     const baseName = path.parse(job.originalName).name;
     const downloadFilename = `${baseName}_converted.${job.outputFormat}`;

@@ -30,6 +30,7 @@ import { UsageWidget } from './components/UsageWidget.js';
 import { AdSlot } from './components/AdSlot.js';
 import { AffiliateSection } from './components/AffiliateSection.js';
 import { UniversalExportSection } from './components/UniversalExportSection.js';
+import { AdminMetricsModal } from './components/AdminMetricsModal.js';
 import { initAnalytics } from './utils/analytics.js';
 import {
   fetchAppConfig,
@@ -62,6 +63,7 @@ export default function App() {
   const [limits, setLimits] = useState<AppLimits>(DEFAULT_LIMITS);
   const [monetization, setMonetization] = useState<MonetizationConfig>(DEFAULT_MONETIZATION);
   const [usedToday, setUsedToday] = useState<number>(() => getDailyConversionCount());
+  const [showAdminMetrics, setShowAdminMetrics] = useState<boolean>(false);
 
   // File Upload and Single Workspace State
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
@@ -1489,7 +1491,13 @@ export default function App() {
       </div>
 
       {/* Main Footer */}
-      <Footer onNavigate={handleNavigate} />
+      <Footer onNavigate={handleNavigate} onOpenMetrics={() => setShowAdminMetrics(true)} />
+
+      {/* Admin Real-Time Operational Analytics Telemetry Modal */}
+      <AdminMetricsModal
+        isOpen={showAdminMetrics}
+        onClose={() => setShowAdminMetrics(false)}
+      />
     </div>
   );
 }

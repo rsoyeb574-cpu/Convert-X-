@@ -15,9 +15,15 @@ function safeParseInt(val: string | undefined, fallback: number): number {
   return isNaN(parsed) || parsed <= 0 ? fallback : parsed;
 }
 
-export const FREE_MAX_FILE_SIZE_MB = safeParseInt(process.env.FREE_MAX_FILE_SIZE_MB, 25);
+export const FREE_MAX_FILE_SIZE_MB = safeParseInt(
+  process.env.FREE_MAX_FILE_MB || process.env.FREE_MAX_FILE_SIZE_MB,
+  25
+);
 export const FREE_MAX_FILE_SIZE_BYTES = FREE_MAX_FILE_SIZE_MB * 1024 * 1024;
-export const FREE_DAILY_CONVERSIONS = safeParseInt(process.env.FREE_DAILY_CONVERSIONS, 10);
+export const FREE_DAILY_CONVERSIONS = safeParseInt(
+  process.env.FREE_DAILY_LIMIT || process.env.FREE_DAILY_CONVERSIONS,
+  5
+);
 export const FREE_MAX_PDF_PAGES = safeParseInt(process.env.FREE_MAX_PDF_PAGES, 10);
 export const MAX_FILE_SIZE_BYTES = Math.max(FREE_MAX_FILE_SIZE_BYTES, 50 * 1024 * 1024); // Absolute server hard limit
 

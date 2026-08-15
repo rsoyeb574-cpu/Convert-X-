@@ -127,11 +127,11 @@ export interface UsageData {
   dailyConversions: number;
   dailyLimit: number;
   maxFileSizeMB: number;
-  plan: 'free' | 'pro';
+  plan: 'free' | 'pro' | 'business';
 }
 
 export interface PricingPlan {
-  id: 'free' | 'pro';
+  id: 'free' | 'pro' | 'business';
   name: string;
   amount: number;
   currency: string;
@@ -140,6 +140,7 @@ export interface PricingPlan {
   maxFileSizeMB: number | string;
   dailyConversions: number | string;
   maxPdfPages: number | string;
+  features?: string[];
 }
 
 export interface MonetizationConfig {
@@ -151,6 +152,28 @@ export interface MonetizationConfig {
   pricing: {
     free: PricingPlan;
     pro: PricingPlan;
+    business: PricingPlan;
+  };
+}
+
+export interface ServerMetricsData {
+  serverStartTime: string;
+  uptimeSeconds: number;
+  totalUploads: number;
+  totalConversionsRequested: number;
+  successfulConversions: number;
+  failedConversions: number;
+  totalDownloads: number;
+  totalBytesProcessed: number;
+  formatDistribution: Record<string, number>;
+  targetFormatDistribution: Record<string, number>;
+  estimatedMemoryUsageMB: number;
+  freeConversionsCount: number;
+  proConversionsCount: number;
+  adsenseIntegration: {
+    configured: boolean;
+    publisherId: string | null;
+    revenueStatus: string;
   };
 }
 

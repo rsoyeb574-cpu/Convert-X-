@@ -5,9 +5,10 @@ import { SEO_ROUTES } from '../data/seoRoutes.js';
 
 interface FooterProps {
   onNavigate: (view: PageView, seoSlug?: string) => void;
+  onOpenMetrics?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
+export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenMetrics }) => {
   const imageConverters = ['png-to-jpg', 'jpg-to-png', 'png-to-webp', 'jpg-to-webp', 'webp-to-png', 'webp-to-jpg'];
   const docVectorConverters = ['png-to-pdf', 'jpg-to-pdf', 'pdf-to-png', 'pdf-to-jpg', 'svg-to-png', 'svg-to-jpg', 'svg-to-pdf', 'dxf-to-pdf'];
 
@@ -205,6 +206,18 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
         <div className="pt-8 mt-8 border-t border-[#E2E8F0] dark:border-[#1E293B] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
           <p>© 2026 Convert-X. All rights reserved.</p>
           <div className="flex items-center gap-4">
+            {onOpenMetrics && (
+              <>
+                <button
+                  onClick={onOpenMetrics}
+                  className="hover:text-[#2563EB] dark:hover:text-blue-400 cursor-pointer flex items-center gap-1 font-medium"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>System Telemetry</span>
+                </button>
+                <span>•</span>
+              </>
+            )}
             <a
               href="/privacy"
               onClick={(e) => {
