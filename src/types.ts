@@ -95,11 +95,17 @@ export interface ConversionHistoryItem {
   fileName: string;
   inputFormat: string;
   outputFormat: string;
+  fileSize?: number;
   originalSize: number;
   outputSize?: number;
   date: string;
-  status: 'completed' | 'failed';
+  createdTime?: string;
+  completionTime?: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
   jobId: string;
+  isExpired?: boolean;
+  downloadUrl?: string | null;
+  error?: string | null;
 }
 
 export type PageView =

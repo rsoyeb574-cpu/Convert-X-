@@ -54,17 +54,17 @@ export const Hero: React.FC<HeroProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 text-center">
         {/* Main Hero Headings */}
         <div className="max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/40 text-[#2563EB] dark:text-blue-300 text-xs font-bold">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/40 text-[#2563EB] dark:text-blue-300 text-xs font-bold shadow-xs">
             <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
             <span>High-Speed Online File Converter & Image Converter</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight leading-tight">
-            Universal Online <span className="bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED] bg-clip-text text-transparent">Design File Converter</span>
+            Convert Files <span className="bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED] bg-clip-text text-transparent">Fast and Easily</span>
           </h1>
 
           <p className="text-base sm:text-lg text-[#64748B] dark:text-[#94A3B8] leading-relaxed font-medium max-w-2xl mx-auto">
-            Convert images, PDFs, vector blueprints and CAD drawings with server-side vector rendering. Fast, secure, and easy to use with Convert-X.
+            Convert images and documents directly in your browser and server without complicated software.
           </p>
         </div>
 
@@ -78,6 +78,51 @@ export const Hero: React.FC<HeroProps> = ({
           maxFileSizeMB={maxFileSizeMB}
           onViewPro={onViewPro}
         />
+
+        {/* Plan Overview Badges: Free Plan vs Pro Plan (Coming Soon) */}
+        <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 text-left">
+          {/* Free Plan Card */}
+          <div className="p-4 rounded-2xl bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] shadow-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase text-[#2563EB] tracking-wider">Free Plan</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
+                Active Tier
+              </span>
+            </div>
+            <ul className="text-xs text-[#0F172A] dark:text-[#F8FAFC] space-y-1 font-medium">
+              <li className="flex items-center gap-1.5">
+                <span className="text-emerald-500 font-bold">✓</span> 5 conversions/day
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="text-emerald-500 font-bold">✓</span> 25 MB/file
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="text-emerald-500 font-bold">✓</span> Maximum 5 files/batch
+              </li>
+            </ul>
+          </div>
+
+          {/* Pro Plan Card */}
+          <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-[#0B1120] border border-dashed border-slate-300 dark:border-slate-800 shadow-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider">Pro Plan</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40">
+                Coming Soon
+              </span>
+            </div>
+            <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+              <li className="flex items-center gap-1.5">
+                <span className="text-slate-400">•</span> 100 MB/file size limit
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="text-slate-400">•</span> Unlimited daily conversions
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="text-slate-400">•</span> Up to 20 files per batch & 0 ads
+              </li>
+            </ul>
+          </div>
+        </div>
 
         {/* Popular Converter Quicklinks */}
         <div className="pt-2">

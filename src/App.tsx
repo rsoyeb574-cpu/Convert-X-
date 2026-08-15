@@ -1534,10 +1534,17 @@ export default function App() {
               queue={queue}
               history={history}
               capabilities={capabilities}
+              usedToday={usedToday}
+              limits={limits || DEFAULT_LIMITS}
+              isPro={limits?.isPro}
               onClearHistory={() => setHistory([])}
               onRemoveItem={(id) => setHistory(history.filter((item) => item.id !== id))}
               onConvertNew={() => setCurrentView('converter')}
               onNavigate={handleNavigate}
+              onOpenSeoRoute={(slug) => {
+                setSeoSlug(slug);
+                setCurrentView('seo-landing');
+              }}
               onAddFiles={handleFilesSelected}
               onConvertAllPending={handleConvertAllPending}
               onConvertQueueItem={handleConvertQueueItem}
@@ -1546,6 +1553,13 @@ export default function App() {
               onRemoveQueueItem={handleRemoveQueueItem}
               onClearQueue={handleClearQueue}
               onCombineToPdf={handleCombineToPdf}
+              onConvertAgain={(item) => {
+                if ('file' in item && item.file) {
+                  handleFileSelected(item.file);
+                }
+                setSelectedOutputFormat(item.outputFormat || 'png');
+                setCurrentView('converter');
+              }}
               isConvertingAll={isConvertingAll}
               isCombiningPdf={isCombiningPdf}
             />

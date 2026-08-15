@@ -9,6 +9,7 @@ import fs from 'fs';
 import multer from 'multer';
 import { PDFDocument, PageSizes } from 'pdf-lib';
 import sharp from 'sharp';
+import JSZip from 'jszip';
 import { createServer as createViteServer } from 'vite';
 import { registry } from './server/converters/registry.js';
 import { jobStorage } from './server/queue/jobStorage.js';
@@ -837,6 +838,66 @@ ${routes
 
     const readStream = fs.createReadStream(job.outputPath);
     readStream.pipe(res);
+  });
+
+  // 7b. Download All as ZIP Archive (Multi-File Real ZIP)
+  app.post('/api/download-zip', async (req, res) => {
+    try {
+      const { jobIds, zipName = 'convertx_batch_export.zip' } = req.body;
+      if (!Array.isArray(jobIds) || jobIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_REQUEST',
+          error: 'Please provide an array of completed job IDs to create ZIP archive.',
+        });
+      }
+
+      const zip = new JSZip();
+      let addedFilesCount = 0;
+
+      for (const jobId of jobIds) {
+        const job = jobStorage.getJob(jobId);
+        if (!job || !job.outputPath || !fs.existsSync(job.outputPath) || job.status !== 'completed') {
+          continue;
+        }
+
+        const fileData = fs.readFileSync(job.outputPath);
+        const baseName = path.parse(job.originalName).name;
+        const outFileName = `${baseName}_converted.${job.outputFormat}`;
+        zip.file(outFileName, fileData);
+        addedFilesCount++;
+      }
+
+      if (addedFilesCount === 0) {
+        return res.status(404).json({
+          success: false,
+          code: 'NO_COMPLETED_FILES',
+          error: 'No active completed files found on server to package into ZIP.',
+        });
+      }
+
+      const zipBuffer = await zip.generateAsync({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      });
+
+      const sanitizedZipName = sanitizeFilename(zipName.endsWith('.zip') ? zipName : `${zipName}.zip`);
+      metricsTracker.recordDownload();
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitizedZipName}"`);
+      res.setHeader('Content-Length', zipBuffer.length.toString());
+      res.setHeader('Cache-Control', 'no-cache');
+      res.send(zipBuffer);
+    } catch (err: any) {
+      console.error('ZIP generation error:', err);
+      res.status(500).json({
+        success: false,
+        code: 'ZIP_GENERATION_FAILED',
+        error: err.message || 'Failed to generate ZIP archive.',
+      });
+    }
   });
 
   // 8. File Preview

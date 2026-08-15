@@ -26,6 +26,8 @@ export const FREE_DAILY_LIMIT = 5;
 export const FREE_MAX_FILE_MB = 25;
 export const PRO_MAX_FILE_MB = 100;
 export const BUSINESS_MAX_FILE_MB = 250;
+export const FREE_BATCH_LIMIT = 5;
+export const PRO_BATCH_LIMIT = 20;
 
 export const PLAN_LIMITS: Record<UserPlan, TierLimits> = {
   free: {

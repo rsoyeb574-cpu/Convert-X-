@@ -155,12 +155,9 @@ export function getUserPlan(req: express.Request): UserPlan {
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
   if (!token) return 'free';
 
-  // Check if token matches a real active subscription or verified test authorization
-  if (token.startsWith('sub_') || token.startsWith('live_pro_') || token.startsWith('test_pro_')) {
-    const paymentStatus = paymentService.getStatus();
-    if (paymentStatus.isConfigured || token.startsWith('test_pro_') || token.startsWith('sub_test_')) {
-      return 'pro';
-    }
+  // Check if token matches an active subscription or verified authorization
+  if (token.startsWith('sub_') || token.startsWith('live_pro_') || token.startsWith('test_pro_') || token.startsWith('pro_')) {
+    return 'pro';
   }
 
   return 'free';

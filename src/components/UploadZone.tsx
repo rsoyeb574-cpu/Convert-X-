@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileUp, Sparkles, CheckCircle2, FileCode, FileText, Image as ImageIcon, ShieldCheck } from 'lucide-react';
+import { Upload, FileUp, Sparkles, CheckCircle2, FileCode, FileText, Image as ImageIcon, ShieldCheck, FileCheck } from 'lucide-react';
 
 interface UploadZoneProps {
   onFileSelected?: (file: File) => void;
@@ -10,6 +10,8 @@ interface UploadZoneProps {
   maxFileSizeMB?: number;
   isDailyLimitReached?: boolean;
   onViewPro?: () => void;
+  selectedFilesCount?: number;
+  uploadProgress?: number;
 }
 
 export const UploadZone: React.FC<UploadZoneProps> = ({
@@ -21,6 +23,8 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   maxFileSizeMB = 25,
   isDailyLimitReached = false,
   onViewPro,
+  selectedFilesCount = 0,
+  uploadProgress = 0,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [sizeWarning, setSizeWarning] = useState<string | null>(null);
@@ -76,6 +80,13 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      fileInputRef.current?.click();
+    }
+  };
+
   const samples = [
     { key: 'sample-docx', label: 'Word Document (.DOCX)', icon: <FileText className="w-4 h-4 text-blue-600" />, tag: 'Executive Report' },
     { key: 'sample-xlsx', label: 'Excel Spreadsheet (.XLSX)', icon: <FileText className="w-4 h-4 text-emerald-600" />, tag: 'Ledger Table' },
@@ -91,12 +102,16 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
     <div className="w-full max-w-3xl mx-auto space-y-4">
       {/* Main Upload Card */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Upload files dropzone. Drop files here or press Enter to browse files"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
+        onKeyDown={handleKeyDown}
         id="upload-drop-zone"
-        className={`relative group rounded-[20px] p-8 sm:p-12 text-center border-2 border-dashed cursor-pointer transition-all duration-300 shadow-lg ${
+        className={`relative group rounded-[20px] p-8 sm:p-12 text-center border-2 border-dashed cursor-pointer transition-all duration-300 shadow-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2 ${
           isDragOver
             ? 'bg-blue-50/80 dark:bg-blue-950/40 border-[#2563EB] scale-[1.01] shadow-2xl shadow-blue-500/10'
             : 'bg-white dark:bg-[#111827] border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] dark:hover:border-[#2563EB] hover:-translate-y-1 hover:shadow-2xl'
@@ -121,12 +136,36 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
           {/* Heading */}
           <div className="space-y-1.5">
             <h3 className="text-lg sm:text-xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
-              Drag & Drop your files here, or <span className="text-[#2563EB] hover:underline">Browse</span>
+              Drop your files here
             </h3>
             <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] font-medium">
-              Single or batch upload: DOCX, XLSX, TXT, PDF, PSD, AI, DXF, SVG, PNG, JPG up to {maxFileSizeMB}MB
+              or <span className="text-[#2563EB] hover:underline font-bold">Browse Files</span> from your device
             </p>
           </div>
+
+          {/* Staged / Selected Files Counter Badge */}
+          {selectedFilesCount > 0 && (
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/50 text-[#2563EB] dark:text-blue-300 font-bold text-xs shadow-xs animate-fade-in">
+              <FileCheck className="w-4 h-4 text-emerald-500" />
+              <span>Selected: {selectedFilesCount} {selectedFilesCount === 1 ? 'file' : 'files'}</span>
+            </div>
+          )}
+
+          {/* Real Upload Progress Bar */}
+          {isLoading && (
+            <div className="w-full max-w-xs space-y-1.5 pt-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                <span>Uploading...</span>
+                <span>{Math.round(uploadProgress || 100)}%</span>
+              </div>
+              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-[#2563EB] to-[#7C3AED] h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.max(5, Math.min(100, uploadProgress || 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Upload Button */}
           <button
@@ -135,13 +174,13 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
             className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 pointer-events-none"
           >
             <FileUp className="w-4 h-4" />
-            <span>Select Files from Device</span>
+            <span>Select Files</span>
           </button>
 
-          {/* Security badge */}
-          <div className="flex items-center gap-2 pt-2 text-[11px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Encrypted transmission • Zero-retention auto file scrubbing</span>
+          {/* Required Trust & Retention Privacy Message */}
+          <div className="flex items-center gap-2 pt-2 text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8] max-w-md text-center">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>Your files are processed temporarily and automatically removed according to our retention policy.</span>
           </div>
         </div>
       </div>
@@ -180,7 +219,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
               key={s.key}
               id={`sample-btn-${s.key}`}
               onClick={() => onSampleSelected(s.key)}
-              className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] text-left transition-all flex items-center gap-2 group"
+              className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] text-left transition-all flex items-center gap-2 group cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
             >
               <div className="p-1.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800">
                 {s.icon}

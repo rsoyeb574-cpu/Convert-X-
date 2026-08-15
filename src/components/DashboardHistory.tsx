@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { ConversionHistoryItem, ConversionQueueItem, FormatCapability, PageView } from '../types.js';
+import React, { useRef, useState } from 'react';
+import { ConversionHistoryItem, ConversionQueueItem, FormatCapability, PageView, AppLimits } from '../types.js';
 import {
   Clock,
   Download,
@@ -15,6 +15,12 @@ import {
   Image as ImageIcon,
   ArrowRight,
   Sparkles,
+  Archive,
+  RotateCcw,
+  Check,
+  ShieldCheck,
+  Cpu,
+  Minimize2,
 } from 'lucide-react';
 import { ReferralWidget } from './ReferralWidget.js';
 import { AdSlot } from './AdSlot.js';
@@ -23,10 +29,14 @@ interface DashboardHistoryProps {
   queue?: ConversionQueueItem[];
   history: ConversionHistoryItem[];
   capabilities?: FormatCapability[];
+  usedToday?: number;
+  limits?: AppLimits;
+  isPro?: boolean;
   onClearHistory: () => void;
   onRemoveItem: (id: string) => void;
   onConvertNew: () => void;
   onNavigate?: (view: PageView) => void;
+  onOpenSeoRoute?: (slug: string) => void;
   onAddFiles?: (files: File[]) => void;
   onConvertAllPending?: () => void;
   onConvertQueueItem?: (id: string) => void;
@@ -35,18 +45,23 @@ interface DashboardHistoryProps {
   onRemoveQueueItem?: (id: string) => void;
   onClearQueue?: () => void;
   onCombineToPdf?: () => Promise<void> | void;
+  onConvertAgain?: (item: ConversionHistoryItem | ConversionQueueItem) => void;
   isConvertingAll?: boolean;
   isCombiningPdf?: boolean;
 }
 
 export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   queue = [],
-  history,
+  history = [],
   capabilities = [],
+  usedToday = 0,
+  limits,
+  isPro = false,
   onClearHistory,
   onRemoveItem,
   onConvertNew,
   onNavigate,
+  onOpenSeoRoute,
   onAddFiles,
   onConvertAllPending,
   onConvertQueueItem,
@@ -55,13 +70,19 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   onRemoveQueueItem,
   onClearQueue,
   onCombineToPdf,
+  onConvertAgain,
   isConvertingAll = false,
   isCombiningPdf = false,
 }) => {
   const addFileInputRef = useRef<HTMLInputElement>(null);
+  const [isZipping, setIsZipping] = useState<boolean>(false);
+  const [zipError, setZipError] = useState<string | null>(null);
+
+  const dailyLimit = limits?.dailyConversions ?? 5;
+  const remainingConversions = isPro ? 'Unlimited' : Math.max(0, dailyLimit - usedToday);
 
   const formatSize = (bytes?: number): string => {
-    if (!bytes) return '—';
+    if (!bytes || isNaN(bytes)) return '—';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -69,22 +90,60 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   };
 
   const getFormatIcon = (format: string) => {
-    const ext = format.toLowerCase();
-    if (ext === 'dxf') return <Layers className="w-4 h-4 text-amber-500" />;
+    const ext = (format || '').toLowerCase();
+    if (ext === 'dxf' || ext === 'dwg') return <Layers className="w-4 h-4 text-amber-500" />;
     if (ext === 'pdf') return <FileText className="w-4 h-4 text-emerald-500" />;
-    if (ext === 'svg') return <Sparkles className="w-4 h-4 text-violet-500" />;
+    if (ext === 'svg' || ext === 'ai' || ext === 'psd') return <Sparkles className="w-4 h-4 text-violet-500" />;
     return <ImageIcon className="w-4 h-4 text-blue-500" />;
   };
 
   const pendingCount = queue.filter((item) => item.status === 'pending').length;
   const convertingCount = queue.filter((item) => item.status === 'converting' || item.status === 'uploading').length;
-  const completedCount = queue.filter((item) => item.status === 'completed').length;
+  const completedQueueCount = queue.filter((item) => item.status === 'completed').length;
   const failedCount = queue.filter((item) => item.status === 'failed').length;
+  const totalBatchItems = queue.length;
 
   const handleAddFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && onAddFiles) {
       onAddFiles(Array.from(e.target.files));
       e.target.value = '';
+    }
+  };
+
+  // Real Multi-File ZIP Download
+  const handleDownloadAllZip = async () => {
+    const completedJobIds = queue
+      .filter((q) => q.status === 'completed' && (q.result?.jobId || q.uploadedFile?.jobId))
+      .map((q) => q.result?.jobId || q.uploadedFile!.jobId);
+
+    if (completedJobIds.length === 0) return;
+
+    setIsZipping(true);
+    setZipError(null);
+    try {
+      const response = await fetch('/api/download-zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobIds: completedJobIds, zipName: 'convertx_batch_export.zip' }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Could not package files into ZIP. Some temporary files may have expired.');
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const tempLink = document.createElement('a');
+      tempLink.href = blobUrl;
+      tempLink.setAttribute('download', 'convertx_batch_export.zip');
+      document.body.appendChild(tempLink);
+      tempLink.click();
+      tempLink.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      setZipError(err.message || 'ZIP download failed');
+    } finally {
+      setIsZipping(false);
     }
   };
 
@@ -100,7 +159,177 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         multiple
       />
 
-      {/* SECTION 1: Active Conversion Queue */}
+      {/* ==================================================
+          1. PROFESSIONAL USER DASHBOARD STATS & QUICK ACTIONS
+          ================================================== */}
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-6 shadow-xl space-y-6 transition-colors">
+        {/* Dashboard Title & Plan Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E2E8F0] dark:border-[#1E293B]">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
+              <h2 className="text-xl sm:text-2xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
+                Convert-X Dashboard
+              </h2>
+            </div>
+            <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8]">
+              Manage file conversions, monitor real-time quotas, and access recent downloads.
+            </p>
+          </div>
+
+          {/* Plan Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 shadow-xs">
+            <span className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Plan:</span>
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
+                isPro
+                  ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-700/60'
+                  : 'bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/40'
+              }`}
+            >
+              {isPro ? 'PRO' : 'FREE'}
+            </span>
+          </div>
+        </div>
+
+        {/* Quota & Usage Overview Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {/* Today's Usage Card */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs">
+            <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
+              Today's Usage
+            </span>
+            <div className="text-2xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
+              {isPro ? `${usedToday} conversions` : `${usedToday} / ${dailyLimit}`}
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  isPro
+                    ? 'bg-emerald-500 w-full'
+                    : usedToday >= dailyLimit
+                    ? 'bg-rose-500'
+                    : 'bg-[#2563EB]'
+                }`}
+                style={{ width: isPro ? '100%' : `${Math.min(100, (usedToday / dailyLimit) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Remaining Conversions Card */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs">
+            <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
+              Remaining
+            </span>
+            <div className="text-2xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
+              {isPro ? 'Unlimited' : `${remainingConversions} conversions`}
+            </div>
+            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+              {isPro ? 'Priority queue active' : 'Resets daily at 00:00 UTC'}
+            </p>
+          </div>
+
+          {/* Security & Retention Card */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs sm:col-span-2 md:col-span-1">
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" /> Retention Policy
+            </span>
+            <div className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+              Zero-Retention Storage
+            </div>
+            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] leading-tight">
+              Files are automatically purged from server memory after 30 minutes.
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Actions Bar */}
+        <div className="space-y-2.5 pt-2">
+          <span className="text-xs font-black text-[#0F172A] dark:text-[#F8FAFC] uppercase tracking-wider block">
+            Quick Actions
+          </span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+            {/* 1. Upload Files */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onConvertNew) onConvertNew();
+                addFileInputRef.current?.click();
+              }}
+              className="p-3 rounded-xl bg-slate-50 dark:bg-[#0B1120] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] text-left transition-all group flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            >
+              <Plus className="w-5 h-5 text-[#2563EB] mb-2 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB]">
+                Upload Files
+              </span>
+            </button>
+
+            {/* 2. Image to PDF */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenSeoRoute) onOpenSeoRoute('png-to-pdf');
+                else if (onNavigate) onNavigate('converter');
+              }}
+              className="p-3 rounded-xl bg-slate-50 dark:bg-[#0B1120] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] text-left transition-all group flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            >
+              <FileText className="w-5 h-5 text-emerald-600 mb-2 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB]">
+                Image to PDF
+              </span>
+            </button>
+
+            {/* 3. PDF to Image */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenSeoRoute) onOpenSeoRoute('pdf-to-png');
+                else if (onNavigate) onNavigate('converter');
+              }}
+              className="p-3 rounded-xl bg-slate-50 dark:bg-[#0B1120] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] text-left transition-all group flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            >
+              <ImageIcon className="w-5 h-5 text-blue-600 mb-2 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB]">
+                PDF to Image
+              </span>
+            </button>
+
+            {/* 4. Image Converter */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenSeoRoute) onOpenSeoRoute('png-to-jpg');
+                else if (onNavigate) onNavigate('converter');
+              }}
+              className="p-3 rounded-xl bg-slate-50 dark:bg-[#0B1120] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] text-left transition-all group flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            >
+              <Sparkles className="w-5 h-5 text-violet-600 mb-2 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB]">
+                Image Converter
+              </span>
+            </button>
+
+            {/* 5. Compress Image */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenSeoRoute) onOpenSeoRoute('image-compressor');
+                else if (onNavigate) onNavigate('converter');
+              }}
+              className="p-3 rounded-xl bg-slate-50 dark:bg-[#0B1120] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] text-left transition-all group flex flex-col justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            >
+              <Minimize2 className="w-5 h-5 text-amber-600 mb-2 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB]">
+                Compress Image
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ==================================================
+          2. CONVERSION QUEUE & BATCH PROGRESS EXPERIENCE
+          ================================================== */}
       <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-6 shadow-xl space-y-6 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0] dark:border-[#1E293B]">
           <div className="space-y-1">
@@ -109,14 +338,14 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 <Layers className="w-5 h-5 text-[#2563EB]" />
                 <span>Conversion Queue</span>
               </h3>
-              {queue.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/40">
-                  {queue.length} {queue.length === 1 ? 'file' : 'files'}
+              {totalBatchItems > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/40">
+                  {completedQueueCount} / {totalBatchItems} completed
                 </span>
               )}
             </div>
             <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">
-              Manage pending jobs, configure target formats per file, and execute batch conversions.
+              Manage pending jobs, configure target formats, and execute batch conversions.
             </p>
           </div>
 
@@ -163,7 +392,31 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
               </button>
             )}
 
-            {/* Combine / Merge into Single PDF Button (Goal 10) */}
+            {/* Real ZIP Download All Button (Download Center) */}
+            {completedQueueCount >= 1 && (
+              <button
+                type="button"
+                onClick={handleDownloadAllZip}
+                disabled={isZipping}
+                id="download-all-zip-btn"
+                className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 text-xs font-extrabold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-60"
+                title="Download all completed conversions in a single ZIP file"
+              >
+                {isZipping ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                    <span>Packaging ZIP...</span>
+                  </>
+                ) : (
+                  <>
+                    <Archive className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Download All (ZIP)</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Combine / Merge into Single PDF Button */}
             {queue.length >= 2 && onCombineToPdf && (
               <button
                 type="button"
@@ -173,18 +426,18 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 }}
                 disabled={isCombiningPdf || isConvertingAll}
                 id="combine-pdf-btn"
-                className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 text-xs font-extrabold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-60"
+                className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-[#2563EB] dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 text-xs font-extrabold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-60"
                 title="Combine all uploaded files into a multi-page PDF document"
               >
                 {isCombiningPdf ? (
                   <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                     <span>Merging into PDF...</span>
                   </>
                 ) : (
                   <>
-                    <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Combine into 1 PDF ({queue.length} files)</span>
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Combine to PDF</span>
                   </>
                 )}
               </button>
@@ -209,17 +462,22 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           </div>
         </div>
 
-        {/* Queue Table / List */}
+        {zipError && (
+          <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400 text-xs font-medium">
+            {zipError}
+          </div>
+        )}
+
+        {/* Queue Table */}
         {queue.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
-                  <th className="py-3 px-3">File</th>
-                  <th className="py-3 px-3">Input</th>
-                  <th className="py-3 px-3">Target Format</th>
+                  <th className="py-3 px-3">Filename</th>
+                  <th className="py-3 px-3">Format</th>
                   <th className="py-3 px-3">Size</th>
-                  <th className="py-3 px-3">Status / Progress</th>
+                  <th className="py-3 px-3">Status</th>
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -231,16 +489,16 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                   const supportedOutputs =
                     item.uploadedFile?.supportedOutputs && item.uploadedFile.supportedOutputs.length > 0
                       ? item.uploadedFile.supportedOutputs
-                      : cap?.supportedOutputs || ['png', 'jpg'];
+                      : cap?.supportedOutputs || ['png', 'jpg', 'pdf'];
                   return (
                     <tr
                       key={item.id}
                       className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
                     >
-                      {/* File Name */}
+                      {/* Filename */}
                       <td className="py-3.5 px-3 max-w-[200px] sm:max-w-xs truncate">
                         <div className="flex items-center gap-2">
-                          <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex-shrink-0">
+                          <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
                             {getFormatIcon(item.inputFormat)}
                           </div>
                           <div className="truncate">
@@ -256,37 +514,36 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                         </div>
                       </td>
 
-                      {/* Input Format Badge */}
+                      {/* Format (Input -> Output) */}
                       <td className="py-3.5 px-3">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] font-mono uppercase font-semibold text-[11px]">
-                          .{item.inputFormat}
-                        </span>
-                      </td>
-
-                      {/* Output Format Selector */}
-                      <td className="py-3.5 px-3">
-                        {item.status === 'pending' || item.status === 'failed' ? (
-                          <select
-                            value={item.outputFormat}
-                            onChange={(e) =>
-                              onUpdateQueueItemFormat && onUpdateQueueItemFormat(item.id, e.target.value)
-                            }
-                            className="px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-bold text-xs focus:ring-2 focus:ring-[#2563EB] focus:outline-none cursor-pointer"
-                          >
-                            {supportedOutputs.map((out) => (
-                              <option key={out} value={out}>
-                                → .{out.toUpperCase()}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 font-mono uppercase font-bold text-[11px]">
-                            .{item.outputFormat}
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] font-mono uppercase font-semibold text-[11px]">
+                            .{item.inputFormat}
                           </span>
-                        )}
+                          <span className="text-[#64748B] dark:text-[#94A3B8]">→</span>
+                          {item.status === 'pending' || item.status === 'failed' ? (
+                            <select
+                              value={item.outputFormat}
+                              onChange={(e) =>
+                                onUpdateQueueItemFormat && onUpdateQueueItemFormat(item.id, e.target.value)
+                              }
+                              className="px-2 py-0.5 rounded-md bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-bold text-xs focus:ring-2 focus:ring-[#2563EB] focus:outline-none cursor-pointer"
+                            >
+                              {supportedOutputs.map((out) => (
+                                <option key={out} value={out}>
+                                  .{out.toUpperCase()}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 font-mono uppercase font-bold text-[11px]">
+                              .{item.outputFormat}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* File Size */}
+                      {/* Size */}
                       <td className="py-3.5 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
                         {item.result?.outputSize ? (
                           <span>{formatSize(item.result.outputSize)}</span>
@@ -295,12 +552,12 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                         )}
                       </td>
 
-                      {/* Status / Progress Bar */}
+                      {/* Status */}
                       <td className="py-3.5 px-3 min-w-[140px]">
                         {item.status === 'pending' && (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 font-semibold text-[11px]">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            Pending
+                            Queued
                           </span>
                         )}
 
@@ -308,7 +565,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                           <div className="space-y-1">
                             <div className="flex items-center justify-between text-[11px]">
                               <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-semibold truncate max-w-[130px]">
-                                <RefreshCw className="w-3 h-3 animate-spin flex-shrink-0" />
+                                <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
                                 <span className="truncate">{item.statusText || 'Uploading...'}</span>
                               </span>
                               <span className="text-[10px] font-mono text-slate-400">{Math.round(item.progress || 30)}%</span>
@@ -326,8 +583,8 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                           <div className="space-y-1">
                             <div className="flex items-center justify-between text-[11px]">
                               <span className="inline-flex items-center gap-1.5 text-[#2563EB] dark:text-blue-300 font-semibold truncate max-w-[130px]">
-                                <RefreshCw className="w-3 h-3 animate-spin flex-shrink-0" />
-                                <span className="truncate">{item.statusText || 'Converting...'}</span>
+                                <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
+                                <span className="truncate">Processing...</span>
                               </span>
                               <span className="text-[10px] font-mono text-blue-500 dark:text-blue-400 font-bold">{Math.round(item.progress || 40)}%</span>
                             </div>
@@ -343,7 +600,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                         {item.status === 'completed' && (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            Ready
+                            Completed
                           </span>
                         )}
 
@@ -355,7 +612,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                         )}
                       </td>
 
-                      {/* Action Buttons */}
+                      {/* Actions */}
                       <td className="py-3.5 px-3 text-right space-x-2 whitespace-nowrap">
                         {item.status === 'pending' && onConvertQueueItem && (
                           <button
@@ -390,14 +647,27 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                         )}
 
                         {item.status === 'completed' && (item.result?.jobId || item.uploadedFile?.jobId) && (
-                          <a
-                            href={`/api/download/${item.result?.jobId || item.uploadedFile?.jobId}`}
-                            download
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors shadow-sm"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Download</span>
-                          </a>
+                          <div className="inline-flex items-center gap-1.5">
+                            <a
+                              href={`/api/download/${item.result?.jobId || item.uploadedFile?.jobId}`}
+                              download
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors shadow-sm"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Download</span>
+                            </a>
+                            {onConvertAgain && (
+                              <button
+                                type="button"
+                                onClick={() => onConvertAgain(item)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] font-semibold text-[11px] transition-colors"
+                                title="Convert this file again with different format or settings"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Convert Again</span>
+                              </button>
+                            )}
+                          </div>
                         )}
 
                         {onRemoveQueueItem && (
@@ -430,7 +700,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             <div className="flex items-center justify-center gap-3 pt-1">
               <button
                 onClick={() => addFileInputRef.current?.click()}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center gap-2"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 flex items-center gap-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Files to Queue</span>
@@ -440,16 +710,18 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         )}
       </div>
 
-      {/* SECTION 2: Completed Conversion History */}
+      {/* ==================================================
+          3. PERSISTENT CONVERSION HISTORY & EXPIRED FILE HANDLING
+          ================================================== */}
       <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-6 shadow-xl space-y-6 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0] dark:border-[#1E293B]">
           <div>
             <h3 className="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-2">
               <Clock className="w-5 h-5 text-[#2563EB]" />
-              <span>Recent Conversions History</span>
+              <span>Conversion History</span>
             </h3>
             <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">
-              Completed conversion logs and direct download links for your active session.
+              Persistent metadata log of past conversions. Expired file sessions retain conversion metadata.
             </p>
           </div>
 
@@ -457,7 +729,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             <button
               onClick={onClearHistory}
               id="clear-history-btn"
-              className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-white text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors flex items-center gap-1.5 w-fit"
+              className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-white text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors flex items-center gap-1.5 w-fit cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5 text-red-500" />
               <span>Clear History</span>
@@ -470,47 +742,101 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
-                  <th className="py-3 px-3">File Name</th>
-                  <th className="py-3 px-3">Input</th>
-                  <th className="py-3 px-3">Output</th>
+                  <th className="py-3 px-3">Filename</th>
+                  <th className="py-3 px-3">Format</th>
                   <th className="py-3 px-3">Size</th>
+                  <th className="py-3 px-3">Status</th>
                   <th className="py-3 px-3">Time</th>
-                  <th className="py-3 px-3 text-right">Actions</th>
+                  <th className="py-3 px-3 text-right">Download / Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]">
                 {history.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    {/* Filename */}
                     <td className="py-3 px-3 font-bold text-[#0F172A] dark:text-[#F8FAFC] max-w-xs truncate">
-                      {item.fileName}
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
+                          {getFormatIcon(item.inputFormat)}
+                        </div>
+                        <span className="truncate">{item.fileName}</span>
+                      </div>
                     </td>
+
+                    {/* Format */}
                     <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] font-mono uppercase font-semibold">
-                        .{item.inputFormat}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] font-mono uppercase font-semibold text-[10px]">
+                          .{item.inputFormat}
+                        </span>
+                        <span className="text-[#64748B] dark:text-[#94A3B8]">→</span>
+                        <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 font-mono uppercase font-bold text-[10px]">
+                          .{item.outputFormat}
+                        </span>
+                      </div>
                     </td>
-                    <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 font-mono uppercase font-bold">
-                        .{item.outputFormat}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-[#64748B] dark:text-[#94A3B8]">{formatSize(item.outputSize)}</td>
+
+                    {/* Size */}
                     <td className="py-3 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
-                      {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatSize(item.outputSize || item.fileSize || item.originalSize)}
                     </td>
-                    <td className="py-3 px-3 text-right space-x-2 whitespace-nowrap">
-                      <a
-                        href={`/api/download/${item.jobId}`}
-                        download
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white font-semibold text-[11px] transition-colors shadow-sm"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download</span>
-                      </a>
+
+                    {/* Status */}
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      {item.isExpired ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-medium text-[10px] border border-slate-200 dark:border-slate-700">
+                          File expired — convert again
+                        </span>
+                      ) : item.status === 'completed' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold text-[10px]">
+                          <Check className="w-3 h-3" /> Completed
+                        </span>
+                      ) : item.status === 'failed' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold text-[10px]">
+                          <AlertTriangle className="w-3 h-3" /> Failed
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] dark:text-blue-400 font-semibold text-[10px]">
+                          {item.status}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Time */}
+                    <td className="py-3 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
+                      {item.completionTime || (item.date ? new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="py-3 px-3 text-right space-x-1.5 whitespace-nowrap">
+                      {/* Active Download */}
+                      {!item.isExpired && item.status === 'completed' && item.jobId && (
+                        <a
+                          href={`/api/download/${item.jobId}`}
+                          download
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-600 text-white font-semibold text-[11px] transition-colors shadow-xs"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Download</span>
+                        </a>
+                      )}
+
+                      {/* Convert Again (Always available) */}
+                      {onConvertAgain && (
+                        <button
+                          type="button"
+                          onClick={() => onConvertAgain(item)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] font-semibold text-[11px] transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Convert Again</span>
+                        </button>
+                      )}
+
                       <button
                         onClick={() => onRemoveItem(item.id)}
-                        className="p-1 rounded text-[#64748B] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800"
-                        title="Remove from log"
+                        className="p-1 rounded text-[#64748B] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                        title="Remove from history"
                       >
                         ✕
                       </button>
@@ -523,19 +849,19 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         ) : (
           <div className="text-center py-8 space-y-2 bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl">
             <Clock className="w-8 h-8 text-[#64748B] dark:text-[#94A3B8] mx-auto opacity-70" />
-            <p className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">No past conversion records in this session</p>
+            <p className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">No conversion records yet</p>
             <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
-              Completed downloads will be saved here for instant re-download.
+              Completed conversions are logged here with metadata and download links.
             </p>
           </div>
         )}
       </div>
 
-      {/* Referral System Architecture (Requirement 11) */}
+      {/* Referral System */}
       <ReferralWidget onUpgradeClick={() => onNavigate?.('pricing')} />
 
-      {/* Non-intrusive AdSlot (Requirement 4) */}
-      <AdSlot slotId="dashboard-bottom-slot" format="leaderboard" />
+      {/* AdSlot (Free tier only) */}
+      {!isPro && <AdSlot slotId="dashboard-bottom-slot" format="leaderboard" />}
     </div>
   );
 };
