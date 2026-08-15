@@ -22,18 +22,10 @@ export function parseEnvNumber(val: string | undefined, fallback: number): numbe
   return isNaN(parsed) || parsed <= 0 ? fallback : parsed;
 }
 
-export const FREE_DAILY_LIMIT = parseEnvNumber(
-  process.env.FREE_DAILY_LIMIT || process.env.FREE_DAILY_CONVERSIONS,
-  5
-);
-
-export const FREE_MAX_FILE_MB = parseEnvNumber(
-  process.env.FREE_MAX_FILE_MB || process.env.FREE_MAX_FILE_SIZE_MB,
-  25
-);
-
-export const PRO_MAX_FILE_MB = parseEnvNumber(process.env.PRO_MAX_FILE_MB, 100);
-export const BUSINESS_MAX_FILE_MB = parseEnvNumber(process.env.BUSINESS_MAX_FILE_MB, 250);
+export const FREE_DAILY_LIMIT = 5;
+export const FREE_MAX_FILE_MB = 25;
+export const PRO_MAX_FILE_MB = 100;
+export const BUSINESS_MAX_FILE_MB = 250;
 
 export const PLAN_LIMITS: Record<UserPlan, TierLimits> = {
   free: {

@@ -1282,9 +1282,6 @@ export default function App() {
               />
               <HowItWorks />
               
-              {/* Non-intrusive Ad Placement below How it Works */}
-              <AdSlot slotId="home-mid" format="leaderboard" />
-
               {/* Curated Partner & Affiliate Tools Section */}
               <AffiliateSection
                 title="Recommended Design & Engineering Tools"
@@ -1476,8 +1473,8 @@ export default function App() {
                     />
                   )}
 
-                  {/* Non-intrusive Ad in Converter Workspace */}
-                  <AdSlot slotId="converter-bottom" format="leaderboard" className="pt-2" />
+                  {/* Ad Slot 1: After the converter/result section */}
+                  <AdSlot position="primary" isPro={limits?.isPro} className="pt-2" />
                 </div>
               )}
             </div>
@@ -1562,9 +1559,13 @@ export default function App() {
                 subtitle="Curated, tested software tools for CAD drafting, 3D parametric modeling, vector design, and creative productivity."
                 showCategoryFilter={true}
               />
-              <AdSlot slotId="affiliates-bottom" format="leaderboard" />
             </div>
           )}
+
+          {/* Ad Slot 2: Lower on the page */}
+          <div className="pt-8">
+            <AdSlot position="secondary" isPro={limits?.isPro} />
+          </div>
 
           {/* 10. SEO Landing Pages */}
           {currentView === 'seo' && (
