@@ -15,8 +15,11 @@ import { PsdConverter } from './psdConverter.js';
 import { AiConverter } from './aiConverter.js';
 import { DocumentConverter } from './documentConverter.js';
 import { generateTempFilePath, sanitizeFilename } from '../utils/fileSecurity.js';
+import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+
+const JOBS_STORAGE_PATH = path.join(process.cwd(), 'tmp_uploads', 'jobs_metadata.json');
 
 export class ConverterRegistry {
   private engines: Map<string, ConverterEngine> = new Map();
@@ -30,6 +33,43 @@ export class ConverterRegistry {
     this.registerEngine(new PsdConverter());
     this.registerEngine(new AiConverter());
     this.registerEngine(new DocumentConverter());
+    this.loadPersistedJobs();
+  }
+
+  private loadPersistedJobs(): void {
+    try {
+      if (fs.existsSync(JOBS_STORAGE_PATH)) {
+        const raw = fs.readFileSync(JOBS_STORAGE_PATH, 'utf-8');
+        const list: ConversionJob[] = JSON.parse(raw);
+        for (const job of list) {
+          // If input file is lost after restart, mark as failed rather than stuck pending
+          if (job.status !== 'completed' && job.inputPath && !fs.existsSync(job.inputPath)) {
+            job.status = 'failed';
+            job.error = 'Temporary session expired. Please re-upload your file.';
+          } else if (job.status === 'completed' && job.outputPath && !fs.existsSync(job.outputPath)) {
+            job.status = 'failed';
+            job.error = 'Converted file expired on server. Please convert again.';
+          }
+          this.jobs.set(job.id, job);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load persisted conversion jobs:', err);
+    }
+  }
+
+  private savePersistedJobs(): void {
+    try {
+      const dir = path.dirname(JOBS_STORAGE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      // Save last 200 jobs
+      const allJobs = Array.from(this.jobs.values()).slice(-200);
+      fs.writeFileSync(JOBS_STORAGE_PATH, JSON.stringify(allJobs, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn('Could not persist conversion jobs:', err);
+    }
   }
 
   registerEngine(engine: ConverterEngine): void {
@@ -732,11 +772,24 @@ export class ConverterRegistry {
       options: options || {},
     };
     this.jobs.set(jobId, job);
+    this.savePersistedJobs();
     return job;
   }
 
   getJob(jobId: string): ConversionJob | undefined {
-    return this.jobs.get(jobId);
+    const job = this.jobs.get(jobId);
+    if (!job) return undefined;
+    // Check if files still exist on disk
+    if (job.status === 'completed' && job.outputPath && !fs.existsSync(job.outputPath)) {
+      job.status = 'failed';
+      job.error = 'Converted file has expired or was removed from server cache.';
+      this.savePersistedJobs();
+    } else if (job.status !== 'completed' && job.inputPath && !fs.existsSync(job.inputPath)) {
+      job.status = 'failed';
+      job.error = 'Upload session expired. Please re-upload your file.';
+      this.savePersistedJobs();
+    }
+    return job;
   }
 
   updateJob(jobId: string, updates: Partial<ConversionJob>): ConversionJob | undefined {
@@ -744,6 +797,7 @@ export class ConverterRegistry {
     if (job) {
       Object.assign(job, updates);
       this.jobs.set(jobId, job);
+      this.savePersistedJobs();
     }
     return job;
   }

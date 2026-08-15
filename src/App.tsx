@@ -74,9 +74,38 @@ export default function App() {
     orientation: 'portrait',
   });
 
-  // Multi-File Conversion Queue State
-  const [queue, setQueue] = useState<ConversionQueueItem[]>([]);
+  // Multi-File Conversion Queue State with Session Storage Recovery
+  const [queue, setQueue] = useState<ConversionQueueItem[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('convertx_queue');
+      if (saved) {
+        const parsed: ConversionQueueItem[] = JSON.parse(saved);
+        return parsed.map((item) => {
+          if (item.status === 'uploading') {
+            return { ...item, status: 'failed', error: 'Upload interrupted by page reload. Click Retry.' };
+          }
+          if (item.status === 'converting') {
+            return { ...item, status: 'pending', progress: 0 };
+          }
+          return item;
+        });
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
   const [isConvertingAll, setIsConvertingAll] = useState<boolean>(false);
+
+  // Save queue to Session Storage (omitting non-serializable File objects)
+  useEffect(() => {
+    try {
+      const serializable = queue.map(({ file, ...rest }) => rest);
+      sessionStorage.setItem('convertx_queue', JSON.stringify(serializable));
+    } catch (e) {
+      console.error('Failed to save queue to sessionStorage', e);
+    }
+  }, [queue]);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -249,8 +278,8 @@ export default function App() {
     setIsLoading(true);
     setError(null);
 
-    // If multiple files are selected, transition to the queue dashboard
-    if (files.length > 1) {
+    // If multiple files are selected from home/converter, transition to dashboard
+    if (files.length > 1 && currentView !== 'dashboard') {
       setCurrentView('dashboard');
     }
 
@@ -260,6 +289,7 @@ export default function App() {
       return {
         id: 'queue-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
         fileName: file.name,
+        file: file,
         inputFormat: ext,
         outputFormat: ext === 'pdf' ? 'png' : 'pdf',
         fileSize: file.size,
@@ -272,18 +302,43 @@ export default function App() {
 
     setQueue((prev) => [...newItems, ...prev]);
 
-    // Concurrently upload each file to /api/upload
+    // Concurrently upload each file to /api/upload with retry resilience
     await Promise.all(
       files.map(async (file, index) => {
         const item = newItems[index];
         try {
-          const formData = new FormData();
-          formData.append('file', file);
+          let response: Response | null = null;
+          let lastFetchError: any = null;
+          let retries = 2;
 
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-          });
+          while (retries >= 0) {
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+
+              response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData,
+              });
+
+              if (response.ok || response.status < 500) {
+                break;
+              }
+            } catch (fetchErr: any) {
+              lastFetchError = fetchErr;
+              if (retries === 0) break;
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            retries--;
+          }
+
+          if (!response) {
+            throw new Error(
+              lastFetchError?.message
+                ? `Connection error: ${lastFetchError.message}. Please check your connection and try again.`
+                : 'Unable to connect to the file conversion server. Please try again.'
+            );
+          }
 
           if (!response.ok) {
             const parsedError = await parseBackendError(response, item.inputFormat, item.outputFormat);
@@ -303,6 +358,7 @@ export default function App() {
               q.id === item.id
                 ? {
                     ...q,
+                    file: file,
                     uploadedFile: fileData,
                     inputFormat: fileData.detectedFormat,
                     outputFormat: defaultOutput,
@@ -315,8 +371,8 @@ export default function App() {
             )
           );
 
-          // If only 1 file was selected and no single file active yet, sync single file workspace
-          if (files.length === 1) {
+          // If only 1 file was selected from a non-dashboard view and no single file active yet, sync single file workspace
+          if (files.length === 1 && currentView !== 'dashboard') {
             setUploadedFile(fileData);
             setSelectedOutputFormat(defaultOutput);
             setCurrentView('converter');
@@ -329,6 +385,7 @@ export default function App() {
               q.id === item.id
                 ? {
                     ...q,
+                    file: file,
                     status: 'failed',
                     error: errorMsg,
                     progress: 0,
@@ -336,7 +393,7 @@ export default function App() {
                 : q
             )
           );
-          if (files.length === 1) {
+          if (files.length === 1 && currentView !== 'dashboard') {
             setError(errorMsg);
           }
         }
@@ -511,18 +568,113 @@ export default function App() {
     }
   };
 
-  // Convert All Pending / Failed Items in the Queue
+  // Retry a Failed Item in the Queue (Retries upload if file is cached, or re-runs conversion)
+  const handleRetryQueueItem = async (id: string) => {
+    const item = queue.find((q) => q.id === id);
+    if (!item) return;
+
+    // If upload previously failed and the browser still has the File object in memory, re-upload
+    if (!item.uploadedFile && item.file) {
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === id ? { ...q, status: 'uploading', progress: 30, error: null } : q
+        )
+      );
+
+      try {
+        const formData = new FormData();
+        formData.append('file', item.file);
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const parsedError = await parseBackendError(response, item.inputFormat, item.outputFormat);
+          throw new Error(parsedError || 'Upload failed');
+        }
+
+        const fileData: UploadedFile = await response.json();
+        const defaultOutput =
+          fileData.supportedOutputs && fileData.supportedOutputs.length > 0
+            ? fileData.supportedOutputs[0]
+            : item.outputFormat || 'png';
+
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === id
+              ? {
+                  ...q,
+                  uploadedFile: fileData,
+                  inputFormat: fileData.detectedFormat,
+                  outputFormat: defaultOutput,
+                  fileSize: fileData.fileSize,
+                  status: 'pending',
+                  progress: 0,
+                  error: null,
+                }
+              : q
+          )
+        );
+      } catch (err: any) {
+        console.error(`Retry upload error for ${item.fileName}:`, err);
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === id
+              ? {
+                  ...q,
+                  status: 'failed',
+                  error: err.message || 'Retry upload failed',
+                  progress: 0,
+                }
+              : q
+          )
+        );
+      }
+      return;
+    }
+
+    // If uploadedFile exists, run conversion
+    if (item.uploadedFile) {
+      await handleConvertQueueItem(id);
+    }
+  };
+
+  // Convert All Pending / Failed Items in the Queue with Controlled Concurrency
   const handleConvertAllPending = async () => {
     const pendingItems = queue.filter(
-      (item) => (item.status === 'pending' || item.status === 'failed') && item.uploadedFile
+      (item) =>
+        (item.status === 'pending' || item.status === 'failed') &&
+        (item.uploadedFile || item.file) &&
+        item.status !== 'converting'
     );
 
-    if (pendingItems.length === 0) return;
+    if (pendingItems.length === 0 || isConvertingAll) return;
 
     setIsConvertingAll(true);
 
-    // Convert items concurrently
-    await Promise.all(pendingItems.map((item) => handleConvertQueueItem(item.id)));
+    const concurrency = 2;
+    const itemsToProcess = [...pendingItems];
+
+    const worker = async () => {
+      while (itemsToProcess.length > 0) {
+        const nextItem = itemsToProcess.shift();
+        if (nextItem) {
+          if (nextItem.uploadedFile) {
+            await handleConvertQueueItem(nextItem.id);
+          } else if (nextItem.file) {
+            await handleRetryQueueItem(nextItem.id);
+          }
+        }
+      }
+    };
+
+    const workers = Array.from(
+      { length: Math.min(concurrency, pendingItems.length) },
+      () => worker()
+    );
+    await Promise.all(workers);
 
     setIsConvertingAll(false);
   };
@@ -977,6 +1129,7 @@ export default function App() {
               onAddFiles={handleFilesSelected}
               onConvertAllPending={handleConvertAllPending}
               onConvertQueueItem={handleConvertQueueItem}
+              onRetryQueueItem={handleRetryQueueItem}
               onUpdateQueueItemFormat={handleUpdateQueueItemFormat}
               onRemoveQueueItem={handleRemoveQueueItem}
               onClearQueue={handleClearQueue}

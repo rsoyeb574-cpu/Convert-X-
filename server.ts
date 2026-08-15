@@ -26,8 +26,19 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  // Global CORS & preflight middleware
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Multer memory storage configuration for secure magic-byte inspection
   const upload = multer({
@@ -38,6 +49,15 @@ async function startServer() {
   });
 
   // --- SEO & CRAWLER ROUTES ---
+  app.get('/ads.txt', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    const adsPath = path.join(process.cwd(), 'public', 'ads.txt');
+    if (fs.existsSync(adsPath)) {
+      return res.send(fs.readFileSync(adsPath, 'utf8'));
+    }
+    res.send('google.com, pub-8954286467084824, DIRECT, f08c47fec0942fa0\n');
+  });
+
   app.get('/robots.txt', (req, res) => {
     const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
     const host = req.get('host') || 'convert-x.com';
@@ -269,71 +289,97 @@ ${routes
   });
 
   // 4. Upload file or load sample file
-  app.post('/api/upload', upload.single('file'), async (req, res) => {
-    try {
-      let fileBuffer: Buffer;
-      let originalName: string;
-
-      const sampleKey = req.body.sampleKey;
-      if (sampleKey && SAMPLE_FILES[sampleKey]) {
-        const sample = SAMPLE_FILES[sampleKey];
-        fileBuffer = await Promise.resolve(sample.getContent());
-        originalName = sample.filename;
-      } else if (req.file) {
-        fileBuffer = req.file.buffer;
-        originalName = req.file.originalname;
-      } else {
-        return res.status(400).json({ error: 'No file uploaded or sample selected.' });
-      }
-
-      if (fileBuffer.length > FREE_MAX_FILE_SIZE_BYTES) {
-        return res.status(400).json({
-          error: `The uploaded file (${(fileBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the Free plan limit of ${FREE_MAX_FILE_SIZE_MB}MB. Please compress your file or upgrade to Pro.`,
-        });
-      }
-
-      const cleanName = sanitizeFilename(originalName);
-      const detection = detectFileFormat(fileBuffer, cleanName);
-
-      if (!detection.valid) {
-        return res.status(400).json({
-          error: `Unsupported or invalid file format. Detected extension: .${detection.format || 'unknown'}`,
-        });
-      }
-
-      const job = registry.createJob(cleanName, detection.format, {});
-
-      // Save input file to temp path
-      const { filePath } = generateTempFilePath(detection.format);
-      fs.writeFileSync(filePath, fileBuffer);
-
-      registry.updateJob(job.id, {
-        inputPath: filePath,
-        fileSize: fileBuffer.length,
-        status: 'uploading',
-        progress: 100,
+  app.post(
+    '/api/upload',
+    (req, res, next) => {
+      upload.single('file')(req, res, (err) => {
+        if (err) {
+          if (err instanceof multer.MulterError) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+              return res.status(400).json({
+                success: false,
+                code: 'LIMIT_FILE_SIZE',
+                error: `The uploaded file exceeds the limit of ${FREE_MAX_FILE_SIZE_MB}MB. Please compress your file or upgrade to Pro.`,
+              });
+            }
+            return res.status(400).json({ success: false, code: err.code, error: `Upload error: ${err.message}` });
+          }
+          return res.status(400).json({ success: false, code: 'UPLOAD_ERROR', error: err.message || 'File upload failed.' });
+        }
+        next();
       });
+    },
+    async (req, res) => {
+      try {
+        let fileBuffer: Buffer;
+        let originalName: string;
 
-      // Retrieve capability details for input format
-      const capabilities = registry.getCapabilities();
-      const cap = capabilities.find((c) => c.extension === detection.format);
+        const sampleKey = req.body.sampleKey;
+        if (sampleKey && SAMPLE_FILES[sampleKey]) {
+          const sample = SAMPLE_FILES[sampleKey];
+          fileBuffer = await Promise.resolve(sample.getContent());
+          originalName = sample.filename;
+        } else if (req.file) {
+          fileBuffer = req.file.buffer;
+          originalName = req.file.originalname;
+        } else {
+          return res.status(400).json({ success: false, code: 'NO_FILE', error: 'No file uploaded or sample selected.' });
+        }
 
-      res.json({
-        jobId: job.id,
-        fileName: cleanName,
-        detectedFormat: detection.format,
-        mimeType: detection.mimeType,
-        fileSize: fileBuffer.length,
-        category: cap?.category || 'general',
-        status: cap?.status || 'supported',
-        requiresEngine: cap?.requiresEngine,
-        supportedOutputs: cap?.supportedOutputs || [],
-      });
-    } catch (err: any) {
-      console.error('Upload handler error:', err);
-      res.status(500).json({ error: 'Failed to process uploaded file. Please try again.' });
+        if (fileBuffer.length > FREE_MAX_FILE_SIZE_BYTES) {
+          return res.status(400).json({
+            success: false,
+            code: 'FILE_TOO_LARGE',
+            error: `The uploaded file (${(fileBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds the Free plan limit of ${FREE_MAX_FILE_SIZE_MB}MB. Please compress your file or upgrade to Pro.`,
+          });
+        }
+
+        const cleanName = sanitizeFilename(originalName);
+        const detection = detectFileFormat(fileBuffer, cleanName);
+
+        if (!detection.valid) {
+          return res.status(400).json({
+            success: false,
+            code: 'UNSUPPORTED_FORMAT',
+            error: `Unsupported or invalid file format. Detected extension: .${detection.format || 'unknown'}`,
+          });
+        }
+
+        const job = registry.createJob(cleanName, detection.format, {});
+
+        // Save input file to temp path
+        const { filePath } = generateTempFilePath(detection.format);
+        fs.writeFileSync(filePath, fileBuffer);
+
+        registry.updateJob(job.id, {
+          inputPath: filePath,
+          fileSize: fileBuffer.length,
+          status: 'uploading',
+          progress: 100,
+        });
+
+        // Retrieve capability details for input format
+        const capabilities = registry.getCapabilities();
+        const cap = capabilities.find((c) => c.extension === detection.format);
+
+        res.json({
+          success: true,
+          jobId: job.id,
+          fileName: cleanName,
+          detectedFormat: detection.format,
+          mimeType: detection.mimeType,
+          fileSize: fileBuffer.length,
+          category: cap?.category || 'general',
+          status: cap?.status || 'supported',
+          requiresEngine: cap?.requiresEngine,
+          supportedOutputs: cap?.supportedOutputs || [],
+        });
+      } catch (err: any) {
+        console.error('Upload handler error:', err);
+        res.status(500).json({ success: false, code: 'UPLOAD_FAILED', error: 'Failed to process uploaded file. Please try again.' });
+      }
     }
-  });
+  );
 
   // 5. Trigger Conversion
   app.post('/api/convert', async (req, res) => {
@@ -341,17 +387,18 @@ ${routes
       const { jobId, outputFormat, options } = req.body;
 
       if (!jobId || !outputFormat) {
-        return res.status(400).json({ error: 'Missing jobId or target outputFormat.' });
+        return res.status(400).json({ success: false, code: 'INVALID_REQUEST', error: 'Missing jobId or target outputFormat.' });
       }
 
       const job = registry.getJob(jobId);
       if (!job) {
-        return res.status(404).json({ error: 'Conversion session expired or not found.' });
+        return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', error: 'Conversion session expired or not found. Please re-upload your file.' });
       }
 
       const updatedJob = await registry.processConversion(jobId, outputFormat, options || {});
 
       res.json({
+        success: true,
         jobId: updatedJob.id,
         originalName: updatedJob.originalName,
         inputFormat: updatedJob.inputFormat,
@@ -364,7 +411,7 @@ ${routes
       });
     } catch (err: any) {
       console.error('Convert handler error:', err);
-      res.status(400).json({ error: err.message || 'Conversion failed. Please try again.' });
+      res.status(400).json({ success: false, code: 'CONVERSION_FAILED', error: err.message || 'Conversion failed. Please try again.' });
     }
   });
 
@@ -372,9 +419,10 @@ ${routes
   app.get('/api/status/:jobId', (req, res) => {
     const job = registry.getJob(req.params.jobId);
     if (!job) {
-      return res.status(404).json({ error: 'Job not found.' });
+      return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', error: 'Job not found or session expired.' });
     }
     res.json({
+      success: true,
       jobId: job.id,
       originalName: job.originalName,
       inputFormat: job.inputFormat,
@@ -545,6 +593,16 @@ ${routes
       }
     });
   }
+
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('Unhandled server error caught by middleware:', err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    res.status(err.status || 500).json({
+      error: err.message || 'Internal server error',
+    });
+  });
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`ConvertX Server running on http://0.0.0.0:${PORT}`);

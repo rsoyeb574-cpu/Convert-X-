@@ -70,6 +70,7 @@ export interface ConversionQueueItem {
   inputFormat: string;
   outputFormat: string;
   fileSize: number;
+  file?: File;
   uploadedFile?: UploadedFile;
   status: 'pending' | 'uploading' | 'converting' | 'completed' | 'failed';
   progress: number;

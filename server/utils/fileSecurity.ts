@@ -28,6 +28,11 @@ export function sanitizeFilename(filename: string): string {
 }
 
 export function generateTempFilePath(extension: string): { filePath: string; fileId: string } {
+  if (!fs.existsSync(TEMP_DIR)) {
+    try {
+      fs.mkdirSync(TEMP_DIR, { recursive: true });
+    } catch {}
+  }
   const fileId = crypto.randomUUID();
   const cleanExt = extension.toLowerCase().replace(/[^a-z0-9]/g, '');
   const fileName = `${fileId}.${cleanExt}`;

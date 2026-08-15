@@ -30,6 +30,7 @@ interface DashboardHistoryProps {
   onAddFiles?: (files: File[]) => void;
   onConvertAllPending?: () => void;
   onConvertQueueItem?: (id: string) => void;
+  onRetryQueueItem?: (id: string) => void;
   onUpdateQueueItemFormat?: (id: string, format: string) => void;
   onRemoveQueueItem?: (id: string) => void;
   onClearQueue?: () => void;
@@ -47,6 +48,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   onAddFiles,
   onConvertAllPending,
   onConvertQueueItem,
+  onRetryQueueItem,
   onUpdateQueueItemFormat,
   onRemoveQueueItem,
   onClearQueue,
@@ -90,7 +92,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         ref={addFileInputRef}
         onChange={handleAddFilesChange}
         className="hidden"
-        accept=".png,.jpg,.jpeg,.webp,.pdf,.svg,.dxf"
+        accept=".docx,.xlsx,.txt,.html,.htm,.pptx,.odt,.rtf,.pdf,.psd,.ai,.dxf,.svg,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tiff,.tif,.avif,.eps,.dwg,.dwf,.cdr,.obj,.3ds,.stl"
         multiple
       />
 
@@ -118,9 +120,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             {/* Add More Files Button */}
             {onAddFiles && (
               <button
-                onClick={() => addFileInputRef.current?.click()}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  addFileInputRef.current?.click();
+                }}
                 id="queue-add-files-btn"
-                className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-white text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors flex items-center gap-1.5 shadow-sm"
+                className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-white text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5 text-[#2563EB]" />
                 <span>Add Files</span>
@@ -128,12 +134,16 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             )}
 
             {/* Convert All Pending Button */}
-            {pendingCount > 0 && onConvertAllPending && (
+            {(pendingCount > 0 || failedCount > 0) && onConvertAllPending && (
               <button
-                onClick={onConvertAllPending}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onConvertAllPending();
+                }}
                 disabled={isConvertingAll || convertingCount > 0}
                 id="convert-all-pending-btn"
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 disabled:opacity-60 text-white text-xs font-extrabold shadow-md shadow-blue-500/20 transition-all flex items-center gap-2"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 disabled:opacity-60 text-white text-xs font-extrabold shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
               >
                 {isConvertingAll || convertingCount > 0 ? (
                   <>
@@ -143,7 +153,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 ) : (
                   <>
                     <Zap className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Convert All Pending ({pendingCount})</span>
+                    <span>Convert All Pending ({pendingCount + failedCount})</span>
                   </>
                 )}
               </button>
@@ -152,9 +162,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             {/* Clear Queue Button */}
             {queue.length > 0 && onClearQueue && (
               <button
-                onClick={onClearQueue}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onClearQueue();
+                }}
                 id="clear-queue-btn"
-                className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors flex items-center gap-1"
+                className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors flex items-center gap-1 cursor-pointer"
                 title="Clear all queue items"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -308,27 +322,39 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                       <td className="py-3.5 px-3 text-right space-x-2 whitespace-nowrap">
                         {item.status === 'pending' && onConvertQueueItem && (
                           <button
-                            onClick={() => onConvertQueueItem(item.id)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white font-semibold text-[11px] transition-colors shadow-sm"
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onConvertQueueItem(item.id);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white font-semibold text-[11px] transition-colors shadow-sm cursor-pointer"
                           >
                             <Zap className="w-3 h-3 text-amber-300" />
                             <span>Convert</span>
                           </button>
                         )}
 
-                        {item.status === 'failed' && onConvertQueueItem && (
+                        {item.status === 'failed' && (
                           <button
-                            onClick={() => onConvertQueueItem(item.id)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[11px] transition-colors shadow-sm"
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (onRetryQueueItem) {
+                                onRetryQueueItem(item.id);
+                              } else if (onConvertQueueItem) {
+                                onConvertQueueItem(item.id);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[11px] transition-colors shadow-sm cursor-pointer"
                           >
                             <RefreshCw className="w-3 h-3" />
                             <span>Retry</span>
                           </button>
                         )}
 
-                        {item.status === 'completed' && item.uploadedFile?.jobId && (
+                        {item.status === 'completed' && (item.result?.jobId || item.uploadedFile?.jobId) && (
                           <a
-                            href={`/api/download/${item.uploadedFile.jobId}`}
+                            href={`/api/download/${item.result?.jobId || item.uploadedFile?.jobId}`}
                             download
                             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors shadow-sm"
                           >
@@ -339,8 +365,12 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
                         {onRemoveQueueItem && (
                           <button
-                            onClick={() => onRemoveQueueItem(item.id)}
-                            className="p-1 rounded text-[#64748B] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800"
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onRemoveQueueItem(item.id);
+                            }}
+                            className="p-1 rounded text-[#64748B] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
                             title="Remove from queue"
                           >
                             ✕
