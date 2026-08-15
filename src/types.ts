@@ -112,6 +112,8 @@ export type PageView =
   | 'home'
   | 'converter'
   | 'formats'
+  | 'tools'
+  | 'about'
   | 'how-it-works'
   | 'faq'
   | 'pricing'
@@ -120,7 +122,8 @@ export type PageView =
   | 'contact'
   | 'dashboard'
   | 'affiliates'
-  | 'seo';
+  | 'seo'
+  | '404';
 
 export interface AppLimits {
   maxFileSizeMB: number;

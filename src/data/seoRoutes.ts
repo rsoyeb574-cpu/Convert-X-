@@ -618,7 +618,85 @@ export const SEO_ROUTES: Record<string, SeoRouteConfig> = {
         answer: 'Yes! Convert-X works seamlessly on mobile browsers (iPhone Safari, Android Chrome) as well as desktop computers.',
       },
     ],
-    relatedSlugs: ['png-to-pdf', 'pdf-to-jpg', 'jpg-to-png', 'svg-to-pdf'],
+    relatedSlugs: ['png-to-pdf', 'pdf-to-jpg', 'jpg-to-png', 'svg-to-pdf', 'image-to-pdf'],
+  },
+
+  'image-to-pdf': {
+    slug: 'image-to-pdf',
+    title: 'Image to PDF Converter - Convert JPG, PNG, WEBP to PDF | Convert-X',
+    h1: 'Image to PDF Converter',
+    metaDescription: 'Convert images (JPG, PNG, WEBP, GIF, SVG) to professional PDF documents online for free. Adjust margins, page sizes, and export instant print-ready PDFs with Convert-X.',
+    fromFormat: 'png',
+    toFormat: 'pdf',
+    category: 'pdf',
+    badge: 'Universal Image to PDF Engine',
+    shortExplanation: 'Convert any image format—including PNG, JPG, WEBP, BMP, and SVG—into clean, standardized PDF documents with configurable paper sizing and orientations.',
+    sampleKey: 'sample-png',
+    supportedInputFormats: ['JPG, JPEG, PNG, WEBP, GIF, BMP, SVG', 'image/*'],
+    supportedOutputFormats: ['PDF (Portable Document Format)', 'application/pdf'],
+    features: [
+      'Universal image input support (JPG, PNG, WEBP, BMP, SVG)',
+      'Customizable page formatting (A4, Letter, Auto-Fit, Portrait/Landscape)',
+      'High-resolution raster embedding preserving 100% pixel fidelity',
+      'Instant memory processing with strict zero-retention privacy policy',
+    ],
+    whyConvert: {
+      title: 'Why Convert Images to PDF?',
+      description: 'PDF is the globally recognized document format for contracts, official applications, tax receipts, and print presentations. Converting images to PDF ensures consistent presentation across all devices.',
+      points: [
+        {
+          title: 'Standardized Document Format',
+          text: 'PDF files preserve exact margins, aspect ratios, and dimensions, guaranteeing identical display across Mac, Windows, iOS, and Android.',
+        },
+        {
+          title: 'Official Submission Compatibility',
+          text: 'Government portals, academic institutions, and employers require PDF format for scanned documents, certificates, and ID submissions.',
+        },
+        {
+          title: 'Single-File Document Sharing',
+          text: 'Combine images into a cleanly formatted PDF document for streamlined emailing without attachment compression artifacts.',
+        },
+      ],
+    },
+    comparison: {
+      fromTitle: 'Raw Image Files (JPG / PNG / WEBP)',
+      fromPoints: [
+        'Variable aspect ratios without standard print margins',
+        'Subject to automatic compression and resizing in email apps',
+        'Lacks structured document metadata for official submission',
+      ],
+      toTitle: 'Standardized PDF Document',
+      toPoints: [
+        'Locked to standardized print page dimensions (A4, US Letter)',
+        'Protected against layout distortion and downsampling',
+        'Universal compatibility with all PDF readers and cloud storage',
+      ],
+    },
+    howToUse: [
+      { step: 1, title: 'Upload Image', text: 'Select or drag any JPG, PNG, WEBP, or SVG image into the upload area.' },
+      { step: 2, title: 'Set Page Size & Layout', text: 'Choose PDF as output and pick your preferred page size (A4, Letter) and orientation.' },
+      { step: 3, title: 'Build Document', text: 'Click Convert to compile the image into a standardized PDF.' },
+      { step: 4, title: 'Download PDF', text: 'Instantly download and print your verified PDF document.' },
+    ],
+    faq: [
+      {
+        question: 'Which image formats can I convert to PDF?',
+        answer: 'Convert-X supports all major raster and vector image formats including JPG, PNG, WEBP, BMP, GIF, and SVG.',
+      },
+      {
+        question: 'Will converting images to PDF reduce their clarity?',
+        answer: 'No! Convert-X embeds the full original image resolution directly into the PDF vector stream, ensuring razor-sharp clarity for text and photos.',
+      },
+      {
+        question: 'Is this image to PDF converter free to use?',
+        answer: 'Yes, you can convert images to PDF completely free without creating an account or paying any fees.',
+      },
+      {
+        question: 'What is the maximum file size limit?',
+        answer: 'Free users can convert files up to 25MB each. Pro users can convert files up to 100MB.',
+      },
+    ],
+    relatedSlugs: ['jpg-to-pdf', 'png-to-pdf', 'pdf-to-png', 'image-compressor'],
   },
 
   'pdf-to-png': {

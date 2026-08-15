@@ -26,6 +26,9 @@ import { DashboardHistory } from './components/DashboardHistory.js';
 import { SeoLandingPage } from './components/SeoLandingPage.js';
 import { SeoMetaManager } from './components/SeoMetaManager.js';
 import { PricingPage } from './components/PricingPage.js';
+import { ToolsDirectory } from './components/ToolsDirectory.js';
+import { AboutPage } from './components/AboutPage.js';
+import { NotFoundPage } from './components/NotFoundPage.js';
 import { UsageWidget } from './components/UsageWidget.js';
 import { AdSlot } from './components/AdSlot.js';
 import { AffiliateSection } from './components/AffiliateSection.js';
@@ -240,6 +243,8 @@ export default function App() {
         [
           'converter',
           'formats',
+          'tools',
+          'about',
           'how-it-works',
           'faq',
           'privacy',
@@ -257,10 +262,10 @@ export default function App() {
           setCurrentView('seo');
           setSeoSlug(clean);
         } else {
-          setCurrentView('home');
+          setCurrentView('404');
         }
       } else {
-        setCurrentView('home');
+        setCurrentView('404');
       }
     };
 
@@ -1517,18 +1522,24 @@ export default function App() {
             </div>
           )}
 
-          {/* 5. How It Works View */}
+          {/* 5. Tools Directory View */}
+          {currentView === 'tools' && <ToolsDirectory onNavigate={handleNavigate} />}
+
+          {/* 6. About Page View */}
+          {currentView === 'about' && <AboutPage onNavigate={handleNavigate} />}
+
+          {/* 7. How It Works View */}
           {currentView === 'how-it-works' && <HowItWorks />}
 
-          {/* 6. FAQ View */}
+          {/* 8. FAQ View */}
           {currentView === 'faq' && <FaqSection />}
 
-          {/* 7. Legal & Contact Views */}
+          {/* 9. Legal & Contact Views */}
           {(currentView === 'privacy' || currentView === 'terms' || currentView === 'contact') && (
             <PrivacyTermsContact view={currentView} onNavigate={handleNavigate} />
           )}
 
-          {/* 8. History & Queue Dashboard */}
+          {/* 10. History & Queue Dashboard */}
           {currentView === 'dashboard' && (
             <DashboardHistory
               queue={queue}
@@ -1543,7 +1554,7 @@ export default function App() {
               onNavigate={handleNavigate}
               onOpenSeoRoute={(slug) => {
                 setSeoSlug(slug);
-                setCurrentView('seo-landing');
+                setCurrentView('seo');
               }}
               onAddFiles={handleFilesSelected}
               onConvertAllPending={handleConvertAllPending}
@@ -1565,7 +1576,7 @@ export default function App() {
             />
           )}
 
-          {/* 9. Curated Partner Tools & Software Directory */}
+          {/* 11. Curated Partner Tools & Software Directory */}
           {currentView === 'affiliates' && (
             <div className="space-y-6 max-w-6xl mx-auto">
               <AffiliateSection
@@ -1575,6 +1586,9 @@ export default function App() {
               />
             </div>
           )}
+
+          {/* 12. 404 Not Found Page */}
+          {currentView === '404' && <NotFoundPage onNavigate={handleNavigate} />}
 
           {/* Ad Slot 2: Lower on the page */}
           <div className="pt-8">

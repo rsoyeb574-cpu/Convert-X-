@@ -103,6 +103,18 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenMetrics }) => 
             <ul className="space-y-2 text-xs">
               <li>
                 <a
+                  href="/tools"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('tools');
+                  }}
+                  className="hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors font-medium text-blue-600 dark:text-blue-400"
+                >
+                  All Conversion Tools
+                </a>
+              </li>
+              <li>
+                <a
                   href="/converter"
                   onClick={(e) => {
                     e.preventDefault();
@@ -123,6 +135,18 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenMetrics }) => 
                   className="hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors"
                 >
                   Supported Formats
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/about"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('about');
+                  }}
+                  className="hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors"
+                >
+                  About Convert-X
                 </a>
               </li>
               <li>

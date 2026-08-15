@@ -120,10 +120,22 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
           },
           description: 'High-speed image converter, PDF converter, and design file converter with server-side vector rendering.',
         });
+      } else if (currentView === 'tools') {
+        title = 'All Free Online Conversion Tools | Convert-X Directory';
+        description = 'Browse the complete catalog of free online file conversion tools. Fast, private, and zero-retention image, PDF, and vector converters.';
+        canonicalUrl = `${origin}/tools`;
+      } else if (currentView === 'about') {
+        title = 'About Convert-X - Fast, Ephemeral & Private File Conversion';
+        description = 'Learn about Convert-X: our high-speed C++ conversion pipeline, zero-retention privacy architecture, 256-bit encryption, and technical mission.';
+        canonicalUrl = `${origin}/about`;
       } else if (currentView === 'formats') {
         title = 'Supported File Formats Matrix | Convert-X';
         description = 'Explore supported input and output formats in Convert-X, including PNG, JPG, WEBP, PDF, SVG, and DXF.';
         canonicalUrl = `${origin}/formats`;
+      } else if (currentView === 'pricing') {
+        title = 'Pricing Plans & Pro Limits | Convert-X';
+        description = 'Compare Free and Pro plans in Convert-X. Convert up to 100MB files, unlock unlimited daily conversions, and batch queues.';
+        canonicalUrl = `${origin}/pricing`;
       } else if (currentView === 'how-it-works') {
         title = 'How It Works - Fast & Secure File Conversion | Convert-X';
         description = 'Learn how Convert-X converts images, PDFs, and design files with server-side rendering and automatic zero-retention file deletion.';
@@ -152,6 +164,10 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
         title = 'File Converter Workspace | Convert-X';
         description = 'Upload files, select target formats, adjust DPI and compression settings, and execute fast server-side conversions.';
         canonicalUrl = `${origin}/converter`;
+      } else if (currentView === '404') {
+        title = 'Page Not Found (404) | Convert-X';
+        description = 'The requested file conversion tool or page could not be found.';
+        canonicalUrl = `${origin}/404`;
       }
     }
 

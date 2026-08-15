@@ -118,6 +118,7 @@ async function startServer() {
       'Disallow: /api/',
       'Disallow: /admin/',
       'Disallow: /private/',
+      'Disallow: /temp/',
       '',
       `Sitemap: ${siteUrl}/sitemap.xml`,
     ].join('\n');
@@ -131,41 +132,35 @@ async function startServer() {
     const host = req.get('host') || 'convert-x.com';
     const siteUrl = `${protocol}://${host}`;
 
-    const routes = [
+    const coreRoutes = [
       { loc: '', changefreq: 'daily', priority: '1.0' },
+      { loc: 'tools', changefreq: 'daily', priority: '0.9' },
       { loc: 'converter', changefreq: 'weekly', priority: '0.9' },
       { loc: 'formats', changefreq: 'weekly', priority: '0.8' },
       { loc: 'how-it-works', changefreq: 'monthly', priority: '0.7' },
-      { loc: 'faq', changefreq: 'monthly', priority: '0.7' },
       { loc: 'pricing', changefreq: 'weekly', priority: '0.8' },
+      { loc: 'about', changefreq: 'monthly', priority: '0.7' },
+      { loc: 'faq', changefreq: 'monthly', priority: '0.7' },
       { loc: 'privacy', changefreq: 'yearly', priority: '0.4' },
       { loc: 'terms', changefreq: 'yearly', priority: '0.4' },
       { loc: 'contact', changefreq: 'monthly', priority: '0.5' },
-      // Confirmed supported converters
-      { loc: 'png-to-jpg', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'jpg-to-png', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'png-to-webp', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'jpg-to-webp', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'webp-to-png', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'webp-to-jpg', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'png-to-pdf', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'jpg-to-pdf', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'pdf-to-png', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'pdf-to-jpg', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'svg-to-png', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'svg-to-jpg', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'svg-to-pdf', changefreq: 'weekly', priority: '0.9' },
-      { loc: 'dxf-to-pdf', changefreq: 'weekly', priority: '0.8' },
     ];
 
+    const seoToolRoutes = Object.keys(SEO_ROUTES).map((slug) => ({
+      loc: slug,
+      changefreq: 'weekly',
+      priority: '0.9',
+    }));
+
+    const allRoutes = [...coreRoutes, ...seoToolRoutes];
     const today = new Date().toISOString().split('T')[0];
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${routes
+${allRoutes
   .map(
     (r) => `  <url>
-    <loc>${siteUrl}/${r.loc}</loc>
+    <loc>${siteUrl}${r.loc ? `/${r.loc}` : ''}</loc>
     <lastmod>${today}</lastmod>
     <changefreq>${r.changefreq}</changefreq>
     <priority>${r.priority}</priority>
@@ -974,6 +969,14 @@ ${routes
           title = cfg.title;
           description = cfg.metaDescription;
           canonicalUrl = `${origin}/${cfg.slug}`;
+        } else if (reqPath === 'tools') {
+          title = 'All Free Online Conversion Tools | Convert-X Directory';
+          description =
+            'Browse the complete catalog of free online file conversion tools. Fast, private, and zero-retention image, PDF, and vector converters.';
+        } else if (reqPath === 'about') {
+          title = 'About Convert-X - Fast, Ephemeral & Private File Conversion';
+          description =
+            'Learn about Convert-X: our high-speed C++ conversion pipeline, zero-retention privacy architecture, 256-bit encryption, and technical mission.';
         } else if (reqPath === 'formats') {
           title = 'Supported File Formats Matrix | Convert-X';
           description =
