@@ -11,6 +11,10 @@ import { PDFDocument, PageSizes } from 'pdf-lib';
 import sharp from 'sharp';
 import { createServer as createViteServer } from 'vite';
 import { registry } from './server/converters/registry.js';
+import { jobStorage } from './server/queue/jobStorage.js';
+import { jobQueue } from './server/queue/jobQueue.js';
+import { runCrashRecovery } from './server/queue/crashRecovery.js';
+import { createRateLimiter, checkQueueLimit } from './server/utils/rateLimiter.js';
 import {
   generateTempFilePath,
   detectFileFormat,
@@ -37,11 +41,29 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  // Run crash recovery on server startup to restore in-flight jobs
+  runCrashRecovery();
+
+  // Rate Limiting & Queue Throttling
+  const uploadRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 60,
+    actionName: 'upload',
+  });
+
+  const convertRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 100,
+    actionName: 'conversion',
+  });
+
+  const queueLimitGuard = checkQueueLimit(20);
+
   // Global CORS & preflight middleware
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Session-Id');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
@@ -290,7 +312,15 @@ ${routes
   // Admin Operational Metrics & Telemetry (Honest tracking of real metrics)
   app.get('/api/admin/metrics', (req, res) => {
     try {
-      const metrics = metricsTracker.getMetrics();
+      const qStats = jobQueue.getStats();
+      const metrics = metricsTracker.getMetrics({
+        queuedJobs: qStats.queued,
+        processingJobs: qStats.processing,
+        completedJobs: qStats.completed,
+        failedJobs: qStats.failed,
+        activeWorkers: qStats.activeWorkers,
+        maxConcurrency: qStats.maxConcurrency,
+      });
       res.json({
         success: true,
         metrics,
@@ -298,6 +328,16 @@ ${routes
     } catch (err: any) {
       res.status(500).json({ success: false, error: 'Failed to retrieve server telemetry metrics.' });
     }
+  });
+
+  // Health check endpoint with real queue stats
+  app.get('/api/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      service: 'ConvertX Engine Core',
+      timestamp: new Date().toISOString(),
+      queue: jobQueue.getStats(),
+    });
   });
 
   // 1. Get supported formats and capabilities
@@ -346,15 +386,15 @@ ${routes
       const cleanName = sanitizeFilename(sample.filename);
       const detection = detectFileFormat(fileBuffer, cleanName);
 
-      const job = registry.createJob(cleanName, detection.format, {});
       const { filePath } = generateTempFilePath(detection.format);
       fs.writeFileSync(filePath, fileBuffer);
 
-      registry.updateJob(job.id, {
+      const job = jobStorage.createJob({
+        originalName: cleanName,
+        inputFormat: detection.format,
         inputPath: filePath,
         fileSize: fileBuffer.length,
-        status: 'uploading',
-        progress: 100,
+        sessionId: (req.headers['x-session-id'] as string) || 'sample_session',
       });
 
       const capabilities = registry.getCapabilities();
@@ -377,9 +417,11 @@ ${routes
     }
   });
 
-  // 4. Upload file or load sample file
+  // 4. Upload file or load sample file (rate limited & queue protected)
   app.post(
     '/api/upload',
+    uploadRateLimiter,
+    queueLimitGuard,
     (req, res, next) => {
       upload.single('file')(req, res, (err) => {
         if (err) {
@@ -434,20 +476,23 @@ ${routes
           });
         }
 
-        const job = registry.createJob(cleanName, detection.format, {});
-
         // Save input file to temp path
         const { filePath } = generateTempFilePath(detection.format);
         fs.writeFileSync(filePath, fileBuffer);
 
-        metricsTracker.recordUpload(detection.format, fileBuffer.length);
+        const sessionId = (req.headers['x-session-id'] as string) || req.ip || 'anonymous';
+        const isPro = req.headers['authorization']?.includes('pro_') || false;
 
-        registry.updateJob(job.id, {
+        const job = jobStorage.createJob({
+          originalName: cleanName,
+          inputFormat: detection.format,
           inputPath: filePath,
           fileSize: fileBuffer.length,
-          status: 'uploading',
-          progress: 100,
+          sessionId,
+          isPro,
         });
+
+        metricsTracker.recordUpload(detection.format, fileBuffer.length);
 
         // Retrieve capability details for input format
         const capabilities = registry.getCapabilities();
@@ -472,8 +517,8 @@ ${routes
     }
   );
 
-  // 5. Trigger Conversion
-  app.post('/api/convert', async (req, res) => {
+  // 5. Trigger Asynchronous Conversion Job in Durable Worker Queue
+  app.post('/api/convert', convertRateLimiter, async (req, res) => {
     try {
       const { jobId, outputFormat, options } = req.body;
 
@@ -481,32 +526,29 @@ ${routes
         return res.status(400).json({ success: false, code: 'INVALID_REQUEST', error: 'Missing jobId or target outputFormat.' });
       }
 
-      const job = registry.getJob(jobId);
+      const job = jobStorage.getJob(jobId);
       if (!job) {
         return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', error: 'Conversion session expired or not found. Please re-upload your file.' });
       }
 
-      metricsTracker.recordConversion(job.inputFormat, outputFormat);
-
-      const updatedJob = await registry.processConversion(jobId, outputFormat, options || {});
-      metricsTracker.recordSuccess();
+      // Enqueue job into durable worker queue
+      const enqueuedJob = jobQueue.enqueue(jobId, outputFormat, options || {});
 
       res.json({
         success: true,
-        jobId: updatedJob.id,
-        originalName: updatedJob.originalName,
-        inputFormat: updatedJob.inputFormat,
-        outputFormat: updatedJob.outputFormat,
-        originalSize: updatedJob.fileSize,
-        outputSize: updatedJob.outputSize || 0,
-        status: updatedJob.status,
-        completedAt: updatedJob.completedAt,
-        downloadUrl: `/api/download/${updatedJob.id}`,
+        jobId: enqueuedJob.id,
+        originalName: enqueuedJob.originalName,
+        inputFormat: enqueuedJob.inputFormat,
+        outputFormat: enqueuedJob.outputFormat,
+        status: enqueuedJob.status,
+        progress: enqueuedJob.progress,
+        progressStage: enqueuedJob.progressStage,
+        message: 'Conversion enqueued successfully',
       });
     } catch (err: any) {
       metricsTracker.recordFailure();
       console.error('Convert handler error:', err);
-      res.status(400).json({ success: false, code: 'CONVERSION_FAILED', error: err.message || 'Conversion failed. Please try again.' });
+      res.status(400).json({ success: false, code: 'CONVERSION_ENQUEUE_FAILED', error: err.message || 'Failed to enqueue conversion job.' });
     }
   });
 
@@ -531,7 +573,7 @@ ${routes
       const margin = typeof options.margin === 'number' ? options.margin : 20;
 
       for (const jobId of jobIds) {
-        const job = registry.getJob(jobId);
+        const job = jobStorage.getJob(jobId);
         if (!job) continue;
 
         const filePath = job.outputPath && fs.existsSync(job.outputPath) ? job.outputPath : job.inputPath;
@@ -628,14 +670,22 @@ ${routes
       const { filePath } = generateTempFilePath('pdf');
       fs.writeFileSync(filePath, Buffer.from(pdfBytes));
 
-      const newJob = registry.createJob(outputFilename, 'images', options);
-      registry.updateJob(newJob.id, {
+      const newJob = jobStorage.createJob({
+        originalName: outputFilename,
+        inputFormat: 'images',
+        inputPath: filePath,
+        fileSize: pdfBytes.length,
+        sessionId: (req.headers['x-session-id'] as string) || 'pdf_merge',
+      });
+
+      jobStorage.updateJob(newJob.id, {
         outputPath: filePath,
         outputFormat: 'pdf',
         outputSize: pdfBytes.length,
         outputMimeType: 'application/pdf',
         status: 'completed',
         progress: 100,
+        progressStage: 'PDF merged successfully',
         completedAt: new Date().toISOString(),
       });
 
@@ -661,12 +711,13 @@ ${routes
     }
   });
 
-  // 6. Get Conversion Status
+  // 6. Get Conversion Status & Progress (Single Source of Truth)
   app.get('/api/status/:jobId', (req, res) => {
-    const job = registry.getJob(req.params.jobId);
+    const job = jobStorage.getJob(req.params.jobId);
     if (!job) {
       return res.status(404).json({ success: false, code: 'JOB_NOT_FOUND', error: 'Job not found or session expired.' });
     }
+
     res.json({
       success: true,
       jobId: job.id,
@@ -675,22 +726,37 @@ ${routes
       outputFormat: job.outputFormat,
       status: job.status,
       progress: job.progress,
-      error: job.error,
+      progressStage: job.progressStage,
+      error: job.errorMessage,
+      errorCode: job.errorCode,
       fileSize: job.fileSize,
       outputSize: job.outputSize,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      retryCount: job.retryCount,
+      downloadUrl: job.status === 'completed' ? `/api/download/${job.id}` : null,
     });
   });
 
   // 7. Download Converted File
   app.get('/api/download/:jobId', (req, res) => {
-    const job = registry.getJob(req.params.jobId);
-    if (!job || !job.outputPath || !fs.existsSync(job.outputPath)) {
-      return res.status(404).send('Converted file not found or session expired.');
+    const job = jobStorage.getJob(req.params.jobId);
+    if (!job || !job.outputPath || !fs.existsSync(job.outputPath) || job.status !== 'completed') {
+      return res.status(404).json({
+        success: false,
+        code: 'FILE_NOT_FOUND',
+        error: 'Converted file not found or session expired.',
+      });
     }
 
     const stats = fs.statSync(job.outputPath);
     if (stats.size === 0) {
-      return res.status(500).send('Converted output file is empty.');
+      return res.status(500).json({
+        success: false,
+        code: 'FILE_EMPTY',
+        error: 'Converted output file is empty.',
+      });
     }
 
     metricsTracker.recordDownload();
@@ -709,14 +775,22 @@ ${routes
 
   // 8. File Preview
   app.get('/api/preview/:jobId', (req, res) => {
-    const job = registry.getJob(req.params.jobId);
+    const job = jobStorage.getJob(req.params.jobId);
     if (!job) {
-      return res.status(404).send('File not found.');
+      return res.status(404).json({
+        success: false,
+        code: 'FILE_NOT_FOUND',
+        error: 'File not found or session expired.',
+      });
     }
 
     const targetPath = job.outputPath && fs.existsSync(job.outputPath) ? job.outputPath : job.inputPath;
     if (!targetPath || !fs.existsSync(targetPath)) {
-      return res.status(404).send('Preview unavailable.');
+      return res.status(404).json({
+        success: false,
+        code: 'PREVIEW_UNAVAILABLE',
+        error: 'Preview file is unavailable or missing on server.',
+      });
     }
 
     const ext = path.extname(targetPath).toLowerCase().replace('.', '');
@@ -732,6 +806,15 @@ ${routes
     res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
     const readStream = fs.createReadStream(targetPath);
     readStream.pipe(res);
+  });
+
+  // 9. Strict API 404 Handler - guarantees NO /api/* request falls through to SPA HTML
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({
+      success: false,
+      code: 'API_ENDPOINT_NOT_FOUND',
+      error: `API route ${req.method} ${req.path} not found.`,
+    });
   });
 
   // --- VITE MIDDLEWARE SETUP ---

@@ -8,6 +8,15 @@ export interface FormatCount {
   [format: string]: number;
 }
 
+export interface QueueTelemetry {
+  queuedJobs: number;
+  processingJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  activeWorkers: number;
+  maxConcurrency: number;
+}
+
 export interface OperationalMetrics {
   serverStartTime: string;
   uptimeSeconds: number;
@@ -22,6 +31,7 @@ export interface OperationalMetrics {
   estimatedMemoryUsageMB: number;
   freeConversionsCount: number;
   proConversionsCount: number;
+  queueTelemetry?: QueueTelemetry;
   adsenseIntegration: {
     configured: boolean;
     publisherId: string | null;
@@ -76,7 +86,7 @@ class MetricsTracker {
     this.totalDownloads += 1;
   }
 
-  public getMetrics(): OperationalMetrics {
+  public getMetrics(queueTelemetry?: QueueTelemetry): OperationalMetrics {
     const uptimeSeconds = Math.floor((Date.now() - this.serverStartTime.getTime()) / 1000);
     const mem = process.memoryUsage();
     const estimatedMemoryUsageMB = Math.round(mem.rss / (1024 * 1024));
@@ -98,6 +108,7 @@ class MetricsTracker {
       estimatedMemoryUsageMB,
       freeConversionsCount: this.freeConversionsCount,
       proConversionsCount: this.proConversionsCount,
+      queueTelemetry,
       adsenseIntegration: {
         configured: isAdsenseConfigured,
         publisherId: isAdsenseConfigured ? adsenseId : null,

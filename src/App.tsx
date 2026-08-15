@@ -41,6 +41,7 @@ import {
   DEFAULT_MONETIZATION,
 } from './utils/usageTracker.js';
 import { SEO_ROUTES } from './data/seoRoutes.js';
+import { safeParseJson } from './utils/apiHelper.js';
 import {
   ArrowRight,
   RefreshCw,
@@ -147,7 +148,7 @@ export default function App() {
                 return;
               }
 
-              const data = await res.json();
+              const data = await safeParseJson(res);
               if (data && data.success) {
                 if (data.status === 'failed' && isMounted) {
                   setQueue((prev) =>
@@ -484,7 +485,7 @@ export default function App() {
             throw new Error(parsedError || 'Upload failed');
           }
 
-          const fileData: UploadedFile = await response.json();
+          const fileData: UploadedFile = await safeParseJson(response);
 
           // Set default target output format
           const defaultOutput =
@@ -561,7 +562,7 @@ export default function App() {
         throw new Error(parsedError || 'Failed to load sample design file');
       }
 
-      const fileData: UploadedFile = await response.json();
+      const fileData: UploadedFile = await safeParseJson(response);
       setUploadedFile(fileData);
 
       const defaultOutput =
@@ -599,7 +600,70 @@ export default function App() {
   const safeDailyLimit = limits?.dailyConversions ?? DEFAULT_LIMITS.dailyConversions;
   const safeMaxFileSizeMB = limits?.maxFileSizeMB ?? DEFAULT_LIMITS.maxFileSizeMB;
 
-  // Convert an Individual Item in Queue
+  // Poll Job Status until completed, failed, or expired
+  const pollJobStatus = async (
+    jobId: string,
+    onProgress?: (progress: number, stage: string, retryCount: number) => void,
+    maxWaitMs: number = 180000
+  ): Promise<ConversionResultData> => {
+    const startTime = Date.now();
+    const pollInterval = 700;
+
+    while (Date.now() - startTime < maxWaitMs) {
+      let res: Response;
+      try {
+        res = await fetch(`/api/status/${jobId}`);
+      } catch {
+        // Transient network hiccup - wait and retry
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        continue;
+      }
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('Conversion session expired or file not found on server. Please re-upload your file.');
+        }
+        throw new Error(`Status check failed with HTTP ${res.status}`);
+      }
+
+      const data = await safeParseJson(res);
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to check conversion status.');
+      }
+
+      if (data.status === 'completed') {
+        onProgress?.(100, data.progressStage || 'Completed', data.retryCount || 0);
+        return {
+          jobId: data.jobId,
+          originalName: data.originalName,
+          inputFormat: data.inputFormat,
+          outputFormat: data.outputFormat,
+          originalSize: data.fileSize,
+          outputSize: data.outputSize || 0,
+          completedAt: data.completedAt || new Date().toISOString(),
+        };
+      }
+
+      if (data.status === 'failed') {
+        throw new Error(data.error || data.errorCode || 'Conversion failed on server.');
+      }
+
+      if (data.status === 'expired') {
+        throw new Error(data.error || 'File session expired on server. Please re-upload.');
+      }
+
+      // Still queued or processing
+      const progressVal = typeof data.progress === 'number' ? data.progress : (data.status === 'queued' ? 10 : 50);
+      const stageText = data.progressStage || (data.status === 'queued' ? 'Waiting in queue...' : 'Processing...');
+      onProgress?.(progressVal, stageText, data.retryCount || 0);
+
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error('Conversion timed out on server. Please try again.');
+  };
+
+  // Convert an Individual Item in Queue with Real Worker Queue Polling
   const handleConvertQueueItem = async (id: string) => {
     const item = queue.find((q) => q.id === id);
     if (!item || !item.uploadedFile || item.status === 'converting') return;
@@ -624,7 +688,7 @@ export default function App() {
     setQueue((prev) =>
       prev.map((q) =>
         q.id === id
-          ? { ...q, status: 'converting', progress: 45, error: null, statusText: 'Processing conversion...' }
+          ? { ...q, status: 'converting', progress: 10, error: null, statusText: 'Enqueuing...' }
           : q
       )
     );
@@ -645,10 +709,28 @@ export default function App() {
         throw new Error(serverErrorMsg);
       }
 
-      const resData: ConversionResultData = await response.json();
-      if ((resData as any).success === false && (resData as any).error) {
-        throw new Error((resData as any).error);
+      const enqueueData = await safeParseJson(response);
+      if (enqueueData.success === false && enqueueData.error) {
+        throw new Error(enqueueData.error);
       }
+
+      // Poll until worker queue finishes processing the job
+      const resData = await pollJobStatus(
+        item.uploadedFile.jobId,
+        (progress, stage) => {
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === id
+                ? {
+                    ...q,
+                    progress,
+                    statusText: stage,
+                  }
+                : q
+            )
+          );
+        }
+      );
 
       // Increment daily usage count
       incrementDailyConversionCount(1);
@@ -737,7 +819,7 @@ export default function App() {
           throw new Error(parsedError || 'Upload failed');
         }
 
-        const fileData: UploadedFile = await response.json();
+        const fileData: UploadedFile = await safeParseJson(response);
         const defaultOutput =
           fileData.supportedOutputs && fileData.supportedOutputs.length > 0
             ? fileData.supportedOutputs[0]
@@ -869,9 +951,9 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     setStage('converting');
-    setProgress(50);
+    setProgress(10);
     setStatusText(
-      `Converting .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()}...`
+      `Queuing .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()}...`
     );
 
     try {
@@ -894,10 +976,19 @@ export default function App() {
         throw new Error(serverErrorMsg);
       }
 
-      const resData: ConversionResultData = await response.json();
-      if ((resData as any).success === false && (resData as any).error) {
-        throw new Error((resData as any).error);
+      const enqueueData = await safeParseJson(response);
+      if (enqueueData.success === false && enqueueData.error) {
+        throw new Error(enqueueData.error);
       }
+
+      // Poll until finished
+      const resData = await pollJobStatus(
+        uploadedFile.jobId,
+        (p, stage) => {
+          setProgress(p);
+          setStatusText(stage);
+        }
+      );
 
       // Increment daily usage
       incrementDailyConversionCount(1);
@@ -986,10 +1077,12 @@ export default function App() {
         throw new Error(serverErrorMsg);
       }
 
-      const resData: ConversionResultData = await response.json();
-      if ((resData as any).success === false && (resData as any).error) {
-        throw new Error((resData as any).error);
+      const enqueueData = await safeParseJson(response);
+      if (enqueueData.success === false && enqueueData.error) {
+        throw new Error(enqueueData.error);
       }
+
+      const resData = await pollJobStatus(activeJobId);
 
       setSelectedOutputFormat(targetFormat);
       setResult(resData);
@@ -1046,7 +1139,7 @@ export default function App() {
             body: formData,
           });
           if (uploadRes.ok) {
-            const upData = await uploadRes.json();
+            const upData = await safeParseJson(uploadRes);
             if (upData && upData.jobId) {
               jobIds.push(upData.jobId);
             }
@@ -1072,11 +1165,11 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = await safeParseJson(response).catch(() => ({}));
         throw new Error(errorData.error || 'Failed to merge files into PDF.');
       }
 
-      const resData = await response.json();
+      const resData = await safeParseJson(response);
       incrementDailyConversionCount(1);
       setUsedToday(getDailyConversionCount());
 

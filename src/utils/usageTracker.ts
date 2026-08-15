@@ -1,4 +1,5 @@
 import { AppLimits, MonetizationConfig, UsageData } from '../types.js';
+import { safeParseJson } from './apiHelper.js';
 
 export const DEFAULT_LIMITS: AppLimits = {
   maxFileSizeMB: 25,
@@ -135,7 +136,7 @@ export async function fetchUsageData(): Promise<UsageData> {
     if (!res.ok) {
       return DEFAULT_USAGE;
     }
-    const data = await res.json();
+    const data = await safeParseJson(res);
     const raw = data?.usage || {};
     return {
       dailyConversions:
@@ -157,7 +158,7 @@ export async function fetchAppConfig(): Promise<{ limits: AppLimits; monetizatio
     if (!res.ok) {
       return { limits: DEFAULT_LIMITS, monetization: DEFAULT_MONETIZATION };
     }
-    const data = await res.json();
+    const data = await safeParseJson(res);
     const rawLimits = data?.limits || {};
     const safeLimits: AppLimits = {
       maxFileSizeMB:

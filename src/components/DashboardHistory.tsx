@@ -306,10 +306,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
                         {item.status === 'uploading' && (
                           <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-semibold text-[11px]">
-                              <RefreshCw className="w-3 h-3 animate-spin" />
-                              Uploading...
-                            </span>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-semibold truncate max-w-[130px]">
+                                <RefreshCw className="w-3 h-3 animate-spin flex-shrink-0" />
+                                <span className="truncate">{item.statusText || 'Uploading...'}</span>
+                              </span>
+                              <span className="text-[10px] font-mono text-slate-400">{Math.round(item.progress || 30)}%</span>
+                            </div>
                             <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                               <div
                                 className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
@@ -321,14 +324,17 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
                         {item.status === 'converting' && (
                           <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1.5 text-[#2563EB] dark:text-blue-300 font-semibold text-[11px]">
-                              <RefreshCw className="w-3 h-3 animate-spin" />
-                              Converting...
-                            </span>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="inline-flex items-center gap-1.5 text-[#2563EB] dark:text-blue-300 font-semibold truncate max-w-[130px]">
+                                <RefreshCw className="w-3 h-3 animate-spin flex-shrink-0" />
+                                <span className="truncate">{item.statusText || 'Converting...'}</span>
+                              </span>
+                              <span className="text-[10px] font-mono text-blue-500 dark:text-blue-400 font-bold">{Math.round(item.progress || 40)}%</span>
+                            </div>
                             <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                               <div
-                                className="bg-gradient-to-r from-blue-500 to-indigo-600 h-1.5 rounded-full transition-all duration-300"
-                                style={{ width: `${item.progress || 60}%` }}
+                                className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 h-1.5 rounded-full transition-all duration-300"
+                                style={{ width: `${item.progress || 40}%` }}
                               />
                             </div>
                           </div>
