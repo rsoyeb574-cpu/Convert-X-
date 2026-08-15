@@ -74,10 +74,10 @@ export default function App() {
     orientation: 'portrait',
   });
 
-  // Multi-File Conversion Queue State with Session Storage Recovery
+  // Multi-File Conversion Queue State with LocalStorage Persistence Recovery
   const [queue, setQueue] = useState<ConversionQueueItem[]>(() => {
     try {
-      const saved = sessionStorage.getItem('convertx_queue');
+      const saved = localStorage.getItem('convertx_queue') || sessionStorage.getItem('convertx_queue');
       if (saved) {
         const parsed: ConversionQueueItem[] = JSON.parse(saved);
         return parsed.map((item) => {
@@ -97,15 +97,106 @@ export default function App() {
   });
   const [isConvertingAll, setIsConvertingAll] = useState<boolean>(false);
 
-  // Save queue to Session Storage (omitting non-serializable File objects)
+  // Save queue to LocalStorage (omitting non-serializable File objects)
   useEffect(() => {
     try {
       const serializable = queue.map(({ file, ...rest }) => rest);
-      sessionStorage.setItem('convertx_queue', JSON.stringify(serializable));
+      localStorage.setItem('convertx_queue', JSON.stringify(serializable));
     } catch (e) {
-      console.error('Failed to save queue to sessionStorage', e);
+      console.error('Failed to save queue to localStorage', e);
     }
   }, [queue]);
+
+  // Cross-reference restored queue items with server-side health checks on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifyServerJobs = async () => {
+      const saved = localStorage.getItem('convertx_queue');
+      if (!saved) return;
+
+      try {
+        const items: ConversionQueueItem[] = JSON.parse(saved);
+        const unverifiedItems = items.filter((item) => item.uploadedFile?.jobId);
+        if (unverifiedItems.length === 0) return;
+
+        // Perform health check on server for each job
+        await Promise.all(
+          unverifiedItems.map(async (item) => {
+            const jobId = item.uploadedFile!.jobId;
+            try {
+              const res = await fetch(`/api/status/${jobId}`);
+              if (!res.ok) {
+                if (isMounted) {
+                  setQueue((prev) =>
+                    prev.map((q) =>
+                      q.id === item.id && q.status !== 'completed'
+                        ? {
+                            ...q,
+                            status: 'failed',
+                            error: 'Temporary file session expired on server. Click Retry or re-upload.',
+                          }
+                        : q
+                    )
+                  );
+                }
+                return;
+              }
+
+              const data = await res.json();
+              if (data && data.success) {
+                if (data.status === 'failed' && isMounted) {
+                  setQueue((prev) =>
+                    prev.map((q) =>
+                      q.id === item.id
+                        ? {
+                            ...q,
+                            status: 'failed',
+                            error: data.error || 'Conversion session failed on server.',
+                          }
+                        : q
+                    )
+                  );
+                } else if (data.status === 'completed' && isMounted) {
+                  setQueue((prev) =>
+                    prev.map((q) =>
+                      q.id === item.id
+                        ? {
+                            ...q,
+                            status: 'completed',
+                            progress: 100,
+                            result: {
+                              jobId: data.jobId,
+                              originalName: data.originalName,
+                              inputFormat: data.inputFormat,
+                              outputFormat: data.outputFormat,
+                              originalSize: data.fileSize,
+                              outputSize: data.outputSize || 0,
+                              downloadUrl: `/api/download/${data.jobId}`,
+                              completedAt: new Date().toISOString(),
+                            },
+                          }
+                        : q
+                    )
+                  );
+                }
+              }
+            } catch (err) {
+              console.warn(`Could not verify server status for job ${jobId}:`, err);
+            }
+          })
+        );
+      } catch (err) {
+        console.error('Error verifying restored conversion queue:', err);
+      }
+    };
+
+    verifyServerJobs();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,6 +316,21 @@ export default function App() {
       .catch((err) => console.error('Error loading format catalog:', err));
   }, []);
 
+  // Helper to safely format catch/network exceptions without generic raw 'Failed to fetch'
+  const formatCatchError = (err: any, defaultFallback = 'Conversion failed'): string => {
+    if (!err) return defaultFallback;
+    const msg: string = typeof err === 'string' ? err : err.message || '';
+    if (
+      msg.includes('Failed to fetch') ||
+      msg.includes('NetworkError') ||
+      msg.includes('Load failed') ||
+      msg.includes('network error')
+    ) {
+      return 'Network connection issue: Unable to communicate with conversion server. Please check your connection and click Retry.';
+    }
+    return msg || defaultFallback;
+  };
+
   // Helper to parse specific backend error messages and HTTP status codes
   const parseBackendError = async (
     response: Response,
@@ -233,38 +339,67 @@ export default function App() {
   ): Promise<string> => {
     let serverErrorMsg = '';
 
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      try {
-        const errData = await response.json();
-        serverErrorMsg = errData.error || errData.message || errData.reason || errData.details || '';
-      } catch {
-        // ignore json parse error
-      }
-    } else {
-      try {
-        const textData = await response.text();
-        if (textData && textData.trim()) {
-          serverErrorMsg = textData.trim();
+    try {
+      const clone = response.clone();
+      const contentType = clone.headers.get('content-type') || '';
+
+      if (contentType.includes('application/json')) {
+        try {
+          const errData = await clone.json();
+          if (errData) {
+            if (typeof errData.error === 'string' && errData.error.trim()) {
+              serverErrorMsg = errData.error.trim();
+            } else if (typeof errData.message === 'string' && errData.message.trim()) {
+              serverErrorMsg = errData.message.trim();
+            } else if (typeof errData.reason === 'string' && errData.reason.trim()) {
+              serverErrorMsg = errData.reason.trim();
+            } else if (typeof errData.details === 'string' && errData.details.trim()) {
+              serverErrorMsg = errData.details.trim();
+            } else if (errData.error && typeof errData.error === 'object' && errData.error.message) {
+              serverErrorMsg = errData.error.message;
+            }
+          }
+        } catch {
+          // fall through to text parsing
         }
-      } catch {
-        // ignore text parse error
       }
+
+      if (!serverErrorMsg) {
+        try {
+          const textData = await response.text();
+          if (textData && textData.trim()) {
+            try {
+              const parsed = JSON.parse(textData);
+              serverErrorMsg = parsed.error || parsed.message || parsed.reason || '';
+            } catch {
+              if (!textData.includes('<!DOCTYPE html>') && textData.length < 300) {
+                serverErrorMsg = textData.trim();
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      // ignore
     }
 
     if (!serverErrorMsg) {
       if (response.status === 413) {
-        serverErrorMsg = 'File too large: The uploaded file exceeds the 50MB processing limit.';
+        serverErrorMsg = 'File too large: The uploaded file exceeds the processing limit. Please compress or select a smaller file.';
       } else if (response.status === 415) {
-        serverErrorMsg = `Unsupported format: Conversion from .${(inputFormat || '').toUpperCase()} to .${(outputFormat || '').toUpperCase()} is not supported.`;
+        serverErrorMsg = `Unsupported format: Conversion from .${(inputFormat || '').toUpperCase()} to .${(outputFormat || '').toUpperCase()} is not currently supported.`;
       } else if (response.status === 404) {
-        serverErrorMsg = 'Conversion session expired or file not found. Please upload your file again.';
+        serverErrorMsg = 'Conversion session expired or file not found on server. Please re-upload your file.';
       } else if (response.status === 400) {
-        serverErrorMsg = 'Invalid conversion request. Please check your options and try again.';
+        serverErrorMsg = 'Invalid conversion request or incompatible options specified.';
+      } else if (response.status === 429) {
+        serverErrorMsg = 'Too many requests. Please wait a moment before trying again.';
       } else if (response.status >= 500) {
-        serverErrorMsg = 'Server processing error: The conversion engine encountered an unexpected internal issue.';
+        serverErrorMsg = 'Server processing error: The backend engine encountered an internal issue.';
       } else {
-        serverErrorMsg = `Conversion failed with status ${response.status} (${response.statusText || 'Error'}).`;
+        serverErrorMsg = `Request failed (HTTP ${response.status}: ${response.statusText || 'Error'}).`;
       }
     }
 
@@ -379,7 +514,7 @@ export default function App() {
           }
         } catch (err: any) {
           console.error(`Upload error for ${file.name}:`, err);
-          const errorMsg = err.message || 'Failed to upload file';
+          const errorMsg = formatCatchError(err, 'Failed to upload file');
           setQueue((prev) =>
             prev.map((q) =>
               q.id === item.id
@@ -507,6 +642,9 @@ export default function App() {
       }
 
       const resData: ConversionResultData = await response.json();
+      if ((resData as any).success === false && (resData as any).error) {
+        throw new Error((resData as any).error);
+      }
 
       // Increment daily usage count
       incrementDailyConversionCount(1);
@@ -552,7 +690,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(`Conversion error for ${item.fileName}:`, err);
-      const displayError = err?.message || 'Conversion failed';
+      const displayError = formatCatchError(err, 'Conversion failed. Please try again.');
       setQueue((prev) =>
         prev.map((q) =>
           q.id === id
@@ -619,13 +757,14 @@ export default function App() {
         );
       } catch (err: any) {
         console.error(`Retry upload error for ${item.fileName}:`, err);
+        const displayError = formatCatchError(err, 'Retry upload failed');
         setQueue((prev) =>
           prev.map((q) =>
             q.id === id
               ? {
                   ...q,
                   status: 'failed',
-                  error: err.message || 'Retry upload failed',
+                  error: displayError,
                   progress: 0,
                 }
               : q
@@ -737,6 +876,9 @@ export default function App() {
       }
 
       const resData: ConversionResultData = await response.json();
+      if ((resData as any).success === false && (resData as any).error) {
+        throw new Error((resData as any).error);
+      }
 
       // Increment daily usage
       incrementDailyConversionCount(1);
@@ -772,15 +914,7 @@ export default function App() {
       );
     } catch (err: any) {
       console.error('Conversion Error:', err);
-      let displayError = 'Conversion failed';
-      if (err?.message) {
-        if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
-          displayError =
-            'Network connection error: Unable to reach the conversion server. Please check your connection and retry.';
-        } else {
-          displayError = err.message;
-        }
-      }
+      const displayError = formatCatchError(err, 'Conversion failed');
       setError(displayError);
       setStage('idle');
       setProgress(0);
