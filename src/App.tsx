@@ -96,6 +96,8 @@ export default function App() {
     }
   });
   const [isConvertingAll, setIsConvertingAll] = useState<boolean>(false);
+  const [isCombiningPdf, setIsCombiningPdf] = useState<boolean>(false);
+  const [isReconverting, setIsReconverting] = useState<boolean>(false);
 
   // Save queue to LocalStorage (omitting non-serializable File objects)
   useEffect(() => {
@@ -780,8 +782,11 @@ export default function App() {
     }
   };
 
-  // Convert All Pending / Failed Items in the Queue with Controlled Concurrency
+  // Convert All Pending / Failed Items in the Queue with Strict Semaphore Concurrency (Max 2 simultaneous jobs)
   const handleConvertAllPending = async () => {
+    if (isConvertingAll) return;
+
+    // Snapshot of eligible items (pending or failed, not currently converting)
     const pendingItems = queue.filter(
       (item) =>
         (item.status === 'pending' || item.status === 'failed') &&
@@ -789,33 +794,45 @@ export default function App() {
         item.status !== 'converting'
     );
 
-    if (pendingItems.length === 0 || isConvertingAll) return;
+    if (pendingItems.length === 0) return;
 
     setIsConvertingAll(true);
 
-    const concurrency = 2;
-    const itemsToProcess = [...pendingItems];
+    try {
+      const MAX_CONCURRENT = 2;
+      let currentIndex = 0;
 
-    const worker = async () => {
-      while (itemsToProcess.length > 0) {
-        const nextItem = itemsToProcess.shift();
-        if (nextItem) {
-          if (nextItem.uploadedFile) {
-            await handleConvertQueueItem(nextItem.id);
-          } else if (nextItem.file) {
-            await handleRetryQueueItem(nextItem.id);
+      // Worker function pulling the next job index atomically
+      const runWorker = async () => {
+        while (currentIndex < pendingItems.length) {
+          const itemIndex = currentIndex++;
+          const targetItem = pendingItems[itemIndex];
+          if (!targetItem) break;
+
+          try {
+            if (targetItem.uploadedFile) {
+              await handleConvertQueueItem(targetItem.id);
+            } else if (targetItem.file) {
+              await handleRetryQueueItem(targetItem.id);
+            }
+          } catch (itemErr) {
+            // Independent error isolation ensures one failure never aborts other jobs (avoiding all-fail)
+            console.error(`Error processing queue item ${targetItem.fileName}:`, itemErr);
           }
         }
-      }
-    };
+      };
 
-    const workers = Array.from(
-      { length: Math.min(concurrency, pendingItems.length) },
-      () => worker()
-    );
-    await Promise.all(workers);
+      // Launch up to MAX_CONCURRENT workers
+      const activeWorkerCount = Math.min(MAX_CONCURRENT, pendingItems.length);
+      const workers = Array.from({ length: activeWorkerCount }, () => runWorker());
 
-    setIsConvertingAll(false);
+      // Wait for all workers to settle independently
+      await Promise.allSettled(workers);
+    } catch (err) {
+      console.error('Unexpected error in batch conversion scheduler:', err);
+    } finally {
+      setIsConvertingAll(false);
+    }
   };
 
   // Update target format for a specific item in queue
@@ -929,6 +946,170 @@ export default function App() {
       );
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Quick Re-convert directly from ConversionResult Screen (Goal 7)
+  const handleReconvert = async (targetFormat: string) => {
+    const activeJobId = uploadedFile?.jobId || result?.jobId;
+    if (!activeJobId) return;
+
+    if (isDailyLimitReached(safeDailyLimit)) {
+      setError(
+        `Daily conversion limit reached (${safeDailyLimit}/${safeDailyLimit} conversions used today). Upgrade to Pro for unlimited conversions or try again tomorrow.`
+      );
+      return;
+    }
+
+    setIsReconverting(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId: activeJobId,
+          outputFormat: targetFormat,
+          options,
+        }),
+      });
+
+      if (!response.ok) {
+        const serverErrorMsg = await parseBackendError(
+          response,
+          uploadedFile?.detectedFormat || result?.inputFormat || 'file',
+          targetFormat
+        );
+        throw new Error(serverErrorMsg);
+      }
+
+      const resData: ConversionResultData = await response.json();
+      if ((resData as any).success === false && (resData as any).error) {
+        throw new Error((resData as any).error);
+      }
+
+      setSelectedOutputFormat(targetFormat);
+      setResult(resData);
+      incrementDailyConversionCount(1);
+      setUsedToday(getDailyConversionCount());
+
+      const newHistoryItem: ConversionHistoryItem = {
+        id: 'hist-' + Date.now(),
+        fileName: resData.originalName,
+        inputFormat: resData.inputFormat,
+        outputFormat: resData.outputFormat,
+        originalSize: resData.originalSize,
+        outputSize: resData.outputSize,
+        date: new Date().toISOString(),
+        status: 'completed',
+        jobId: resData.jobId,
+      };
+      setHistory((prev) => [newHistoryItem, ...prev.slice(0, 49)]);
+    } catch (err: any) {
+      console.error('Re-conversion error:', err);
+      const displayError = formatCatchError(err, 'Quick re-conversion failed');
+      setError(displayError);
+    } finally {
+      setIsReconverting(false);
+    }
+  };
+
+  // Combine multiple images / documents in queue into 1 PDF (Goal 10)
+  const handleCombineToPdf = async () => {
+    if (isCombiningPdf || queue.length < 2) return;
+
+    if (isDailyLimitReached(safeDailyLimit)) {
+      setError(
+        `Daily conversion limit reached (${safeDailyLimit}/${safeDailyLimit} conversions used today). Upgrade to Pro for unlimited conversions or try again tomorrow.`
+      );
+      return;
+    }
+
+    setIsCombiningPdf(true);
+    setError(null);
+
+    try {
+      const jobIds: string[] = [];
+      for (const item of queue) {
+        if (item.uploadedFile?.jobId) {
+          jobIds.push(item.uploadedFile.jobId);
+        } else if (item.result?.jobId) {
+          jobIds.push(item.result.jobId);
+        } else if (item.file) {
+          const formData = new FormData();
+          formData.append('file', item.file);
+          const uploadRes = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          if (uploadRes.ok) {
+            const upData = await uploadRes.json();
+            if (upData && upData.jobId) {
+              jobIds.push(upData.jobId);
+            }
+          }
+        }
+      }
+
+      if (jobIds.length === 0) {
+        throw new Error('No valid uploaded files available to combine into PDF.');
+      }
+
+      const response = await fetch('/api/combine-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobIds,
+          options: {
+            pageSize: options.pageSize || 'a4',
+            orientation: options.orientation || 'portrait',
+          },
+          filename: `combined_${jobIds.length}_files.pdf`,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to merge files into PDF.');
+      }
+
+      const resData = await response.json();
+      incrementDailyConversionCount(1);
+      setUsedToday(getDailyConversionCount());
+
+      const resultObj: ConversionResultData = {
+        jobId: resData.jobId,
+        originalName: resData.originalName || 'combined_document.pdf',
+        inputFormat: 'images',
+        outputFormat: 'pdf',
+        originalSize: 0,
+        outputSize: resData.outputSize,
+        completedAt: new Date().toISOString(),
+      };
+
+      const newHistoryItem: ConversionHistoryItem = {
+        id: 'hist-' + Date.now(),
+        fileName: resultObj.originalName,
+        inputFormat: 'images',
+        outputFormat: 'pdf',
+        originalSize: 0,
+        outputSize: resData.outputSize,
+        date: new Date().toISOString(),
+        status: 'completed',
+        jobId: resData.jobId,
+      };
+
+      setHistory((prev) => [newHistoryItem, ...prev.slice(0, 49)]);
+      setResult(resultObj);
+      setStage('completed');
+      setCurrentView('converter');
+    } catch (err: any) {
+      console.error('Combine PDF error:', err);
+      const displayError = formatCatchError(err, 'Failed to merge files into PDF');
+      setError(displayError);
+    } finally {
+      setIsCombiningPdf(false);
     }
   };
 
@@ -1192,6 +1373,11 @@ export default function App() {
                         setStage('idle');
                       }}
                       onNavigate={handleNavigate}
+                      onReconvert={handleReconvert}
+                      isReconverting={isReconverting}
+                      availableFormats={
+                        uploadedFile?.supportedOutputs || ['png', 'jpg', 'webp', 'pdf', 'svg']
+                      }
                     />
                   )}
 
@@ -1267,7 +1453,9 @@ export default function App() {
               onUpdateQueueItemFormat={handleUpdateQueueItemFormat}
               onRemoveQueueItem={handleRemoveQueueItem}
               onClearQueue={handleClearQueue}
+              onCombineToPdf={handleCombineToPdf}
               isConvertingAll={isConvertingAll}
+              isCombiningPdf={isCombiningPdf}
             />
           )}
 

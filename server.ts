@@ -7,6 +7,8 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
+import { PDFDocument, PageSizes } from 'pdf-lib';
+import sharp from 'sharp';
 import { createServer as createViteServer } from 'vite';
 import { registry } from './server/converters/registry.js';
 import {
@@ -412,6 +414,157 @@ ${routes
     } catch (err: any) {
       console.error('Convert handler error:', err);
       res.status(400).json({ success: false, code: 'CONVERSION_FAILED', error: err.message || 'Conversion failed. Please try again.' });
+    }
+  });
+
+  // 5b. Combine / Merge Multiple Files into One PDF (Goal 10)
+  app.post('/api/combine-pdf', async (req, res) => {
+    try {
+      const { jobIds, options = {}, filename } = req.body;
+
+      if (!Array.isArray(jobIds) || jobIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_REQUEST',
+          error: 'Please provide an array of file session job IDs to combine into PDF.',
+        });
+      }
+
+      const combinedPdf = await PDFDocument.create();
+      let totalPages = 0;
+
+      const pageSizeSetting = options.pageSize || 'a4';
+      const isLandscape = options.orientation === 'landscape';
+      const margin = typeof options.margin === 'number' ? options.margin : 20;
+
+      for (const jobId of jobIds) {
+        const job = registry.getJob(jobId);
+        if (!job) continue;
+
+        const filePath = job.outputPath && fs.existsSync(job.outputPath) ? job.outputPath : job.inputPath;
+        if (!filePath || !fs.existsSync(filePath)) continue;
+
+        const fileBuffer = fs.readFileSync(filePath);
+        const inFmt = (path.extname(filePath).replace('.', '') || job.inputFormat || '').toLowerCase();
+
+        if (inFmt === 'pdf') {
+          try {
+            const srcDoc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true });
+            const pageIndices = srcDoc.getPageIndices();
+            const copiedPages = await combinedPdf.copyPages(srcDoc, pageIndices);
+            for (const page of copiedPages) {
+              combinedPdf.addPage(page);
+              totalPages++;
+            }
+          } catch (pdfErr) {
+            console.warn(`Could not copy PDF pages for job ${jobId}:`, pdfErr);
+          }
+        } else {
+          // Convert raster image (or SVG) to PNG with sharp for embedding into PDF page
+          try {
+            const dpi = options.dpi || 150;
+            const density = Math.round((dpi / 72) * 150);
+
+            const pngBuf = await sharp(fileBuffer, { density })
+              .png({ quality: 100 })
+              .toBuffer();
+
+            const embedImage = await combinedPdf.embedPng(pngBuf);
+            const imgW = embedImage.width;
+            const imgH = embedImage.height;
+
+            let [pageWidth, pageHeight] = PageSizes.A4;
+            if (pageSizeSetting === 'letter') {
+              pageWidth = 612; pageHeight = 792;
+            } else if (pageSizeSetting === 'legal') {
+              pageWidth = 612; pageHeight = 1008;
+            } else if (pageSizeSetting === 'a3') {
+              pageWidth = 841.89; pageHeight = 1190.55;
+            } else if (pageSizeSetting === 'a2') {
+              pageWidth = 1190.55; pageHeight = 1683.78;
+            } else if (pageSizeSetting === 'a1') {
+              pageWidth = 1683.78; pageHeight = 2383.94;
+            } else if (pageSizeSetting === 'a0') {
+              pageWidth = 2383.94; pageHeight = 3370.39;
+            } else if (pageSizeSetting === 'auto') {
+              pageWidth = imgW;
+              pageHeight = imgH;
+            }
+
+            if (isLandscape && pageSizeSetting !== 'auto') {
+              const temp = pageWidth;
+              pageWidth = pageHeight;
+              pageHeight = temp;
+            }
+
+            const page = combinedPdf.addPage([pageWidth, pageHeight]);
+
+            let drawW = imgW;
+            let drawH = imgH;
+            let x = 0;
+            let y = 0;
+
+            if (pageSizeSetting !== 'auto') {
+              const maxW = pageWidth - margin * 2;
+              const maxH = pageHeight - margin * 2;
+              const scale = Math.min(maxW / imgW, maxH / imgH);
+              drawW = imgW * scale;
+              drawH = imgH * scale;
+              x = (pageWidth - drawW) / 2;
+              y = (pageHeight - drawH) / 2;
+            }
+
+            page.drawImage(embedImage, { x, y, width: drawW, height: drawH });
+            totalPages++;
+          } catch (imgErr) {
+            console.warn(`Could not embed image for job ${jobId}:`, imgErr);
+          }
+        }
+      }
+
+      if (totalPages === 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'NO_VALID_PAGES',
+          error: 'No valid pages could be processed from the selected files.',
+        });
+      }
+
+      const pdfBytes = await combinedPdf.save();
+      const outputFilename = sanitizeFilename(filename || 'combined_document.pdf');
+      const { filePath } = generateTempFilePath('pdf');
+      fs.writeFileSync(filePath, Buffer.from(pdfBytes));
+
+      const newJob = registry.createJob(outputFilename, 'images', options);
+      registry.updateJob(newJob.id, {
+        outputPath: filePath,
+        outputFormat: 'pdf',
+        outputSize: pdfBytes.length,
+        outputMimeType: 'application/pdf',
+        status: 'completed',
+        progress: 100,
+        completedAt: new Date().toISOString(),
+      });
+
+      res.json({
+        success: true,
+        jobId: newJob.id,
+        originalName: outputFilename,
+        inputFormat: 'multiple',
+        outputFormat: 'pdf',
+        originalSize: 0,
+        outputSize: pdfBytes.length,
+        totalPages,
+        status: 'completed',
+        downloadUrl: `/api/download/${newJob.id}`,
+      });
+    } catch (err: any) {
+      console.error('Combine PDF error:', err);
+      res.status(500).json({
+        success: false,
+        code: 'COMBINE_FAILED',
+        error: err.message || 'Failed to combine files into PDF.',
+      });
     }
   });
 

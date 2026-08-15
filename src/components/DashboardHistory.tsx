@@ -34,7 +34,9 @@ interface DashboardHistoryProps {
   onUpdateQueueItemFormat?: (id: string, format: string) => void;
   onRemoveQueueItem?: (id: string) => void;
   onClearQueue?: () => void;
+  onCombineToPdf?: () => Promise<void> | void;
   isConvertingAll?: boolean;
+  isCombiningPdf?: boolean;
 }
 
 export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
@@ -52,7 +54,9 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   onUpdateQueueItemFormat,
   onRemoveQueueItem,
   onClearQueue,
+  onCombineToPdf,
   isConvertingAll = false,
+  isCombiningPdf = false,
 }) => {
   const addFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -141,7 +145,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                   e.preventDefault();
                   onConvertAllPending();
                 }}
-                disabled={isConvertingAll || convertingCount > 0}
+                disabled={isConvertingAll || convertingCount > 0 || isCombiningPdf}
                 id="convert-all-pending-btn"
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 disabled:opacity-60 text-white text-xs font-extrabold shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
               >
@@ -153,7 +157,34 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 ) : (
                   <>
                     <Zap className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Convert All Pending ({pendingCount + failedCount})</span>
+                    <span>Convert All ({pendingCount + failedCount})</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Combine / Merge into Single PDF Button (Goal 10) */}
+            {queue.length >= 2 && onCombineToPdf && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onCombineToPdf();
+                }}
+                disabled={isCombiningPdf || isConvertingAll}
+                id="combine-pdf-btn"
+                className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 text-xs font-extrabold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-60"
+                title="Combine all uploaded files into a multi-page PDF document"
+              >
+                {isCombiningPdf ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                    <span>Merging into PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Combine into 1 PDF ({queue.length} files)</span>
                   </>
                 )}
               </button>

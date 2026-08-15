@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ConversionResultData, PageView } from '../types.js';
-import { Download, RefreshCw, CheckCircle2, FileText, Sparkles, ArrowRight, Zap } from 'lucide-react';
+import { Download, RefreshCw, CheckCircle2, FileText, Sparkles, ArrowRight, Zap, Layers } from 'lucide-react';
 import { ViralShare } from './ViralShare.js';
 import { AdSlot } from './AdSlot.js';
 
@@ -8,13 +8,22 @@ interface ConversionResultProps {
   result: ConversionResultData;
   onConvertAnother: () => void;
   onNavigate?: (view: PageView) => void;
+  onReconvert?: (targetFormat: string) => Promise<void> | void;
+  availableFormats?: string[];
+  isReconverting?: boolean;
 }
 
 export const ConversionResult: React.FC<ConversionResultProps> = ({
   result,
   onConvertAnother,
   onNavigate,
+  onReconvert,
+  availableFormats = ['png', 'jpg', 'webp', 'pdf', 'svg'],
+  isReconverting = false,
 }) => {
+  const [selectedAltFormat, setSelectedAltFormat] = useState<string>(result.outputFormat);
+  const [isProcessingAlt, setIsProcessingAlt] = useState(false);
+
   const formatSize = (bytes: number): string => {
     if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -28,6 +37,20 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
 
   const baseName = result.originalName.substring(0, result.originalName.lastIndexOf('.')) || result.originalName;
   const convertedFilename = `${baseName}_converted.${result.outputFormat}`;
+
+  const handleAltFormatClick = async (fmt: string) => {
+    if (fmt === result.outputFormat || !onReconvert || isReconverting || isProcessingAlt) return;
+    setSelectedAltFormat(fmt);
+    setIsProcessingAlt(true);
+    try {
+      await onReconvert(fmt);
+    } finally {
+      setIsProcessingAlt(false);
+    }
+  };
+
+  // Alternative formats available to convert to (excluding current output format if possible)
+  const alternateFormats = availableFormats.filter((fmt) => fmt.toLowerCase() !== result.inputFormat.toLowerCase());
 
   return (
     <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-6 sm:p-8 space-y-6 shadow-xl relative overflow-hidden transition-colors">
@@ -103,6 +126,46 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
         </div>
       </div>
 
+      {/* Output Format Selector Directly Before Download (Requirement 7) */}
+      {alternateFormats.length > 0 && onReconvert && (
+        <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-[#2563EB]" />
+              <span>Need this in another format before downloading?</span>
+            </span>
+            <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+              1-click instant re-conversion
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {alternateFormats.map((fmt) => {
+              const isCurrent = fmt.toLowerCase() === result.outputFormat.toLowerCase();
+              return (
+                <button
+                  key={fmt}
+                  type="button"
+                  onClick={() => handleAltFormatClick(fmt)}
+                  disabled={isCurrent || isReconverting || isProcessingAlt}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer ${
+                    isCurrent
+                      ? 'bg-[#2563EB] text-white shadow-sm ring-2 ring-blue-500/30'
+                      : 'bg-white dark:bg-slate-800 text-[#0F172A] dark:text-white border border-[#E2E8F0] dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-950/40'
+                  }`}
+                >
+                  {(isReconverting || isProcessingAlt) && selectedAltFormat === fmt ? (
+                    <RefreshCw className="w-3 h-3 animate-spin text-blue-500" />
+                  ) : null}
+                  <span>.{fmt}</span>
+                  {isCurrent && <span className="text-[10px] font-normal lowercase opacity-80">(current)</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Primary Action Buttons */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
         <a
@@ -112,7 +175,7 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
           className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
         >
           <Download className="w-4 h-4" />
-          <span>Download Converted File</span>
+          <span>Download .{result.outputFormat.toUpperCase()}</span>
         </a>
 
         <button
@@ -163,3 +226,4 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
     </div>
   );
 };
+
