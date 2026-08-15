@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { ConversionHistoryItem, ConversionQueueItem, FormatCapability, PageView, AppLimits } from '../types.js';
+import React, { useRef, useState, useEffect } from 'react';
+import { ConversionHistoryItem, ConversionQueueItem, FormatCapability, PageView, AppLimits, UserPreferences } from '../types.js';
 import {
   Clock,
   Download,
@@ -21,9 +21,14 @@ import {
   ShieldCheck,
   Cpu,
   Minimize2,
+  Star,
+  Flame,
+  Settings,
+  User,
 } from 'lucide-react';
 import { ReferralWidget } from './ReferralWidget.js';
 import { AdSlot } from './AdSlot.js';
+import { toggleFavoriteTool, getStoredUserPreferences } from '../utils/userStore.js';
 
 interface DashboardHistoryProps {
   queue?: ConversionQueueItem[];
@@ -48,6 +53,8 @@ interface DashboardHistoryProps {
   onConvertAgain?: (item: ConversionHistoryItem | ConversionQueueItem) => void;
   isConvertingAll?: boolean;
   isCombiningPdf?: boolean;
+  isReturningUser?: boolean;
+  onOpenAccountModal?: () => void;
 }
 
 export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
@@ -73,10 +80,33 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   onConvertAgain,
   isConvertingAll = false,
   isCombiningPdf = false,
+  isReturningUser = false,
+  onOpenAccountModal,
 }) => {
   const addFileInputRef = useRef<HTMLInputElement>(null);
   const [isZipping, setIsZipping] = useState<boolean>(false);
   const [zipError, setZipError] = useState<string | null>(null);
+  const [userPrefs, setUserPrefs] = useState<UserPreferences>(getStoredUserPreferences());
+  const [popularTools, setPopularTools] = useState<
+    { slug: string; from: string; to: string; count: number; name: string }[]
+  >([]);
+
+  useEffect(() => {
+    fetch('/api/metrics/popular-tools')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.tools)) {
+          setPopularTools(data.tools);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleFavorite = (slug: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updatedFavs = toggleFavoriteTool(slug);
+    setUserPrefs((prev) => ({ ...prev, favoriteTools: updatedFavs }));
+  };
 
   const dailyLimit = limits?.dailyConversions ?? 5;
   const remainingConversions = isPro ? 'Unlimited' : Math.max(0, dailyLimit - usedToday);
@@ -163,6 +193,26 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           1. PROFESSIONAL USER DASHBOARD STATS & QUICK ACTIONS
           ================================================== */}
       <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-6 shadow-xl space-y-6 transition-colors">
+        {/* Returning User Welcome Banner */}
+        {isReturningUser && (
+          <div className="p-3.5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800/40 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-[#2563EB] shrink-0" />
+              <span className="text-[#0F172A] dark:text-[#F8FAFC]">
+                <strong>Welcome back!</strong> Your saved conversion preferences and favorite tools are ready.
+              </span>
+            </div>
+            {onOpenAccountModal && (
+              <button
+                onClick={onOpenAccountModal}
+                className="px-3 py-1 rounded-lg bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800/50 text-[#2563EB] dark:text-blue-400 font-bold text-[11px] hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
+              >
+                Preferences
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Dashboard Title & Plan Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E2E8F0] dark:border-[#1E293B]">
           <div className="space-y-1">
@@ -177,18 +227,31 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             </p>
           </div>
 
-          {/* Plan Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 shadow-xs">
-            <span className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Plan:</span>
-            <span
-              className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
-                isPro
-                  ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-700/60'
-                  : 'bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/40'
-              }`}
-            >
-              {isPro ? 'PRO' : 'FREE'}
-            </span>
+          <div className="flex items-center gap-2">
+            {/* Account & Preferences Modal Trigger */}
+            {onOpenAccountModal && (
+              <button
+                onClick={onOpenAccountModal}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-white text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors shadow-xs cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5 text-[#2563EB]" />
+                <span>Account & Preferences</span>
+              </button>
+            )}
+
+            {/* Plan Badge */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 shadow-xs">
+              <span className="text-xs font-semibold text-[#64748B] dark:text-[#94A3B8]">Plan:</span>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
+                  isPro
+                    ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-700/60'
+                    : 'bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/40'
+                }`}
+              >
+                {isPro ? 'PRO' : 'FREE'}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -243,8 +306,96 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           </div>
         </div>
 
+        {/* Favorite & Recently Used Tools Section */}
+        <div className="space-y-2.5 pt-2 border-t border-[#E2E8F0] dark:border-[#1E293B]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-[#0F172A] dark:text-[#F8FAFC] uppercase tracking-wider flex items-center gap-1.5">
+              <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+              <span>Favorite & Quick Tools</span>
+            </span>
+            <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+              Click star to pin tools
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { slug: 'png-to-pdf', label: 'PNG to PDF' },
+              { slug: 'jpg-to-png', label: 'JPG to PNG' },
+              { slug: 'pdf-to-png', label: 'PDF to PNG' },
+              { slug: 'png-to-jpg', label: 'PNG to JPG' },
+              { slug: 'image-to-pdf', label: 'Image to PDF' },
+              { slug: 'image-compressor', label: 'Compress Image' },
+              { slug: 'pdf-compressor', label: 'Compress PDF' },
+            ].map((tool) => {
+              const isFav = userPrefs.favoriteTools.includes(tool.slug);
+              return (
+                <div
+                  key={tool.slug}
+                  onClick={() => {
+                    if (onOpenSeoRoute) onOpenSeoRoute(tool.slug);
+                    else if (onNavigate) onNavigate('converter');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs ${
+                    isFav
+                      ? 'bg-amber-50/70 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700/60 text-[#0F172A] dark:text-[#F8FAFC]'
+                      : 'bg-slate-50 dark:bg-[#0B1120] border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] hover:border-blue-400 hover:text-[#0F172A]'
+                  }`}
+                >
+                  <span>{tool.label}</span>
+                  <button
+                    onClick={(e) => handleToggleFavorite(tool.slug, e)}
+                    className="p-0.5 text-slate-400 hover:text-amber-500 cursor-pointer"
+                    title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                  >
+                    <Star
+                      className={`w-3 h-3 ${isFav ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Popular Online Tools (Real Aggregate Telemetry) */}
+        {popularTools.length > 0 && (
+          <div className="space-y-2.5 pt-2 border-t border-[#E2E8F0] dark:border-[#1E293B]">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-[#0F172A] dark:text-[#F8FAFC] uppercase tracking-wider flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-orange-500" />
+                <span>Popular Conversion Tools</span>
+              </span>
+              <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                Real-time usage rankings
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {popularTools.slice(0, 4).map((tool) => (
+                <button
+                  key={tool.slug}
+                  onClick={() => {
+                    if (onOpenSeoRoute) onOpenSeoRoute(tool.slug);
+                    else if (onNavigate) onNavigate('converter');
+                  }}
+                  className="p-3 rounded-xl bg-slate-50 dark:bg-[#0B1120] hover:bg-blue-50/60 dark:hover:bg-blue-950/40 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] text-left transition-all group flex flex-col justify-between cursor-pointer"
+                >
+                  <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB] truncate">
+                    {tool.name}
+                  </span>
+                  <div className="flex items-center justify-between mt-1 text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                    <span className="font-mono uppercase">{tool.from} → {tool.to}</span>
+                    <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform text-[#2563EB]" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Quick Actions Bar */}
-        <div className="space-y-2.5 pt-2">
+        <div className="space-y-2.5 pt-2 border-t border-[#E2E8F0] dark:border-[#1E293B]">
           <span className="text-xs font-black text-[#0F172A] dark:text-[#F8FAFC] uppercase tracking-wider block">
             Quick Actions
           </span>
@@ -858,7 +1009,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
       </div>
 
       {/* Referral System */}
-      <ReferralWidget onUpgradeClick={() => onNavigate?.('pricing')} />
+      <ReferralWidget onUpgradeClick={() => onNavigate?.('pricing')} onNavigate={onNavigate} />
 
       {/* AdSlot (Free tier only) */}
       {!isPro && <AdSlot slotId="dashboard-bottom-slot" format="leaderboard" />}

@@ -10,6 +10,7 @@ import {
   PLAN_LIMITS,
 } from './entitlements.js';
 import { paymentService } from './paymentService.js';
+import { referralStore } from './referralService.js';
 
 export const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
 
@@ -199,15 +200,18 @@ export function getDailyUsage(req: express.Request): number {
 }
 
 /**
- * Retrieves remaining conversion quota for today
+ * Retrieves remaining conversion quota for today (including referral bonus credits)
  */
 export function getRemainingDailyQuota(req: express.Request): number | 'unlimited' {
   if (isProUser(req)) {
     return 'unlimited';
   }
 
+  const userId = getClientIdentifier(req);
+  const bonus = referralStore.getBonusQuotaForUser(userId);
+  const effectiveLimit = FREE_DAILY_LIMIT + bonus;
   const used = getDailyUsage(req);
-  return Math.max(0, FREE_DAILY_LIMIT - used);
+  return Math.max(0, effectiveLimit - used);
 }
 
 /**
@@ -235,10 +239,13 @@ export function canCreateConversion(
     };
   }
 
+  const userId = getClientIdentifier(req);
+  const bonus = referralStore.getBonusQuotaForUser(userId);
+  const effectiveLimit = FREE_DAILY_LIMIT + bonus;
   const used = getDailyUsage(req);
-  const remaining = Math.max(0, FREE_DAILY_LIMIT - used);
+  const remaining = Math.max(0, effectiveLimit - used);
 
-  if (remaining <= 0 || used >= FREE_DAILY_LIMIT) {
+  if (remaining <= 0 || used >= effectiveLimit) {
     return {
       allowed: false,
       remaining: 0,
@@ -354,6 +361,8 @@ export function recordSuccessfulConversion(
   }
 
   const userId = getClientIdentifier(req);
+  const bonus = referralStore.getBonusQuotaForUser(userId);
+  const effectiveLimit = FREE_DAILY_LIMIT + bonus;
   const today = getTodayDateString();
   let record = usageStore.get(userId);
 
@@ -371,11 +380,11 @@ export function recordSuccessfulConversion(
     // Already counted for this job, do not double-increment
     return {
       count: record.count,
-      remaining: Math.max(0, FREE_DAILY_LIMIT - record.count),
+      remaining: Math.max(0, effectiveLimit - record.count),
     };
   }
 
-  record.count = Math.min(FREE_DAILY_LIMIT, record.count + count);
+  record.count = Math.min(effectiveLimit, record.count + count);
   if (jobId) {
     record.processedJobIds.push(jobId);
   }
@@ -383,9 +392,12 @@ export function recordSuccessfulConversion(
 
   usageStore.set(userId, record);
 
+  // Trigger referral qualification if this user was referred by someone
+  referralStore.qualifyReferralAction(userId);
+
   return {
     count: record.count,
-    remaining: Math.max(0, FREE_DAILY_LIMIT - record.count),
+    remaining: Math.max(0, effectiveLimit - record.count),
   };
 }
 

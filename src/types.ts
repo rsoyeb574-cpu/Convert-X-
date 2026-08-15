@@ -113,6 +113,7 @@ export type PageView =
   | 'converter'
   | 'formats'
   | 'tools'
+  | 'referral'
   | 'about'
   | 'how-it-works'
   | 'faq'
@@ -124,6 +125,34 @@ export type PageView =
   | 'affiliates'
   | 'seo'
   | '404';
+
+export interface UserPreferences {
+  defaultTargetFormat: string;
+  autoDownload: boolean;
+  imageQuality: number;
+  preserveMetadata: boolean;
+  theme: 'dark' | 'light' | 'system';
+  favoriteTools: string[]; // e.g. ['png-to-jpg', 'pdf-to-png']
+  recentTools: { slug: string; name: string; timestamp: string }[];
+}
+
+export interface UserProfile {
+  id: string;
+  email?: string;
+  plan: 'free' | 'pro' | 'business';
+  isRegistered: boolean;
+  referralCode: string;
+  createdAt: string;
+  preferences: UserPreferences;
+}
+
+export interface ToastNotification {
+  id: string;
+  title: string;
+  message?: string;
+  type: 'success' | 'info' | 'warning' | 'error';
+  duration?: number;
+}
 
 export interface AppLimits {
   maxFileSizeMB: number;

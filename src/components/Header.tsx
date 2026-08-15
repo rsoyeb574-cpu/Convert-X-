@@ -1,7 +1,7 @@
 import React from 'react';
 import { PageView, AppLimits } from '../types.js';
 import { DEFAULT_LIMITS } from '../utils/usageTracker.js';
-import { Layers, ArrowRight, Clock, Sun, Moon, Sparkles } from 'lucide-react';
+import { Layers, ArrowRight, Clock, Sun, Moon, Sparkles, Gift, User } from 'lucide-react';
 
 interface HeaderProps {
   currentView: PageView;
@@ -12,6 +12,7 @@ interface HeaderProps {
   onToggleDarkMode: () => void;
   usedToday?: number;
   limits?: AppLimits;
+  onOpenAccountModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,6 +24,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleDarkMode,
   usedToday = 0,
   limits = DEFAULT_LIMITS,
+  onOpenAccountModal,
 }) => {
   const safeLimits = limits || DEFAULT_LIMITS;
   const maxConversions = safeLimits?.dailyConversions ?? DEFAULT_LIMITS.dailyConversions;
@@ -136,6 +138,22 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </a>
           <a
+            id="nav-referral-btn"
+            href="/referral"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('referral');
+            }}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              currentView === 'referral'
+                ? 'bg-blue-50 dark:bg-slate-800 text-[#2563EB] dark:text-white font-bold'
+                : 'hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <Gift className="w-3.5 h-3.5 text-blue-500" />
+            <span>Referrals</span>
+          </a>
+          <a
             id="nav-faq-btn"
             href="/faq"
             onClick={(e) => {
@@ -154,6 +172,19 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Buttons, Usage Widget & Theme Toggle */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Account / Preferences Trigger */}
+          {onOpenAccountModal && (
+            <button
+              id="header-account-btn"
+              onClick={onOpenAccountModal}
+              className="p-2 rounded-xl border border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white bg-slate-50 dark:bg-[#111827] transition-colors cursor-pointer"
+              title="Account Settings & Preferences"
+              aria-label="Account Settings"
+            >
+              <User className="w-4 h-4 text-[#2563EB]" />
+            </button>
+          )}
+
           {/* Daily Usage Counter Pill */}
           <button
             onClick={() => onNavigate('pricing')}

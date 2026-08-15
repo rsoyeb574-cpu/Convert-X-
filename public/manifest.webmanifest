@@ -1,0 +1,26 @@
+{
+  "name": "Convert-X - Fast & Secure File Converter",
+  "short_name": "Convert-X",
+  "description": "Fast, private online image, document, vector and CAD file converter with zero file retention.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B1120",
+  "theme_color": "#2563EB",
+  "categories": ["utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -51,7 +51,9 @@ import {
   APP_TIMEZONE,
   FREE_BATCH_LIMIT,
   PRO_BATCH_LIMIT,
+  getClientIdentifier,
 } from './server/utils/usageService.js';
+import { referralStore } from './server/utils/referralService.js';
 
 async function startServer() {
   const app = express();
@@ -139,6 +141,7 @@ async function startServer() {
       { loc: 'formats', changefreq: 'weekly', priority: '0.8' },
       { loc: 'how-it-works', changefreq: 'monthly', priority: '0.7' },
       { loc: 'pricing', changefreq: 'weekly', priority: '0.8' },
+      { loc: 'referral', changefreq: 'weekly', priority: '0.8' },
       { loc: 'about', changefreq: 'monthly', priority: '0.7' },
       { loc: 'faq', changefreq: 'monthly', priority: '0.7' },
       { loc: 'privacy', changefreq: 'yearly', priority: '0.4' },
@@ -268,20 +271,65 @@ ${allRoutes
     const isPro = isProUser(req);
     const used = getDailyUsage(req);
     const remaining = getRemainingDailyQuota(req);
+    const userId = getClientIdentifier(req);
+    const referralStats = referralStore.getReferralStats(userId);
 
     res.json({
       success: true,
       usage: {
         dailyConversions: used,
-        dailyLimit: isPro ? 'unlimited' : FREE_DAILY_LIMIT,
+        dailyLimit: isPro ? 'unlimited' : FREE_DAILY_LIMIT + referralStats.bonusConversionsAvailable,
+        baseDailyLimit: FREE_DAILY_LIMIT,
+        bonusConversions: referralStats.bonusConversionsAvailable,
         maxFileSizeMB: isPro ? PRO_MAX_FILE_MB : FREE_MAX_FILE_MB,
         batchLimit: isPro ? PRO_BATCH_LIMIT : FREE_BATCH_LIMIT,
         plan,
         remaining,
         timezone: APP_TIMEZONE,
         canShowAds: canShowAds(req),
+        referralCode: referralStats.referralCode,
       },
     });
+  });
+
+  // Referral statistics endpoint
+  app.get('/api/referral/stats', (req, res) => {
+    const userId = getClientIdentifier(req);
+    const stats = referralStore.getReferralStats(userId);
+    res.json({
+      success: true,
+      ...stats,
+    });
+  });
+
+  // Register incoming referral code (with anti-abuse checks)
+  app.post('/api/referral/register', (req, res) => {
+    const { referralCode } = req.body;
+    if (!referralCode) {
+      return res.status(400).json({ success: false, code: 'MISSING_CODE', error: 'Referral code is required.' });
+    }
+
+    const userId = getClientIdentifier(req);
+    const result = referralStore.registerReferral(userId, referralCode);
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  });
+
+  // Aggregate popular tools endpoint based on real operational telemetry
+  app.get('/api/metrics/popular-tools', (req, res) => {
+    try {
+      const tools = metricsTracker.getPopularTools();
+      res.json({
+        success: true,
+        tools,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: 'Failed to retrieve popular tools.' });
+    }
   });
 
   // Payment status endpoint
@@ -973,6 +1021,10 @@ ${allRoutes
           title = 'All Free Online Conversion Tools | Convert-X Directory';
           description =
             'Browse the complete catalog of free online file conversion tools. Fast, private, and zero-retention image, PDF, and vector converters.';
+        } else if (reqPath === 'referral') {
+          title = 'Invite Friends & Earn Free Conversions | Convert-X Referrals';
+          description =
+            'Share Convert-X with friends and teammates. Earn +1 bonus conversion for every friend who converts their first file.';
         } else if (reqPath === 'about') {
           title = 'About Convert-X - Fast, Ephemeral & Private File Conversion';
           description =
