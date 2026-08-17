@@ -29,6 +29,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [sizeWarning, setSizeWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef<number>(0);
 
   const maxBytes = maxFileSizeMB * 1024 * 1024;
 
@@ -55,18 +56,42 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  // HTML5 Drag-and-Drop Event Handlers
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setIsDragOver(true);
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
   };
 
-  const handleDragLeave = () => {
-    setIsDragOver(false);
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isDragOver) {
+      setIsDragOver(true);
+    }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
     setIsDragOver(false);
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
     }
@@ -105,18 +130,25 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         role="button"
         tabIndex={0}
         aria-label="Upload files dropzone. Drop files here or press Enter to browse files"
+        aria-dropeffect="copy"
+        onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         onKeyDown={handleKeyDown}
         id="upload-drop-zone"
-        className={`relative group rounded-[20px] p-8 sm:p-12 text-center border-2 border-dashed cursor-pointer transition-all duration-300 shadow-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2 ${
+        className={`relative group rounded-[20px] p-8 sm:p-12 text-center border-2 border-dashed cursor-pointer transition-all duration-300 shadow-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2 overflow-hidden ${
           isDragOver
-            ? 'bg-blue-50/80 dark:bg-blue-950/40 border-[#2563EB] scale-[1.01] shadow-2xl shadow-blue-500/10'
+            ? 'bg-blue-100/90 dark:bg-blue-950/70 border-[#2563EB] scale-[1.02] ring-4 ring-blue-500/20 shadow-2xl shadow-blue-500/20'
             : 'bg-white dark:bg-[#111827] border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] dark:hover:border-[#2563EB] hover:-translate-y-1 hover:shadow-2xl'
         }`}
       >
+        {/* Drop active pulse border backdrop */}
+        {isDragOver && (
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-indigo-500/15 to-violet-500/10 dark:from-blue-500/20 dark:via-indigo-500/25 dark:to-violet-500/20 pointer-events-none animate-pulse" />
+        )}
+
         <input
           type="file"
           ref={fileInputRef}
@@ -129,17 +161,35 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
 
         <div className="flex flex-col items-center space-y-4">
           {/* Upload Icon Circle */}
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-blue-950/60 border border-blue-100 dark:border-blue-900/40 flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
-            <Upload className="w-8 h-8 sm:w-10 sm:h-10 text-[#2563EB]" />
+          <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border flex items-center justify-center transition-all duration-300 ${
+            isDragOver
+              ? 'bg-[#2563EB] text-white border-[#2563EB] scale-110 shadow-lg shadow-blue-500/30 rotate-2'
+              : 'bg-gradient-to-tr from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-blue-950/60 border-blue-100 dark:border-blue-900/40 text-[#2563EB] group-hover:scale-110 group-hover:rotate-3'
+          }`}>
+            <Upload className={`w-8 h-8 sm:w-10 sm:h-10 ${isDragOver ? 'text-white animate-bounce' : 'text-[#2563EB]'}`} />
           </div>
 
           {/* Heading */}
           <div className="space-y-1.5">
             <h3 className="text-lg sm:text-xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
-              Drop your files here
+              {isDragOver ? (
+                <span className="text-[#2563EB] dark:text-blue-400 font-black tracking-wide">
+                  Release to drop files here
+                </span>
+              ) : (
+                'Drop your files here'
+              )}
             </h3>
             <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] font-medium">
-              or <span className="text-[#2563EB] hover:underline font-bold">Browse Files</span> from your device
+              {isDragOver ? (
+                <span className="text-blue-700 dark:text-blue-300 font-semibold">
+                  Desktop files will be staged immediately
+                </span>
+              ) : (
+                <>
+                  or <span className="text-[#2563EB] hover:underline font-bold">Browse Files</span> from your device
+                </>
+              )}
             </p>
           </div>
 
@@ -167,15 +217,20 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
             </div>
           )}
 
-          {/* Upload Button */}
-          <button
-            type="button"
-            id="browse-files-btn"
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 pointer-events-none"
-          >
-            <FileUp className="w-4 h-4" />
-            <span>Select Files</span>
-          </button>
+          {/* Upload Button with Keyboard Shortcut Badge */}
+          <div className="flex flex-col sm:flex-row items-center gap-2">
+            <button
+              type="button"
+              id="browse-files-btn"
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 pointer-events-none"
+            >
+              <FileUp className="w-4 h-4" />
+              <span>Select Files</span>
+              <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-bold bg-white/20 text-white rounded border border-white/30 tracking-tight">
+                Ctrl+O
+              </kbd>
+            </button>
+          </div>
 
           {/* Required Trust & Retention Privacy Message */}
           <div className="flex items-center gap-2 pt-2 text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8] max-w-md text-center">

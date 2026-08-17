@@ -1,6 +1,22 @@
 import React, { useState } from 'react';
+import QRCode from 'qrcode';
 import { ConversionResultData, PageView } from '../types.js';
-import { Download, RefreshCw, CheckCircle2, FileText, Sparkles, ArrowRight, Zap, Layers } from 'lucide-react';
+import {
+  Download,
+  RefreshCw,
+  CheckCircle2,
+  FileText,
+  Sparkles,
+  ArrowRight,
+  Zap,
+  Layers,
+  Copy,
+  Check,
+  Link2,
+  QrCode,
+  Smartphone,
+  X,
+} from 'lucide-react';
 import { ViralShare } from './ViralShare.js';
 import { AdSlot } from './AdSlot.js';
 
@@ -23,6 +39,10 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
 }) => {
   const [selectedAltFormat, setSelectedAltFormat] = useState<string>(result.outputFormat);
   const [isProcessingAlt, setIsProcessingAlt] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showQrCode, setShowQrCode] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
 
   const formatSize = (bytes: number): string => {
     if (!bytes || bytes === 0) return '0 Bytes';
@@ -37,6 +57,52 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
 
   const baseName = result.originalName.substring(0, result.originalName.lastIndexOf('.')) || result.originalName;
   const convertedFilename = `${baseName}_converted.${result.outputFormat}`;
+
+  const handleCopyLink = async () => {
+    try {
+      const fullUrl = `${window.location.origin}${downloadUrl}`;
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(fullUrl);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = fullUrl;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 3000);
+    } catch (err) {
+      console.error('Failed to copy conversion link to clipboard:', err);
+    }
+  };
+
+  const handleToggleQrCode = async () => {
+    if (!showQrCode && !qrDataUrl) {
+      setQrLoading(true);
+      try {
+        const fullUrl = `${window.location.origin}${downloadUrl}`;
+        const generatedUrl = await QRCode.toDataURL(fullUrl, {
+          width: 320,
+          margin: 2,
+          color: {
+            dark: '#0F172A',
+            light: '#FFFFFF',
+          },
+        });
+        setQrDataUrl(generatedUrl);
+      } catch (err) {
+        console.error('Failed to generate QR code:', err);
+      } finally {
+        setQrLoading(false);
+      }
+    }
+    setShowQrCode((prev) => !prev);
+  };
 
   const handleAltFormatClick = async (fmt: string) => {
     if (fmt === result.outputFormat || !onReconvert || isReconverting || isProcessingAlt) return;
@@ -98,7 +164,38 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
 
       {/* Converted Image/Vector Preview */}
       <div className="space-y-2">
-        <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">Output File Preview</span>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">Output File Preview</span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleToggleQrCode}
+              className="text-[11px] font-semibold text-[#2563EB] dark:text-blue-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+              title="Generate QR code for mobile phone scanning"
+            >
+              <QrCode className="w-3.5 h-3.5 text-[#2563EB]" />
+              <span>{showQrCode ? 'Hide QR Code' : 'Mobile QR'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="text-[11px] font-semibold text-[#2563EB] dark:text-blue-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+              title="Copy download link to clipboard"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">Link Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  <span>Copy Link</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
         <div className="w-full h-64 sm:h-80 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] p-2 flex items-center justify-center overflow-hidden relative">
           {['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(result.outputFormat) ? (
             <img
@@ -167,26 +264,140 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
       )}
 
       {/* Primary Action Buttons */}
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
         <a
           href={downloadUrl}
           download={convertedFilename}
           id="download-converted-file-btn"
-          className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
         >
           <Download className="w-4 h-4" />
           <span>Download .{result.outputFormat.toUpperCase()}</span>
         </a>
 
+        {/* Generate QR Code Button */}
+        <button
+          type="button"
+          onClick={handleToggleQrCode}
+          id="generate-qr-code-btn"
+          className={`w-full sm:w-auto px-5 py-3.5 rounded-xl border text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
+            showQrCode
+              ? 'bg-blue-50 dark:bg-blue-950/70 border-[#2563EB] text-[#2563EB] dark:text-blue-400 ring-2 ring-blue-500/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border-[#E2E8F0] dark:border-slate-700 text-[#0F172A] dark:text-[#F8FAFC]'
+          }`}
+          title="Generate a QR code to download this file directly to your smartphone"
+        >
+          {qrLoading ? (
+            <RefreshCw className="w-4 h-4 text-[#2563EB] animate-spin" />
+          ) : (
+            <QrCode className="w-4 h-4 text-[#2563EB]" />
+          )}
+          <span>{showQrCode ? 'Hide QR Code' : 'Generate QR Code'}</span>
+        </button>
+
+        {/* Copy Link to Clipboard Button */}
+        <button
+          type="button"
+          onClick={handleCopyLink}
+          id="copy-result-link-btn"
+          className={`w-full sm:w-auto px-5 py-3.5 rounded-xl border text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
+            copiedLink
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border-[#E2E8F0] dark:border-slate-700 text-[#0F172A] dark:text-[#F8FAFC]'
+          }`}
+          title="Copy the direct download link of this converted file to clipboard"
+        >
+          {copiedLink ? (
+            <>
+              <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Link Copied!</span>
+            </>
+          ) : (
+            <>
+              <Link2 className="w-4 h-4 text-[#2563EB]" />
+              <span>Copy Link</span>
+            </>
+          )}
+        </button>
+
         <button
           onClick={onConvertAnother}
           id="convert-another-file-btn"
-          className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] border border-[#E2E8F0] dark:border-[#1E293B] text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+          className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] border border-[#E2E8F0] dark:border-[#1E293B] text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
         >
           <RefreshCw className="w-4 h-4 text-[#2563EB]" />
-          <span>Convert Another File</span>
+          <span>Convert Another</span>
         </button>
       </div>
+
+      {/* QR Code Quick Mobile Access Card */}
+      {showQrCode && qrDataUrl && (
+        <div
+          id="qr-code-mobile-card"
+          className="p-6 rounded-2xl bg-white dark:bg-[#111827] border border-blue-200 dark:border-blue-900/60 shadow-xl space-y-4 animate-fade-in relative"
+        >
+          <button
+            type="button"
+            onClick={() => setShowQrCode(false)}
+            className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Close QR Code"
+          >
+            <X className="w-4 h-4" />
+          </button>
+
+          <div className="flex flex-col sm:flex-row items-center gap-6">
+            {/* QR Code Canvas / Image Display */}
+            <div className="p-3 bg-white rounded-2xl shadow-md border border-slate-200 shrink-0">
+              <img
+                src={qrDataUrl}
+                alt="File Download QR Code"
+                className="w-44 h-44 sm:w-48 sm:h-48 object-contain rounded-lg"
+              />
+            </div>
+
+            {/* Mobile Scan Instructions & Actions */}
+            <div className="space-y-3 text-center sm:text-left flex-1">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/40 text-[#2563EB] dark:text-blue-300 text-xs font-bold">
+                <Smartphone className="w-3.5 h-3.5 text-[#2563EB]" />
+                <span>Instant Mobile Download</span>
+              </div>
+
+              <div className="space-y-1">
+                <h4 className="text-base sm:text-lg font-black text-[#0F172A] dark:text-[#F8FAFC]">
+                  Scan with your phone camera
+                </h4>
+                <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8] leading-relaxed">
+                  Point your iPhone or Android camera at this QR code to download <strong className="text-[#0F172A] dark:text-[#F8FAFC]">.{result.outputFormat.toUpperCase()}</strong> directly to your mobile device.
+                </p>
+              </div>
+
+              {/* Download URL box */}
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between gap-2 text-xs font-mono text-[#64748B] dark:text-[#94A3B8]">
+                <span className="truncate">{`${window.location.origin}${downloadUrl}`}</span>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#0F172A] dark:text-white font-sans font-bold text-[11px] hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
+                >
+                  {copiedLink ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+
+              {/* Save QR Image Button */}
+              <div className="pt-1 flex flex-wrap items-center gap-2">
+                <a
+                  href={qrDataUrl}
+                  download={`convertx_${baseName}_qr.png`}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] text-xs font-bold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors inline-flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download QR Image</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pro Value CTA Card (Requirement 13) */}
       {onNavigate && (

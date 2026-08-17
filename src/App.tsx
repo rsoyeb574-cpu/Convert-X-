@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   PageView,
   UploadedFile,
@@ -9,6 +9,9 @@ import {
   FormatCapability,
   AppLimits,
   MonetizationConfig,
+  UserProfile,
+  UserPreferences,
+  ToastNotification,
 } from './types.js';
 import { Header } from './components/Header.js';
 import { Footer } from './components/Footer.js';
@@ -34,6 +37,9 @@ import { AdSlot } from './components/AdSlot.js';
 import { AffiliateSection } from './components/AffiliateSection.js';
 import { UniversalExportSection } from './components/UniversalExportSection.js';
 import { AdminMetricsModal } from './components/AdminMetricsModal.js';
+import { AccountModal } from './components/AccountModal.js';
+import { ReferralPage } from './components/ReferralPage.js';
+import { NotificationToastContainer } from './components/NotificationToast.js';
 import { initAnalytics } from './utils/analytics.js';
 import {
   fetchAppConfig,
@@ -43,6 +49,13 @@ import {
   DEFAULT_LIMITS,
   DEFAULT_MONETIZATION,
 } from './utils/usageTracker.js';
+import {
+  getStoredUserProfile,
+  saveUserProfile,
+  getStoredUserPreferences,
+  saveUserPreferences,
+  recordRecentTool,
+} from './utils/userStore.js';
 import { SEO_ROUTES } from './data/seoRoutes.js';
 import { safeParseJson } from './utils/apiHelper.js';
 import {
@@ -56,12 +69,36 @@ import {
   AlertTriangle,
   X,
   ListOrdered,
+  Keyboard,
 } from 'lucide-react';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<PageView>('home');
   const [seoSlug, setSeoSlug] = useState<string>('png-to-jpg');
   const [darkMode, setDarkMode] = useState<boolean>(true);
+
+  // User Profile & Preferences State
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => getStoredUserProfile());
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => getStoredUserPreferences());
+  const [showAccountModal, setShowAccountModal] = useState<boolean>(false);
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  // Hidden Global File Input Ref for Ctrl+O / Cmd+O trigger
+  const globalFileInputRef = useRef<HTMLInputElement>(null);
+
+  const showToast = (title: string, message?: string, type: ToastNotification['type'] = 'info') => {
+    const newToast: ToastNotification = {
+      id: `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      title,
+      message,
+      type,
+      duration: 4000,
+    };
+    setToasts((prev) => [...prev, newToast]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== newToast.id));
+    }, 4000);
+  };
 
   // Monetization & Limits State
   const [limits, setLimits] = useState<AppLimits>(DEFAULT_LIMITS);
@@ -1244,6 +1281,80 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Keyboard Shortcuts State Reference to avoid stale closure issues
+  const shortcutStateRef = useRef({
+    uploadedFile,
+    isLoading,
+    stage,
+    currentView,
+    queue,
+    isConvertingAll,
+  });
+
+  useEffect(() => {
+    shortcutStateRef.current = {
+      uploadedFile,
+      isLoading,
+      stage,
+      currentView,
+      queue,
+      isConvertingAll,
+    };
+  });
+
+  // Global Keyboard Shortcuts Listener:
+  // - Ctrl+O / Cmd+O: Trigger file picker dialog
+  // - Ctrl+Enter / Cmd+Enter: Initiate active conversion in workspace
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.ctrlKey || e.metaKey;
+
+      // 1. Ctrl+O or Cmd+O: Trigger file upload
+      if (isCmdOrCtrl && (e.key === 'o' || e.key === 'O')) {
+        e.preventDefault();
+        globalFileInputRef.current?.click();
+        return;
+      }
+
+      // 2. Ctrl+Enter or Cmd+Enter: Initiate conversion
+      if (isCmdOrCtrl && e.key === 'Enter') {
+        const {
+          uploadedFile: file,
+          isLoading: loading,
+          stage: stg,
+          currentView: view,
+          queue: q,
+          isConvertingAll: batching,
+        } = shortcutStateRef.current;
+
+        // In Single File Converter Workspace: initiate single conversion if file is ready
+        if (file && file.status === 'supported' && !loading && stg === 'idle') {
+          e.preventDefault();
+          handleStartConversion();
+          return;
+        }
+
+        // In Dashboard / Batch Workspace: initiate batch conversion if pending items exist
+        if (
+          (view === 'dashboard' || view === 'converter') &&
+          q.some(
+            (item) =>
+              (item.status === 'pending' || item.status === 'failed') &&
+              (item.uploadedFile || item.file)
+          ) &&
+          !batching
+        ) {
+          e.preventDefault();
+          handleConvertAllPending();
+          return;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
   const pendingQueueCount = queue.filter(
     (item) => item.status === 'pending' || item.status === 'uploading'
   ).length;
@@ -1264,6 +1375,24 @@ export default function App() {
           onToggleDarkMode={() => setDarkMode(!darkMode)}
           usedToday={usedToday}
           limits={limits || DEFAULT_LIMITS}
+          onOpenAccountModal={() => setShowAccountModal(true)}
+        />
+
+        {/* Hidden Global File Input for Ctrl+O / Cmd+O */}
+        <input
+          type="file"
+          ref={globalFileInputRef}
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              handleFilesSelected(Array.from(e.target.files));
+              e.target.value = '';
+            }
+          }}
+          multiple
+          className="hidden"
+          id="global-keyboard-file-input"
+          tabIndex={-1}
+          aria-hidden="true"
         />
 
         {/* View Switcher */}
@@ -1312,6 +1441,21 @@ export default function App() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* Keyboard Shortcuts Hint Pill */}
+                  <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                    <Keyboard className="w-3.5 h-3.5 text-[#2563EB]" />
+                    <span className="font-semibold">Shortcuts:</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[10px] font-mono font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                      Ctrl+O
+                    </kbd>
+                    <span>Upload</span>
+                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[10px] font-mono font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                      Ctrl+↵
+                    </kbd>
+                    <span>Convert</span>
+                  </div>
+
                   {queue.length > 1 && (
                     <button
                       onClick={() => setCurrentView('dashboard')}
@@ -1447,6 +1591,11 @@ export default function App() {
                                     ? `Convert .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()} Now`
                                     : `Engine Extension Required for .${uploadedFile.detectedFormat.toUpperCase()}`}
                                 </span>
+                                {uploadedFile.status === 'supported' && (
+                                  <kbd className="hidden sm:inline-flex items-center px-2 py-0.5 ml-1.5 text-[10px] font-mono font-bold bg-white/20 text-white rounded border border-white/30 tracking-tight">
+                                    Ctrl+↵
+                                  </kbd>
+                                )}
                               </>
                             )}
                           </button>
@@ -1573,6 +1722,7 @@ export default function App() {
               }}
               isConvertingAll={isConvertingAll}
               isCombiningPdf={isCombiningPdf}
+              onOpenAccountModal={() => setShowAccountModal(true)}
             />
           )}
 
@@ -1587,7 +1737,16 @@ export default function App() {
             </div>
           )}
 
-          {/* 12. 404 Not Found Page */}
+          {/* 12. Referral & Rewards Center */}
+          {currentView === 'referral' && (
+            <ReferralPage
+              referralCode={userProfile.referralCode}
+              onNavigate={handleNavigate}
+              onToast={showToast}
+            />
+          )}
+
+          {/* 13. 404 Not Found Page */}
           {currentView === '404' && <NotFoundPage onNavigate={handleNavigate} />}
 
           {/* Ad Slot 2: Lower on the page */}
@@ -1614,6 +1773,33 @@ export default function App() {
 
       {/* Main Footer */}
       <Footer onNavigate={handleNavigate} onOpenMetrics={() => setShowAdminMetrics(true)} />
+
+      {/* Account Settings & Preferences Modal */}
+      <AccountModal
+        isOpen={showAccountModal}
+        onClose={() => setShowAccountModal(false)}
+        profile={userProfile}
+        preferences={userPreferences}
+        onPreferencesChange={(p) => {
+          setUserPreferences(p);
+          saveUserPreferences(p);
+        }}
+        onProfileChange={(p) => {
+          setUserProfile(p);
+          saveUserProfile(p);
+        }}
+        usedToday={usedToday}
+        dailyLimit={limits?.dailyConversions || DEFAULT_LIMITS.dailyConversions}
+        isPro={limits?.isPro}
+        onNavigate={handleNavigate}
+        onToast={showToast}
+      />
+
+      {/* Global Interactive Notification Toasts Container */}
+      <NotificationToastContainer
+        toasts={toasts}
+        onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+      />
 
       {/* Admin Real-Time Operational Analytics Telemetry Modal */}
       <AdminMetricsModal
