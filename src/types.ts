@@ -32,7 +32,7 @@ export interface ConversionOptions {
   width?: number;
   height?: number;
   maintainAspectRatio?: boolean;
-  dpi?: number; // 72, 150, 300
+  dpi?: number; // 72, 150, 300, 600
   backgroundColor?: string; // hex or 'transparent'
   pageSize?: 'a4' | 'a3' | 'a2' | 'a1' | 'a0' | 'letter' | 'legal' | 'auto';
   orientation?: 'portrait' | 'landscape';
@@ -62,6 +62,11 @@ export interface ConversionResultData {
   originalSize: number;
   outputSize: number;
   completedAt: string;
+  width?: number;
+  height?: number;
+  pdfPageSize?: string;
+  pngResolution?: string;
+  dpi?: number;
 }
 
 export interface ConversionQueueItem {

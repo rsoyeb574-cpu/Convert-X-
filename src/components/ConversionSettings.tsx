@@ -130,19 +130,32 @@ export const ConversionSettings: React.FC<ConversionSettingsProps> = ({
 
         {/* DPI Density Dropdown */}
         <div className="space-y-2">
-          <label className="block text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
-            DPI / Rendering Density
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+              DPI / Rendering Density
+            </label>
+            {inFmtClean === 'pdf' && (
+              <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">
+                Direct 1:1 PDF Page Render
+              </span>
+            )}
+          </div>
           <select
             id="setting-dpi-select"
-            value={options.dpi || 150}
+            value={options.dpi || 300}
             onChange={(e) => onChangeOptions({ ...options, dpi: parseInt(e.target.value) })}
             className="w-full bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl px-3 py-2 text-xs text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB]"
           >
             <option value={72}>72 DPI — Standard Screen Resolution</option>
-            <option value={150}>150 DPI — High-Definition Digital Output</option>
-            <option value={300}>300 DPI — Ultra-Sharp Print & Vector Quality</option>
+            <option value={150}>150 DPI — Medium Digital Resolution</option>
+            <option value={300}>300 DPI — High Resolution Print (Default)</option>
+            <option value={600}>600 DPI — Ultra-High Resolution / Archival Quality</option>
           </select>
+          {inFmtClean === 'pdf' && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Calculates exact pixel dimensions: PDF width (in) × DPI by PDF height (in) × DPI (e.g. A4 @ 300 DPI = ~2480 × 3508 px).
+            </p>
+          )}
         </div>
 
         {/* Background Color Selection */}

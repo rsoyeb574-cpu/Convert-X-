@@ -845,6 +845,11 @@ ${allRoutes
       startedAt: job.startedAt,
       completedAt: job.completedAt,
       retryCount: job.retryCount,
+      width: job.width,
+      height: job.height,
+      pdfPageSize: job.pdfPageSize,
+      pngResolution: job.pngResolution,
+      dpi: job.dpi,
       downloadUrl: job.status === 'completed' ? `/api/download/${job.id}` : null,
     });
   });

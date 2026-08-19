@@ -173,6 +173,37 @@ export class PdfConverter implements ConverterEngine {
     };
   }
 
+  private detectPdfPageFormat(ptWidth: number, ptHeight: number): string {
+    const minPt = Math.min(ptWidth, ptHeight);
+    const maxPt = Math.max(ptWidth, ptHeight);
+    const isLandscape = ptWidth > ptHeight;
+    const tol = 6; // tolerance in points
+
+    const standardSizes: { name: string; min: number; max: number }[] = [
+      { name: 'A0', min: 2384, max: 3370 },
+      { name: 'A1', min: 1684, max: 2384 },
+      { name: 'A2', min: 1191, max: 1684 },
+      { name: 'A3', min: 842, max: 1191 },
+      { name: 'A4', min: 595.28, max: 841.89 },
+      { name: 'A5', min: 419.53, max: 595.28 },
+      { name: 'A6', min: 297.64, max: 419.53 },
+      { name: 'Letter', min: 612, max: 792 },
+      { name: 'Legal', min: 612, max: 1008 },
+      { name: 'Tabloid', min: 792, max: 1224 },
+      { name: 'Executive', min: 522, max: 756 },
+    ];
+
+    for (const s of standardSizes) {
+      if (Math.abs(minPt - s.min) <= tol && Math.abs(maxPt - s.max) <= tol) {
+        return isLandscape ? `${s.name} (Landscape)` : `${s.name} (Portrait)`;
+      }
+    }
+
+    const wInches = (ptWidth / 72).toFixed(2);
+    const hInches = (ptHeight / 72).toFixed(2);
+    return `Custom (${wInches}" × ${hInches}")`;
+  }
+
   private async convertPdfToImage(
     buffer: Buffer,
     outFmt: 'png' | 'jpg' | 'webp',
@@ -187,21 +218,33 @@ export class PdfConverter implements ConverterEngine {
       throw new Error('PDF document has 0 pages.');
     }
 
-    // Determine scale from DPI (72 base) or resolution option
-    const dpi = options.dpi || 150;
-    const scale = (dpi / 72) * (options.resolution && options.resolution > 0 ? options.resolution / 100 : 1);
-    const clampedScale = Math.max(1.0, Math.min(scale, 4.0)); // Reasonable scale limit
+    // Default DPI = 300; Supported DPI options: 72, 150, 300, 600
+    const targetDpi = [72, 150, 300, 600].includes(options.dpi) ? options.dpi : (options.dpi || 300);
+    // In PDF standard, 1 point = 1/72 inch. Scale factor for PDF.js = targetDpi / 72
+    const scale = targetDpi / 72;
 
     const quality = options.quality && options.quality > 0 && options.quality <= 100 ? options.quality : 90;
     const bgColor = options.backgroundColor && options.backgroundColor !== 'transparent'
       ? options.backgroundColor
       : '#ffffff';
 
-    const renderSinglePage = async (pageIndex: number): Promise<Buffer> => {
+    const renderSinglePage = async (pageIndex: number): Promise<{ buffer: Buffer; width: number; height: number; pageSize: string }> => {
       const pdfPage = await doc.getPage(pageIndex);
-      const viewport = pdfPage.getViewport({ scale: clampedScale });
 
-      const canvas = createCanvas(Math.round(viewport.width), Math.round(viewport.height));
+      // Read unscaled page dimensions from the PDF itself (points = 1/72 inch)
+      const unscaledViewport = pdfPage.getViewport({ scale: 1.0 });
+      const pageSize = this.detectPdfPageFormat(unscaledViewport.width, unscaledViewport.height);
+
+      // Calculate PNG dimensions directly from PDF page dimensions in inches and DPI:
+      // PNG width  = PDF page width in inches × DPI = (unscaledViewport.width / 72) * targetDpi
+      // PNG height = PDF page height in inches × DPI = (unscaledViewport.height / 72) * targetDpi
+      const canvasWidth = Math.round((unscaledViewport.width / 72) * targetDpi);
+      const canvasHeight = Math.round((unscaledViewport.height / 72) * targetDpi);
+
+      // Render the complete PDF page at the selected DPI so that all content keeps its original relative size
+      const viewport = pdfPage.getViewport({ scale });
+
+      const canvas = createCanvas(canvasWidth, canvasHeight);
       const rawCtx = canvas.getContext('2d');
 
       // Compatibility polyfills for @napi-rs/canvas with pdfjs CanvasGraphics
@@ -229,9 +272,11 @@ export class PdfConverter implements ConverterEngine {
         return originalClip('nonzero');
       };
 
-      // Fill white background initially for clean rendering
-      rawCtx.fillStyle = '#ffffff';
-      rawCtx.fillRect(0, 0, canvas.width, canvas.height);
+      // Fill background for clean rendering
+      if (outFmt === 'jpg' || (options.backgroundColor && options.backgroundColor !== 'transparent') || !options.transparentBackground) {
+        rawCtx.fillStyle = bgColor;
+        rawCtx.fillRect(0, 0, canvas.width, canvas.height);
+      }
 
       await (pdfPage.render as any)({
         canvasContext: rawCtx,
@@ -242,35 +287,45 @@ export class PdfConverter implements ConverterEngine {
       const rawPng = canvas.toBuffer('image/png');
 
       let pipeline = sharp(rawPng);
+      let pageImageBuf: Buffer;
       if (outFmt === 'jpg') {
-        return await pipeline.flatten({ background: bgColor }).jpeg({ quality, mozjpeg: true }).toBuffer();
+        pageImageBuf = await pipeline.flatten({ background: bgColor }).jpeg({ quality, mozjpeg: true }).toBuffer();
       } else if (outFmt === 'webp') {
         if (options.backgroundColor && options.backgroundColor !== 'transparent') {
           pipeline = pipeline.flatten({ background: options.backgroundColor });
         }
-        return await pipeline.webp({ quality }).toBuffer();
+        pageImageBuf = await pipeline.webp({ quality }).toBuffer();
       } else {
         if (options.backgroundColor && options.backgroundColor !== 'transparent') {
           pipeline = pipeline.flatten({ background: options.backgroundColor });
         }
-        return await pipeline.png({ quality }).toBuffer();
+        pageImageBuf = await pipeline.png({ quality }).toBuffer();
       }
+
+      return {
+        buffer: pageImageBuf,
+        width: canvasWidth,
+        height: canvasHeight,
+        pageSize,
+      };
     };
 
     // Case A: Specific Page Requested (e.g. pageNumber: 2) or Single-Page PDF
     if (options.pageNumber || totalPages === 1) {
       const pageToRender = Math.max(1, Math.min(options.pageNumber || 1, totalPages));
-      const imageBuf = await renderSinglePage(pageToRender);
+      const { buffer: imageBuf, width, height, pageSize } = await renderSinglePage(pageToRender);
 
-      const meta = await sharp(imageBuf).metadata();
       const mime = outFmt === 'jpg' ? 'image/jpeg' : outFmt === 'webp' ? 'image/webp' : 'image/png';
       return {
         buffer: imageBuf,
         mimeType: mime,
         outputExtension: outFmt,
         pageCount: totalPages,
-        width: meta.width,
-        height: meta.height,
+        width,
+        height,
+        pdfPageSize: pageSize,
+        pngResolution: `${width} × ${height} px`,
+        dpi: targetDpi,
       };
     }
 
@@ -283,8 +338,17 @@ export class PdfConverter implements ConverterEngine {
     }
 
     const zip = new JSZip();
+    let firstWidth = 0;
+    let firstHeight = 0;
+    let firstPageSize = '';
+
     for (let i = 1; i <= totalPages; i++) {
-      const pageBuf = await renderSinglePage(i);
+      const { buffer: pageBuf, width, height, pageSize } = await renderSinglePage(i);
+      if (i === 1) {
+        firstWidth = width;
+        firstHeight = height;
+        firstPageSize = pageSize;
+      }
       const pageFileName = `page_${String(i).padStart(3, '0')}.${outFmt}`;
       zip.file(pageFileName, pageBuf);
     }
@@ -296,6 +360,11 @@ export class PdfConverter implements ConverterEngine {
       mimeType: 'application/zip',
       outputExtension: 'zip',
       pageCount: totalPages,
+      width: firstWidth,
+      height: firstHeight,
+      pdfPageSize: firstPageSize,
+      pngResolution: `${firstWidth} × ${firstHeight} px`,
+      dpi: targetDpi,
     };
   }
 

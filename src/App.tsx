@@ -111,7 +111,7 @@ export default function App() {
   const [selectedOutputFormat, setSelectedOutputFormat] = useState<string>('png');
   const [options, setOptions] = useState<ConversionOptions>({
     quality: 90,
-    dpi: 150,
+    dpi: 300,
     backgroundColor: '#ffffff',
     pageSize: 'a4',
     orientation: 'portrait',
@@ -683,6 +683,11 @@ export default function App() {
           originalSize: data.fileSize,
           outputSize: data.outputSize || 0,
           completedAt: data.completedAt || new Date().toISOString(),
+          width: data.width,
+          height: data.height,
+          pdfPageSize: data.pdfPageSize,
+          pngResolution: data.pngResolution,
+          dpi: data.dpi,
         };
       }
 

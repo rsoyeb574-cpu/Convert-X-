@@ -263,6 +263,11 @@ export class JobQueue {
         outputFormat: finalExt,
         outputMimeType: mimeType,
         outputSize: stats.size,
+        width: convertResult.width,
+        height: convertResult.height,
+        pdfPageSize: convertResult.pdfPageSize,
+        pngResolution: convertResult.pngResolution || (convertResult.width && convertResult.height ? `${convertResult.width} × ${convertResult.height} px` : undefined),
+        dpi: convertResult.dpi || job.options?.dpi || 300,
         errorMessage: null,
         errorCode: null,
       });

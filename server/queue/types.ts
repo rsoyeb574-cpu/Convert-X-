@@ -26,6 +26,11 @@ export interface DurableJob {
   maxRetries: number;
   options: ConversionOptions;
   isPro: boolean;
+  width?: number;
+  height?: number;
+  pdfPageSize?: string;
+  pngResolution?: string;
+  dpi?: number;
 }
 
 export interface CreateJobParams {

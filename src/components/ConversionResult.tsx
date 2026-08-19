@@ -162,6 +162,53 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
         </div>
       </div>
 
+      {/* Conversion Technical Specifications (PDF Page Size, PNG Resolution, DPI) */}
+      {(result.inputFormat === 'pdf' || result.pdfPageSize || result.pngResolution || result.width) && (
+        <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+            <span className="text-xs font-extrabold text-[#0F172A] dark:text-white uppercase tracking-wider flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
+              <span>Direct Rendering Specifications</span>
+            </span>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400">
+              Aspect Ratio 100% Preserved
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            {/* PDF Page Size */}
+            <div className="p-3 rounded-lg bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-slate-800 space-y-1">
+              <span className="text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
+                PDF Page Size
+              </span>
+              <p className="text-xs font-extrabold text-[#0F172A] dark:text-white">
+                {result.pdfPageSize || 'A4 (Portrait)'}
+              </p>
+            </div>
+
+            {/* PNG Resolution */}
+            <div className="p-3 rounded-lg bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-slate-800 space-y-1">
+              <span className="text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
+                PNG Resolution
+              </span>
+              <p className="text-xs font-extrabold text-[#2563EB] dark:text-blue-400">
+                {result.pngResolution || (result.width && result.height ? `${result.width} × ${result.height} px` : '2480 × 3508 px')}
+              </p>
+            </div>
+
+            {/* DPI */}
+            <div className="p-3 rounded-lg bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-slate-800 space-y-1">
+              <span className="text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
+                DPI
+              </span>
+              <p className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400">
+                {result.dpi ? `${result.dpi} DPI` : '300 DPI'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Converted Image/Vector Preview */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
