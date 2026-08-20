@@ -3,7 +3,15 @@ import sharp from 'sharp';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createCanvas, Path2D } from '@napi-rs/canvas';
 import JSZip from 'jszip';
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import { promisify } from 'node:util';
 import { ConverterEngine, ConvertParams, ConvertResult, ValidationResult } from './types.js';
+
+const execFileAsync = promisify(execFile);
 
 export class PdfConverter implements ConverterEngine {
   id = 'pdf-document-engine';
@@ -209,163 +217,203 @@ export class PdfConverter implements ConverterEngine {
     outFmt: 'png' | 'jpg' | 'webp',
     options: any
   ): Promise<ConvertResult> {
-    const uint8 = new Uint8Array(buffer);
-    const loadingTask = pdfjsLib.getDocument({ data: uint8, verbosity: 0 });
-    const doc = await loadingTask.promise;
-    const totalPages = doc.numPages;
+    // 1. Inspect original PDF document and get exact page metrics
+    const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+    const totalPages = pdfDoc.getPageCount();
 
     if (totalPages === 0) {
-      throw new Error('PDF document has 0 pages.');
+      throw new Error('PDF document contains 0 pages.');
     }
 
     // Default DPI = 300; Supported DPI options: 72, 150, 300, 600
     const targetDpi = [72, 150, 300, 600].includes(options.dpi) ? options.dpi : (options.dpi || 300);
-    // In PDF standard, 1 point = 1/72 inch. Scale factor for PDF.js = targetDpi / 72
-    const scale = targetDpi / 72;
-
     const quality = options.quality && options.quality > 0 && options.quality <= 100 ? options.quality : 90;
-    const bgColor = options.backgroundColor && options.backgroundColor !== 'transparent'
+    const isTransparent = options.transparentBackground || options.backgroundColor === 'transparent';
+    const customBg = options.backgroundColor && options.backgroundColor !== 'transparent' && options.backgroundColor !== '#ffffff'
       ? options.backgroundColor
-      : '#ffffff';
+      : null;
 
-    const renderSinglePage = async (pageIndex: number): Promise<{ buffer: Buffer; width: number; height: number; pageSize: string }> => {
-      const pdfPage = await doc.getPage(pageIndex);
+    // Read the first (or selected) page's actual physical MediaBox / CropBox dimensions
+    const pageIndexToInspect = options.pageNumber ? Math.max(1, Math.min(options.pageNumber, totalPages)) - 1 : 0;
+    const targetPage = pdfDoc.getPage(pageIndexToInspect);
+    const cropBox = targetPage.getCropBox() || targetPage.getMediaBox();
+    const ptWidth = cropBox ? cropBox.width : targetPage.getWidth();
+    const ptHeight = cropBox ? cropBox.height : targetPage.getHeight();
 
-      // Read unscaled page dimensions from the PDF itself (points = 1/72 inch)
-      const unscaledViewport = pdfPage.getViewport({ scale: 1.0 });
-      const pageSize = this.detectPdfPageFormat(unscaledViewport.width, unscaledViewport.height);
+    const detectedPageSize = this.detectPdfPageFormat(ptWidth, ptHeight);
+    const expectedWidth = Math.round((ptWidth / 72) * targetDpi);
+    const expectedHeight = Math.round((ptHeight / 72) * targetDpi);
 
-      // Calculate PNG dimensions directly from PDF page dimensions in inches and DPI:
-      // PNG width  = PDF page width in inches × DPI = (unscaledViewport.width / 72) * targetDpi
-      // PNG height = PDF page height in inches × DPI = (unscaledViewport.height / 72) * targetDpi
-      const canvasWidth = Math.round((unscaledViewport.width / 72) * targetDpi);
-      const canvasHeight = Math.round((unscaledViewport.height / 72) * targetDpi);
+    // Create temporary workspace for direct Ghostscript PDF rendering
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'convertx_pdf_'));
+    const tempPdfPath = path.join(tempDir, 'input.pdf');
+    fs.writeFileSync(tempPdfPath, buffer);
 
-      // Render the complete PDF page at the selected DPI so that all content keeps its original relative size
-      const viewport = pdfPage.getViewport({ scale });
+    try {
+      // 2. Direct rendering of original PDF page using native Ghostscript engine
+      // This preserves 100% font fidelity, embedded glyphs, kerning, line spacing, and dimensions
+      const isSinglePage = Boolean(options.pageNumber) || totalPages === 1;
+      const targetPageNum = isSinglePage
+        ? Math.max(1, Math.min(options.pageNumber || 1, totalPages))
+        : null;
 
-      const canvas = createCanvas(canvasWidth, canvasHeight);
-      const rawCtx = canvas.getContext('2d');
+      const outputPattern = isSinglePage
+        ? path.join(tempDir, 'page_output.png')
+        : path.join(tempDir, 'page_%03d.png');
 
-      // Compatibility polyfills for @napi-rs/canvas with pdfjs CanvasGraphics
-      const originalFill = rawCtx.fill.bind(rawCtx);
-      rawCtx.fill = function (...args: any[]) {
-        if (args.length === 1 && typeof args[0] === 'string') {
-          return originalFill(args[0]);
-        } else if (args.length === 0) {
-          return originalFill('nonzero');
-        } else if (args[0] instanceof Path2D) {
-          return originalFill(args[0], args[1] || 'nonzero');
-        }
-        return originalFill('nonzero');
-      };
+      const gsArgs: string[] = [
+        '-dNOPAUSE',
+        '-dBATCH',
+        '-dSAFER',
+        isTransparent ? '-sDEVICE=pngalpha' : '-sDEVICE=png16m',
+        `-r${targetDpi}`,
+        '-dTextAlphaBits=4',
+        '-dGraphicsAlphaBits=4',
+        '-dUseCropBox',
+      ];
 
-      const originalClip = rawCtx.clip.bind(rawCtx);
-      rawCtx.clip = function (...args: any[]) {
-        if (args.length === 1 && typeof args[0] === 'string') {
-          return originalClip(args[0]);
-        } else if (args.length === 0) {
-          return originalClip('nonzero');
-        } else if (args[0] instanceof Path2D) {
-          return originalClip(args[0], args[1] || 'nonzero');
-        }
-        return originalClip('nonzero');
-      };
-
-      // Fill background for clean rendering
-      if (outFmt === 'jpg' || (options.backgroundColor && options.backgroundColor !== 'transparent') || !options.transparentBackground) {
-        rawCtx.fillStyle = bgColor;
-        rawCtx.fillRect(0, 0, canvas.width, canvas.height);
+      if (targetPageNum !== null) {
+        gsArgs.push(`-dFirstPage=${targetPageNum}`, `-dLastPage=${targetPageNum}`);
       }
 
-      await (pdfPage.render as any)({
-        canvasContext: rawCtx,
-        canvas: canvas,
-        viewport,
-      }).promise;
+      gsArgs.push(`-sOutputFile=${outputPattern}`, tempPdfPath);
 
-      const rawPng = canvas.toBuffer('image/png');
-
-      let pipeline = sharp(rawPng);
-      let pageImageBuf: Buffer;
-      if (outFmt === 'jpg') {
-        pageImageBuf = await pipeline.flatten({ background: bgColor }).jpeg({ quality, mozjpeg: true }).toBuffer();
-      } else if (outFmt === 'webp') {
-        if (options.backgroundColor && options.backgroundColor !== 'transparent') {
-          pipeline = pipeline.flatten({ background: options.backgroundColor });
+      let stdout = '';
+      let stderr = '';
+      try {
+        const execResult = await execFileAsync('gs', gsArgs);
+        stdout = execResult.stdout || '';
+        stderr = execResult.stderr || '';
+      } catch (err: any) {
+        const errOutput = `${err.message || ''} ${err.stderr || ''}`;
+        // Check for font-specific decoding/corruption errors
+        if (
+          errOutput.includes('invalidfont') ||
+          errOutput.includes('Font not found') ||
+          errOutput.includes('Failed to load font') ||
+          errOutput.includes('Embedded font corrupted')
+        ) {
+          throw new Error(
+            'PDF rendering failed: The document contains custom or embedded fonts that could not be decoded. Please verify that font outlines are properly embedded in the PDF.'
+          );
         }
-        pageImageBuf = await pipeline.webp({ quality }).toBuffer();
-      } else {
-        if (options.backgroundColor && options.backgroundColor !== 'transparent') {
-          pipeline = pipeline.flatten({ background: options.backgroundColor });
-        }
-        pageImageBuf = await pipeline.png({ quality }).toBuffer();
+        throw new Error(`PDF rendering engine error: ${err.stderr || err.message}`);
       }
 
-      return {
-        buffer: pageImageBuf,
-        width: canvasWidth,
-        height: canvasHeight,
-        pageSize,
-      };
-    };
+      // Check stderr for fatal font warnings
+      if (stderr.includes('Error: /invalidfont') || stderr.includes('Fatal font error')) {
+        throw new Error(
+          'PDF rendering failed: The PDF contains a font that could not be rendered faithfully without distortion.'
+        );
+      }
 
-    // Case A: Specific Page Requested (e.g. pageNumber: 2) or Single-Page PDF
-    if (options.pageNumber || totalPages === 1) {
-      const pageToRender = Math.max(1, Math.min(options.pageNumber || 1, totalPages));
-      const { buffer: imageBuf, width, height, pageSize } = await renderSinglePage(pageToRender);
+      // 3. Process the rendered output files
+      if (isSinglePage) {
+        if (!fs.existsSync(outputPattern)) {
+          throw new Error('PDF rendering did not produce the expected image output.');
+        }
 
-      const mime = outFmt === 'jpg' ? 'image/jpeg' : outFmt === 'webp' ? 'image/webp' : 'image/png';
+        const rawPngBuf = fs.readFileSync(outputPattern);
+        let finalImageBuf: Buffer;
+        let pipeline = sharp(rawPngBuf);
+
+        if (outFmt === 'jpg') {
+          const bg = customBg || '#ffffff';
+          finalImageBuf = await pipeline.flatten({ background: bg }).jpeg({ quality, mozjpeg: true }).toBuffer();
+        } else if (outFmt === 'webp') {
+          if (customBg) {
+            pipeline = pipeline.flatten({ background: customBg });
+          }
+          finalImageBuf = await pipeline.webp({ quality }).toBuffer();
+        } else {
+          // PNG
+          if (customBg) {
+            pipeline = pipeline.flatten({ background: customBg });
+          }
+          finalImageBuf = await pipeline.png({ quality }).toBuffer();
+        }
+
+        const meta = await sharp(finalImageBuf).metadata();
+        const finalWidth = meta.width || expectedWidth;
+        const finalHeight = meta.height || expectedHeight;
+        const mime = outFmt === 'jpg' ? 'image/jpeg' : outFmt === 'webp' ? 'image/webp' : 'image/png';
+
+        return {
+          buffer: finalImageBuf,
+          mimeType: mime,
+          outputExtension: outFmt,
+          pageCount: totalPages,
+          width: finalWidth,
+          height: finalHeight,
+          pdfPageSize: detectedPageSize,
+          pngResolution: `${finalWidth} × ${finalHeight} px`,
+          dpi: targetDpi,
+        };
+      }
+
+      // Multi-Page PDF archive export
+      const maxPdfPages = process.env.FREE_MAX_PDF_PAGES ? parseInt(process.env.FREE_MAX_PDF_PAGES, 10) : 10;
+      if (totalPages > maxPdfPages) {
+        throw new Error(
+          `This PDF document has ${totalPages} pages, exceeding the limit of ${maxPdfPages} pages for multi-page archive export. Please select a specific page in settings or upgrade.`
+        );
+      }
+
+      const files = fs.readdirSync(tempDir).filter((f) => f.startsWith('page_') && f.endsWith('.png')).sort();
+      if (files.length === 0) {
+        throw new Error('PDF multi-page rendering produced no output files.');
+      }
+
+      const zip = new JSZip();
+      let firstWidth = 0;
+      let firstHeight = 0;
+
+      for (let i = 0; i < files.length; i++) {
+        const pageFile = path.join(tempDir, files[i]);
+        const rawBuf = fs.readFileSync(pageFile);
+        let pageImgBuf: Buffer;
+        let pPipeline = sharp(rawBuf);
+
+        if (outFmt === 'jpg') {
+          const bg = customBg || '#ffffff';
+          pageImgBuf = await pPipeline.flatten({ background: bg }).jpeg({ quality, mozjpeg: true }).toBuffer();
+        } else if (outFmt === 'webp') {
+          if (customBg) pPipeline = pPipeline.flatten({ background: customBg });
+          pageImgBuf = await pPipeline.webp({ quality }).toBuffer();
+        } else {
+          if (customBg) pPipeline = pPipeline.flatten({ background: customBg });
+          pageImgBuf = await pPipeline.png({ quality }).toBuffer();
+        }
+
+        if (i === 0) {
+          const m = await sharp(pageImgBuf).metadata();
+          firstWidth = m.width || expectedWidth;
+          firstHeight = m.height || expectedHeight;
+        }
+
+        const archiveFileName = `page_${String(i + 1).padStart(3, '0')}.${outFmt}`;
+        zip.file(archiveFileName, pageImgBuf);
+      }
+
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
       return {
-        buffer: imageBuf,
-        mimeType: mime,
-        outputExtension: outFmt,
+        buffer: zipBuffer,
+        mimeType: 'application/zip',
+        outputExtension: 'zip',
         pageCount: totalPages,
-        width,
-        height,
-        pdfPageSize: pageSize,
-        pngResolution: `${width} × ${height} px`,
+        width: firstWidth || expectedWidth,
+        height: firstHeight || expectedHeight,
+        pdfPageSize: detectedPageSize,
+        pngResolution: `${firstWidth || expectedWidth} × ${firstHeight || expectedHeight} px`,
         dpi: targetDpi,
       };
+    } finally {
+      // Safe cleanup of temporary working directory
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {}
     }
-
-    // Case B: Multi-Page PDF without specific pageNumber -> Package all pages in a high-res ZIP
-    const maxPdfPages = process.env.FREE_MAX_PDF_PAGES ? parseInt(process.env.FREE_MAX_PDF_PAGES, 10) : 10;
-    if (totalPages > maxPdfPages) {
-      throw new Error(
-        `This PDF document has ${totalPages} pages, exceeding the Free plan limit of ${maxPdfPages} pages for multi-page archive export. Please select a specific page in settings or upgrade to Pro.`
-      );
-    }
-
-    const zip = new JSZip();
-    let firstWidth = 0;
-    let firstHeight = 0;
-    let firstPageSize = '';
-
-    for (let i = 1; i <= totalPages; i++) {
-      const { buffer: pageBuf, width, height, pageSize } = await renderSinglePage(i);
-      if (i === 1) {
-        firstWidth = width;
-        firstHeight = height;
-        firstPageSize = pageSize;
-      }
-      const pageFileName = `page_${String(i).padStart(3, '0')}.${outFmt}`;
-      zip.file(pageFileName, pageBuf);
-    }
-
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-
-    return {
-      buffer: zipBuffer,
-      mimeType: 'application/zip',
-      outputExtension: 'zip',
-      pageCount: totalPages,
-      width: firstWidth,
-      height: firstHeight,
-      pdfPageSize: firstPageSize,
-      pngResolution: `${firstWidth} × ${firstHeight} px`,
-      dpi: targetDpi,
-    };
   }
 
   private async reformatPdf(buffer: Buffer, options: any): Promise<ConvertResult> {
