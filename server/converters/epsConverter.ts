@@ -121,29 +121,25 @@ export class EpsConverter implements ConverterEngine {
       }
 
       const rawPngBuf = fs.readFileSync(outPngPath);
-      let pipeline = sharp(rawPngBuf);
-
-      if (options.width || options.height) {
-        pipeline = pipeline.resize(options.width || null, options.height || null, {
-          fit: options.maintainAspectRatio !== false ? 'contain' : 'fill',
-        });
-      }
-
       let finalBuffer: Buffer;
       let mimeType: string;
 
       if (target === 'jpg') {
         const bg = customBg || '#ffffff';
-        finalBuffer = await pipeline.flatten({ background: bg }).jpeg({ quality, mozjpeg: true }).toBuffer();
+        finalBuffer = await sharp(rawPngBuf).flatten({ background: bg }).jpeg({ quality, mozjpeg: true }).toBuffer();
         mimeType = 'image/jpeg';
       } else if (target === 'webp') {
+        let pipeline = sharp(rawPngBuf);
         if (customBg) pipeline = pipeline.flatten({ background: customBg });
         finalBuffer = await pipeline.webp({ quality }).toBuffer();
         mimeType = 'image/webp';
       } else {
         // PNG
-        if (customBg) pipeline = pipeline.flatten({ background: customBg });
-        finalBuffer = await pipeline.png({ quality }).toBuffer();
+        if (customBg) {
+          finalBuffer = await sharp(rawPngBuf).flatten({ background: customBg }).png().toBuffer();
+        } else {
+          finalBuffer = rawPngBuf;
+        }
         mimeType = 'image/png';
       }
 

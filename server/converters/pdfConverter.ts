@@ -226,14 +226,15 @@ export class PdfConverter implements ConverterEngine {
     }
 
     // Default DPI = 300; Supported DPI options: 72, 150, 300, 600
-    const targetDpi = [72, 150, 300, 600].includes(options.dpi) ? options.dpi : (options.dpi || 300);
-    const quality = options.quality && options.quality > 0 && options.quality <= 100 ? options.quality : 90;
+    // Strictly backend-authoritative, independent of client device/viewport
+    const targetDpi = [72, 150, 300, 600].includes(Number(options.dpi)) ? Number(options.dpi) : 300;
+    const quality = options.quality && options.quality > 0 && options.quality <= 100 ? Number(options.quality) : 90;
     const isTransparent = options.transparentBackground || options.backgroundColor === 'transparent';
     const customBg = options.backgroundColor && options.backgroundColor !== 'transparent' && options.backgroundColor !== '#ffffff'
       ? options.backgroundColor
       : null;
 
-    // Read the first (or selected) page's actual physical MediaBox / CropBox dimensions
+    // Read the first (or selected) page's actual physical MediaBox / CropBox dimensions in points (1/72 inch)
     const pageIndexToInspect = options.pageNumber ? Math.max(1, Math.min(options.pageNumber, totalPages)) - 1 : 0;
     const targetPage = pdfDoc.getPage(pageIndexToInspect);
     const cropBox = targetPage.getCropBox() || targetPage.getMediaBox();
@@ -251,7 +252,7 @@ export class PdfConverter implements ConverterEngine {
 
     try {
       // 2. Direct rendering of original PDF page using native Ghostscript engine
-      // This preserves 100% font fidelity, embedded glyphs, kerning, line spacing, and dimensions
+      // Ghostscript uses original embedded fonts, glyphs, kerning, line spacing, vectors, and CropBox dimensions
       const isSinglePage = Boolean(options.pageNumber) || totalPages === 1;
       const targetPageNum = isSinglePage
         ? Math.max(1, Math.min(options.pageNumber || 1, totalPages))
@@ -314,28 +315,51 @@ export class PdfConverter implements ConverterEngine {
         }
 
         const rawPngBuf = fs.readFileSync(outputPattern);
-        let finalImageBuf: Buffer;
-        let pipeline = sharp(rawPngBuf);
+        const gsMeta = await sharp(rawPngBuf).metadata();
+        const gsWidth = gsMeta.width || expectedWidth;
+        const gsHeight = gsMeta.height || expectedHeight;
 
-        if (outFmt === 'jpg') {
+        let finalImageBuf: Buffer;
+
+        if (outFmt === 'png') {
+          // IMPORTANT: For PDF -> PNG, if Ghostscript already produces the correct PNG,
+          // do NOT resize or alter dimensions. If no custom background was requested,
+          // use the Ghostscript PNG buffer directly without any Sharp reprocessing.
+          if (customBg) {
+            finalImageBuf = await sharp(rawPngBuf)
+              .flatten({ background: customBg })
+              .png()
+              .toBuffer();
+          } else {
+            finalImageBuf = rawPngBuf;
+          }
+        } else if (outFmt === 'jpg') {
           const bg = customBg || '#ffffff';
-          finalImageBuf = await pipeline.flatten({ background: bg }).jpeg({ quality, mozjpeg: true }).toBuffer();
-        } else if (outFmt === 'webp') {
+          finalImageBuf = await sharp(rawPngBuf)
+            .flatten({ background: bg })
+            .jpeg({ quality, mozjpeg: true })
+            .toBuffer();
+        } else {
+          // WEBP
+          let pipeline = sharp(rawPngBuf);
           if (customBg) {
             pipeline = pipeline.flatten({ background: customBg });
           }
           finalImageBuf = await pipeline.webp({ quality }).toBuffer();
-        } else {
-          // PNG
-          if (customBg) {
-            pipeline = pipeline.flatten({ background: customBg });
-          }
-          finalImageBuf = await pipeline.png({ quality }).toBuffer();
         }
 
-        const meta = await sharp(finalImageBuf).metadata();
-        const finalWidth = meta.width || expectedWidth;
-        const finalHeight = meta.height || expectedHeight;
+        const finalMeta = await sharp(finalImageBuf).metadata();
+        const finalWidth = finalMeta.width || gsWidth;
+        const finalHeight = finalMeta.height || gsHeight;
+
+        // Validation Logging Requirement
+        console.log(`[PDF -> ${outFmt.toUpperCase()} Conversion Validation]
+  PDF page (${detectedPageSize}): ${ptWidth.toFixed(2)} pt × ${ptHeight.toFixed(2)} pt (${(ptWidth / 72).toFixed(2)}" × ${(ptHeight / 72).toFixed(2)}")
+  Requested DPI: ${targetDpi} (default: 300)
+  Ghostscript output: ${gsWidth} px × ${gsHeight} px
+  Final downloaded ${outFmt.toUpperCase()}: ${finalWidth} px × ${finalHeight} px
+  Status: ${gsWidth === finalWidth && gsHeight === finalHeight ? 'EXACT MATCH (100% Direct Vector Rendering - zero resizing)' : 'DIMENSION MISMATCH'}`);
+
         const mime = outFmt === 'jpg' ? 'image/jpeg' : outFmt === 'webp' ? 'image/webp' : 'image/png';
 
         return {
@@ -352,6 +376,7 @@ export class PdfConverter implements ConverterEngine {
       }
 
       // Multi-Page PDF archive export
+      // Every page is rendered using its own actual dimensions (no uniform forced resizing)
       const maxPdfPages = process.env.FREE_MAX_PDF_PAGES ? parseInt(process.env.FREE_MAX_PDF_PAGES, 10) : 10;
       if (totalPages > maxPdfPages) {
         throw new Error(
@@ -371,24 +396,40 @@ export class PdfConverter implements ConverterEngine {
       for (let i = 0; i < files.length; i++) {
         const pageFile = path.join(tempDir, files[i]);
         const rawBuf = fs.readFileSync(pageFile);
-        let pageImgBuf: Buffer;
-        let pPipeline = sharp(rawBuf);
+        const pageGsMeta = await sharp(rawBuf).metadata();
+        const pageGsWidth = pageGsMeta.width || expectedWidth;
+        const pageGsHeight = pageGsMeta.height || expectedHeight;
 
-        if (outFmt === 'jpg') {
+        let pageImgBuf: Buffer;
+
+        if (outFmt === 'png') {
+          if (customBg) {
+            pageImgBuf = await sharp(rawBuf).flatten({ background: customBg }).png().toBuffer();
+          } else {
+            pageImgBuf = rawBuf;
+          }
+        } else if (outFmt === 'jpg') {
           const bg = customBg || '#ffffff';
-          pageImgBuf = await pPipeline.flatten({ background: bg }).jpeg({ quality, mozjpeg: true }).toBuffer();
-        } else if (outFmt === 'webp') {
+          pageImgBuf = await sharp(rawBuf).flatten({ background: bg }).jpeg({ quality, mozjpeg: true }).toBuffer();
+        } else {
+          // WEBP
+          let pPipeline = sharp(rawBuf);
           if (customBg) pPipeline = pPipeline.flatten({ background: customBg });
           pageImgBuf = await pPipeline.webp({ quality }).toBuffer();
-        } else {
-          if (customBg) pPipeline = pPipeline.flatten({ background: customBg });
-          pageImgBuf = await pPipeline.png({ quality }).toBuffer();
         }
 
+        const pageFinalMeta = await sharp(pageImgBuf).metadata();
+        const pageFinalWidth = pageFinalMeta.width || pageGsWidth;
+        const pageFinalHeight = pageFinalMeta.height || pageGsHeight;
+
+        console.log(`[PDF Multi-page -> ${outFmt.toUpperCase()} Page ${i + 1}/${files.length} Validation]
+  Ghostscript page output: ${pageGsWidth} px × ${pageGsHeight} px
+  Final page image: ${pageFinalWidth} px × ${pageFinalHeight} px
+  Status: ${pageGsWidth === pageFinalWidth && pageGsHeight === pageFinalHeight ? 'EXACT MATCH' : 'DIMENSION MISMATCH'}`);
+
         if (i === 0) {
-          const m = await sharp(pageImgBuf).metadata();
-          firstWidth = m.width || expectedWidth;
-          firstHeight = m.height || expectedHeight;
+          firstWidth = pageFinalWidth;
+          firstHeight = pageFinalHeight;
         }
 
         const archiveFileName = `page_${String(i + 1).padStart(3, '0')}.${outFmt}`;
