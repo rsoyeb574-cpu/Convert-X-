@@ -13,6 +13,7 @@ import { DxfConverter } from './dxfConverter.js';
 import { SvgConverter } from './svgConverter.js';
 import { PsdConverter } from './psdConverter.js';
 import { AiConverter } from './aiConverter.js';
+import { EpsConverter } from './epsConverter.js';
 import { DocumentConverter } from './documentConverter.js';
 import { generateTempFilePath, sanitizeFilename } from '../utils/fileSecurity.js';
 import path from 'path';
@@ -32,6 +33,7 @@ export class ConverterRegistry {
     this.registerEngine(new SvgConverter());
     this.registerEngine(new PsdConverter());
     this.registerEngine(new AiConverter());
+    this.registerEngine(new EpsConverter());
     this.registerEngine(new DocumentConverter());
     this.loadPersistedJobs();
   }
@@ -310,10 +312,9 @@ export class ConverterRegistry {
         extension: 'eps',
         mimeType: 'application/postscript',
         category: 'adobe',
-        status: 'coming_soon',
-        requiresEngine: 'Ghostscript / Adobe Engine Extension',
-        supportedOutputs: [],
-        description: 'Standard vector graphic format for print publishing.',
+        status: 'supported',
+        supportedOutputs: ['png', 'jpg', 'webp', 'pdf'],
+        description: 'Encapsulated PostScript vector illustration format rendered to high-resolution PNG, JPG, WEBP, or vector PDF.',
       },
       {
         id: 'aep',
@@ -639,13 +640,12 @@ export class ConverterRegistry {
         inputFormat: 'eps',
         name: 'Encapsulated PostScript',
         category: 'Design & Vector',
-        canRender: false,
-        outputFormats: [],
-        renderer: 'Ghostscript Engine',
+        canRender: true,
+        outputFormats: ['png', 'jpg', 'webp', 'pdf'],
+        renderer: 'EPS High-Fidelity Vector Engine',
         multiPageSupport: false,
-        status: 'coming_soon',
-        requiresEngine: 'Ghostscript / Adobe Engine Extension',
-        description: 'PostScript vector artwork (Coming Soon).',
+        status: 'supported',
+        description: 'PostScript vector artwork rendered to high-DPI PNG, JPG, WEBP, or vector PDF.',
       },
       {
         inputFormat: 'cdr',

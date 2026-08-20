@@ -20,6 +20,7 @@ const FORMAT_DESCRIPTIONS: Record<string, { label: string; subtext: string; icon
   dxf: { label: 'DXF', subtext: 'CAD Vector Blueprint', icon: '🏗️' },
   psd: { label: 'PSD', subtext: 'Adobe Photoshop Document', icon: '🎨' },
   ai: { label: 'AI', subtext: 'Adobe Illustrator Vector File', icon: '✨' },
+  eps: { label: 'EPS', subtext: 'Encapsulated PostScript Vector', icon: '📐' },
   zip: { label: 'ZIP', subtext: 'Multi-Page Image Archive', icon: '📦' },
 };
 
@@ -180,6 +181,15 @@ export const FormatSelector: React.FC<FormatSelectorProps> = ({
           <Sparkles className="w-4 h-4 text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
           <div className="leading-relaxed">
             <span className="font-bold">Illustrator Vector Engine:</span> Renders vector artwork and design layout paths from Adobe Illustrator (.ai) files into crisp vector PDF or high-resolution PNG/JPG images.
+          </div>
+        </div>
+      )}
+
+      {inFmtClean === 'eps' && (
+        <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/40 text-xs text-indigo-900 dark:text-indigo-300 flex items-start gap-2.5">
+          <Box className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-0.5" />
+          <div className="leading-relaxed">
+            <span className="font-bold">Encapsulated PostScript Engine:</span> Renders vector artwork, typography, and graphics from .EPS files into crisp high-DPI raster images (PNG, JPG, WEBP) or lossless vector PDF documents.
           </div>
         </div>
       )}

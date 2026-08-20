@@ -29,6 +29,7 @@ const MATRIX_PAIRS: ConversionPair[] = [
   { source: 'DXF', target: 'SVG / PDF / PNG / JPG', bidirectional: false, category: 'CAD', notes: 'Parse AutoCAD CAD entities & layers directly into vector SVG, blueprint PDF, or high-res raster.' },
   { source: 'PSD', target: 'PNG / JPG / PDF', bidirectional: false, category: 'Adobe', notes: 'Parses Adobe Photoshop layered design composites into crisp PNG (with alpha), JPG, or print-ready PDF.' },
   { source: 'AI', target: 'PDF / PNG / JPG', bidirectional: false, category: 'Adobe', notes: 'Extracts and renders vector artwork and layout paths from Adobe Illustrator vector files.' },
+  { source: 'EPS', target: 'PNG / JPG / WEBP / PDF', bidirectional: false, category: 'Adobe', notes: 'Renders Encapsulated PostScript vector graphics to high-DPI raster images or vector-embedded PDF.' },
 ];
 
 export const FormatGrid: React.FC<FormatGridProps> = ({ capabilities, onSelectFormat }) => {
