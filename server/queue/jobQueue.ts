@@ -349,6 +349,8 @@ export class JobQueue {
       svg: 'image/svg+xml',
       zip: 'application/zip',
       dxf: 'image/vnd.dxf',
+      stl: 'model/stl',
+      obj: 'model/obj',
     };
     return map[ext.toLowerCase()] || 'application/octet-stream';
   }
@@ -394,6 +396,17 @@ export class JobQueue {
       const head = buffer.subarray(0, 1024).toString('utf-8').toLowerCase();
       if (!head.includes('<svg')) {
         return { valid: false, reason: 'Missing <svg tag' };
+      }
+    } else if (fmt === 'obj') {
+      const head = buffer.subarray(0, 1024).toString('utf-8');
+      if (!head.includes('v ') && !head.includes('#') && !head.includes('o ')) {
+        return { valid: false, reason: 'Invalid OBJ 3D model output header' };
+      }
+    } else if (fmt === 'stl') {
+      const sample = buffer.subarray(0, 80).toString('utf-8');
+      const isAscii = sample.toLowerCase().includes('solid');
+      if (!isAscii && buffer.length < 84) {
+        return { valid: false, reason: 'Invalid STL 3D binary file size' };
       }
     }
 

@@ -546,6 +546,294 @@ EOF`;
       return Buffer.from(pdfBytes);
     },
   },
+
+  sample_jpg: {
+    key: 'sample_jpg',
+    name: 'Landscape Photography (JPG)',
+    filename: 'scenic_landscape.jpg',
+    format: 'jpg',
+    category: 'Images',
+    description: 'High-definition JPEG photograph with natural scenery and color depth.',
+    getContent: async () => {
+      const svgSource = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#bae6fd"/>
+    </linearGradient>
+    <linearGradient id="mnt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#sky)"/>
+  <circle cx="680" cy="120" r="50" fill="#fef08a"/>
+  <polygon points="100,600 350,220 550,600" fill="url(#mnt)"/>
+  <polygon points="380,600 580,280 780,600" fill="#1e293b"/>
+  <rect y="500" width="800" height="100" fill="#15803d"/>
+</svg>`);
+      return await sharp(svgSource).jpeg({ quality: 90 }).toBuffer();
+    },
+  },
+
+  sample_webp: {
+    key: 'sample_webp',
+    name: 'Modern Web Graphic (WEBP)',
+    filename: 'web_graphic.webp',
+    format: 'webp',
+    category: 'Images',
+    description: 'Modern WebP format asset with transparency and efficient compression.',
+    getContent: async () => {
+      const svgSource = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+  <rect width="600" height="400" rx="20" fill="#18181b"/>
+  <circle cx="300" cy="200" r="120" fill="#3b82f6" opacity="0.8"/>
+  <circle cx="360" cy="200" r="100" fill="#ec4899" opacity="0.8"/>
+  <text x="300" y="360" font-family="sans-serif" font-size="20" font-weight="bold" fill="#ffffff" text-anchor="middle">WEBP ASSET</text>
+</svg>`);
+      return await sharp(svgSource).webp({ quality: 90 }).toBuffer();
+    },
+  },
+
+  sample_eps: {
+    key: 'sample_eps',
+    name: 'PostScript Vector Graphic (EPS)',
+    filename: 'vector_graphic.eps',
+    format: 'eps',
+    category: 'Adobe Creative Suite',
+    description: 'Encapsulated PostScript EPS vector graphic containing PostScript vector commands.',
+    getContent: () => {
+      const epsText = `%!PS-Adobe-3.0 EPSF-3.0
+%%BoundingBox: 0 0 400 300
+%%Title: Convert-X Sample EPS
+%%Creator: Convert-X Vector Engine
+%%Pages: 1
+%%EndComments
+
+% Background
+0.05 0.08 0.15 setrgbcolor
+0 0 400 300 rectfill
+
+% Vector Circle
+0.15 0.4 0.95 setrgbcolor
+200 150 80 0 360 arc fill
+
+% Vector Triangle
+0.9 0.6 0.1 setrgbcolor
+newpath
+200 230 moveto
+130 90 lineto
+270 90 lineto
+closepath fill
+
+% Text
+1 1 1 setrgbcolor
+/Helvetica-Bold findfont 18 scalefont setfont
+130 40 moveto
+(CONVERTX EPS VECTOR) show
+
+%%EOF`;
+      return Buffer.from(epsText, 'utf-8');
+    },
+  },
+
+  sample_pptx: {
+    key: 'sample_pptx',
+    name: 'Presentation Slide Deck (PPTX)',
+    filename: 'strategy_deck.pptx',
+    format: 'pptx',
+    category: 'Universal File Export',
+    description: 'Microsoft PowerPoint presentation deck with formatted slides, headings, and bullet points.',
+    getContent: async () => {
+      const zip = new JSZip();
+
+      // [Content_Types].xml
+      zip.file(
+        '[Content_Types].xml',
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+  <Override PartName="/ppt/slides/slide2.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+</Types>`
+      );
+
+      // _rels/.rels
+      zip.file(
+        '_rels/.rels',
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>`
+      );
+
+      // ppt/presentation.xml
+      zip.file(
+        'ppt/presentation.xml',
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldIdLst>
+    <p:sldId id="256" r:id="rId1" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+    <p:sldId id="257" r:id="rId2" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+  </p:sldIdLst>
+</p:presentation>`
+      );
+
+      // ppt/slides/slide1.xml
+      zip.file(
+        'ppt/slides/slide1.xml',
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:sp>
+        <p:txBody>
+          <a:p><a:r><a:t>Convert-X Enterprise Platform</a:t></a:r></a:p>
+          <a:p><a:r><a:t>Next-Generation Universal File &amp; Media Engine</a:t></a:r></a:p>
+        </p:txBody>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`
+      );
+
+      // ppt/slides/slide2.xml
+      zip.file(
+        'ppt/slides/slide2.xml',
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:sp>
+        <p:txBody>
+          <a:p><a:r><a:t>Key Technical Milestones</a:t></a:r></a:p>
+          <a:p><a:r><a:t>• Direct 300 DPI Ghostscript Vector Pipeline</a:t></a:r></a:p>
+          <a:p><a:r><a:t>• Native 3D OBJ &amp; STL Mesh Rendering</a:t></a:r></a:p>
+          <a:p><a:r><a:t>• Multi-threaded Durable Worker Queue</a:t></a:r></a:p>
+        </p:txBody>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>`
+      );
+
+      return await zip.generateAsync({ type: 'nodebuffer' });
+    },
+  },
+
+  sample_odt: {
+    key: 'sample_odt',
+    name: 'OpenDocument Document (ODT)',
+    filename: 'opendocument_spec.odt',
+    format: 'odt',
+    category: 'Universal File Export',
+    description: 'OASIS OpenDocument Text file with headings, structured paragraphs, and list items.',
+    getContent: async () => {
+      const zip = new JSZip();
+      zip.file('mimetype', 'application/vnd.oasis.opendocument.text', { compression: 'STORE' });
+      zip.file(
+        'content.xml',
+        `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">
+  <office:body>
+    <office:text>
+      <text:h text:outline-level="1">OpenDocument Technical Specification</text:h>
+      <text:p>Convert-X OpenDocument Engine provides native parsing of OASIS OpenDocument packages.</text:p>
+      <text:p>Key features include styled typography pagination, table grid rendering, and direct PDF generation.</text:p>
+    </office:text>
+  </office:body>
+</office:document-content>`
+      );
+      return await zip.generateAsync({ type: 'nodebuffer' });
+    },
+  },
+
+  sample_rtf: {
+    key: 'sample_rtf',
+    name: 'Rich Text Document (RTF)',
+    filename: 'styled_memo.rtf',
+    format: 'rtf',
+    category: 'Universal File Export',
+    description: 'Rich Text Format document with styled headers and paragraphs.',
+    getContent: () => {
+      const rtf = `{\\rtf1\\ansi\\deff0
+{\\fonttbl{\\f0\\fnil\\fcharset0 Helvetica;}}
+\\viewkind4\\uc1\\pard\\lang1033\\f0\\fs28\\b Convert-X Styled Executive Memo\\b0\\par
+\\fs20\\par
+This is a genuine Rich Text Format (RTF) document.\\par
+It includes bold text, line breaks, and multi-paragraph layout.\\par
+Parsed and converted cleanly by the Convert-X Document Engine.\\par
+}`;
+      return Buffer.from(rtf, 'utf-8');
+    },
+  },
+
+  sample_obj: {
+    key: 'sample_obj',
+    name: '3D Geometry Mesh (OBJ)',
+    filename: 'geometric_polyhedron.obj',
+    format: 'obj',
+    category: '3D Mesh',
+    description: 'Wavefront 3D geometry mesh model with vertex normals and triangular faces.',
+    getContent: () => {
+      const obj = `# Convert-X Sample 3D Pyramid Model
+v 0.0 1.0 0.0
+v -1.0 -1.0 1.0
+v 1.0 -1.0 1.0
+v 1.0 -1.0 -1.0
+v -1.0 -1.0 -1.0
+vn 0.0 0.7 0.7
+vn 0.7 0.7 0.0
+vn 0.0 0.7 -0.7
+vn -0.7 0.7 0.0
+vn 0.0 -1.0 0.0
+f 1//1 2//1 3//1
+f 1//2 3//2 4//2
+f 1//3 4//3 5//3
+f 1//4 5//4 2//4
+f 2//5 4//5 3//5
+f 2//5 5//5 4//5
+`;
+      return Buffer.from(obj, 'utf-8');
+    },
+  },
+
+  sample_stl: {
+    key: 'sample_stl',
+    name: '3D Stereolithography CAD Mesh (STL)',
+    filename: 'mechanical_bracket.stl',
+    format: 'stl',
+    category: '3D Mesh',
+    description: 'Stereolithography 3D CAD mesh model with solid facet definitions.',
+    getContent: () => {
+      const stl = `solid mechanical_bracket
+  facet normal 0.0 0.0 1.0
+    outer loop
+      vertex 0.0 0.0 0.0
+      vertex 10.0 0.0 0.0
+      vertex 10.0 10.0 0.0
+    endloop
+  endfacet
+  facet normal 0.0 0.0 1.0
+    outer loop
+      vertex 0.0 0.0 0.0
+      vertex 10.0 10.0 0.0
+      vertex 0.0 10.0 0.0
+    endloop
+  endfacet
+  facet normal 0.0 1.0 0.0
+    outer loop
+      vertex 0.0 10.0 0.0
+      vertex 10.0 10.0 0.0
+      vertex 5.0 10.0 10.0
+    endloop
+  endfacet
+endsolid mechanical_bracket
+`;
+      return Buffer.from(stl, 'utf-8');
+    },
+  },
 };
 
 // Aliases for frontend sample keys
@@ -558,3 +846,12 @@ SAMPLE_FILES['sample-dxf'] = SAMPLE_FILES.cad_blueprint;
 SAMPLE_FILES['sample-svg'] = SAMPLE_FILES.vector_artwork;
 SAMPLE_FILES['sample-png'] = SAMPLE_FILES.sample_photo;
 SAMPLE_FILES['sample-pdf'] = SAMPLE_FILES.sample_document;
+SAMPLE_FILES['sample-jpg'] = SAMPLE_FILES.sample_jpg;
+SAMPLE_FILES['sample-webp'] = SAMPLE_FILES.sample_webp;
+SAMPLE_FILES['sample-eps'] = SAMPLE_FILES.sample_eps;
+SAMPLE_FILES['sample-pptx'] = SAMPLE_FILES.sample_pptx;
+SAMPLE_FILES['sample-odt'] = SAMPLE_FILES.sample_odt;
+SAMPLE_FILES['sample-rtf'] = SAMPLE_FILES.sample_rtf;
+SAMPLE_FILES['sample-obj'] = SAMPLE_FILES.sample_obj;
+SAMPLE_FILES['sample-stl'] = SAMPLE_FILES.sample_stl;
+
