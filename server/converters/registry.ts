@@ -15,6 +15,7 @@ import { PsdConverter } from './psdConverter.js';
 import { AiConverter } from './aiConverter.js';
 import { EpsConverter } from './epsConverter.js';
 import { DocumentConverter } from './documentConverter.js';
+import { ThreeDConverter } from './threeDConverter.js';
 import { generateTempFilePath, sanitizeFilename } from '../utils/fileSecurity.js';
 import path from 'path';
 import fs from 'fs';
@@ -35,6 +36,7 @@ export class ConverterRegistry {
     this.registerEngine(new AiConverter());
     this.registerEngine(new EpsConverter());
     this.registerEngine(new DocumentConverter());
+    this.registerEngine(new ThreeDConverter());
     this.loadPersistedJobs();
   }
 
@@ -127,10 +129,9 @@ export class ConverterRegistry {
         extension: 'pptx',
         mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         category: 'documents',
-        status: 'coming_soon',
-        requiresEngine: 'Office Presentation Slide Engine Extension',
-        supportedOutputs: [],
-        description: 'Presentation slide deck format.',
+        status: 'supported',
+        supportedOutputs: ['png', 'jpg', 'pdf'],
+        description: 'PowerPoint presentation slide deck visual export into high-DPI PNG, JPG, or PDF.',
       },
       {
         id: 'odt',
@@ -138,10 +139,9 @@ export class ConverterRegistry {
         extension: 'odt',
         mimeType: 'application/vnd.oasis.opendocument.text',
         category: 'documents',
-        status: 'coming_soon',
-        requiresEngine: 'LibreOffice OpenDocument Engine Extension',
-        supportedOutputs: [],
-        description: 'Open-source office word processing document format.',
+        status: 'supported',
+        supportedOutputs: ['png', 'jpg', 'pdf'],
+        description: 'OpenDocument word processing text layout rendered to PNG, JPG, or PDF.',
       },
       {
         id: 'rtf',
@@ -149,10 +149,9 @@ export class ConverterRegistry {
         extension: 'rtf',
         mimeType: 'application/rtf',
         category: 'documents',
-        status: 'coming_soon',
-        requiresEngine: 'Rich Text Rendering Engine Extension',
-        supportedOutputs: [],
-        description: 'Standard cross-platform rich text document format.',
+        status: 'supported',
+        supportedOutputs: ['png', 'jpg', 'pdf'],
+        description: 'Standard Rich Text Format document formatted to PNG, JPG, or PDF.',
       },
 
       // IMAGES (Supported)
@@ -392,10 +391,9 @@ export class ConverterRegistry {
         extension: 'obj',
         mimeType: 'model/obj',
         category: '3d',
-        status: 'coming_soon',
-        requiresEngine: 'ThreeJS / Assimp 3D Engine Extension',
-        supportedOutputs: [],
-        description: '3D geometry definition format containing 3D vertices, texture maps, and faces.',
+        status: 'supported',
+        supportedOutputs: ['png', 'jpg', 'webp', 'pdf', 'svg', 'stl'],
+        description: 'Wavefront 3D geometry engine rendering shaded perspectives, blueprints (PNG, JPG, PDF, SVG) & STL export.',
       },
       {
         id: 'fbx',
@@ -414,10 +412,9 @@ export class ConverterRegistry {
         extension: 'stl',
         mimeType: 'model/stl',
         category: '3d',
-        status: 'coming_soon',
-        requiresEngine: 'OpenCASCADE 3D Mesh Engine Extension',
-        supportedOutputs: [],
-        description: 'Standard 3D geometry format used in 3D printing and CAD manufacturing.',
+        status: 'supported',
+        supportedOutputs: ['png', 'jpg', 'webp', 'pdf', 'svg', 'obj'],
+        description: 'Stereolithography 3D mesh rendering shaded perspectives, blueprints (PNG, JPG, PDF, SVG) & OBJ export.',
       },
     ];
   }
@@ -484,37 +481,34 @@ export class ConverterRegistry {
         inputFormat: 'pptx',
         name: 'PowerPoint Presentation',
         category: 'Documents',
-        canRender: false,
-        outputFormats: [],
+        canRender: true,
+        outputFormats: ['png', 'jpg', 'pdf'],
         renderer: 'Office Presentation Slide Engine',
-        multiPageSupport: false,
-        status: 'coming_soon',
-        requiresEngine: 'Office Presentation Slide Engine Extension',
-        description: 'PowerPoint presentation slides export (Coming Soon).',
+        multiPageSupport: true,
+        status: 'supported',
+        description: 'PowerPoint presentation slide deck visual export into high-DPI PNG, JPG, or PDF.',
       },
       {
         inputFormat: 'odt',
         name: 'OpenDocument Text',
         category: 'Documents',
-        canRender: false,
-        outputFormats: [],
-        renderer: 'OpenDocument Engine',
-        multiPageSupport: false,
-        status: 'coming_soon',
-        requiresEngine: 'LibreOffice OpenDocument Engine Extension',
-        description: 'OpenDocument text visual export (Coming Soon).',
+        canRender: true,
+        outputFormats: ['png', 'jpg', 'pdf'],
+        renderer: 'OpenDocument Visual Engine',
+        multiPageSupport: true,
+        status: 'supported',
+        description: 'OpenDocument text visual layout rendered to PNG, JPG, or PDF.',
       },
       {
         inputFormat: 'rtf',
         name: 'Rich Text Format',
         category: 'Documents',
-        canRender: false,
-        outputFormats: [],
-        renderer: 'Rich Text Engine',
-        multiPageSupport: false,
-        status: 'coming_soon',
-        requiresEngine: 'Rich Text Rendering Engine Extension',
-        description: 'Rich text document visual export (Coming Soon).',
+        canRender: true,
+        outputFormats: ['png', 'jpg', 'pdf'],
+        renderer: 'Rich Text Rendering Engine',
+        multiPageSupport: true,
+        status: 'supported',
+        description: 'Rich text document visual export into PNG, JPG, or PDF.',
       },
 
       // CAD & Architecture
@@ -569,13 +563,12 @@ export class ConverterRegistry {
         inputFormat: 'obj',
         name: 'Wavefront 3D Object',
         category: 'CAD & 3D',
-        canRender: false,
-        outputFormats: [],
-        renderer: 'ThreeJS / Assimp 3D Engine',
+        canRender: true,
+        outputFormats: ['png', 'jpg', 'webp', 'pdf', 'svg', 'stl'],
+        renderer: '3D Mesh Geometry Engine',
         multiPageSupport: false,
-        status: 'coming_soon',
-        requiresEngine: 'ThreeJS / Assimp 3D Engine Extension',
-        description: '3D geometry and texture rendering (Coming Soon).',
+        status: 'supported',
+        description: 'Wavefront 3D geometry engine rendering shaded perspectives, blueprints (PNG, JPG, PDF, SVG) & STL export.',
       },
       {
         inputFormat: 'fbx',
@@ -593,13 +586,12 @@ export class ConverterRegistry {
         inputFormat: 'stl',
         name: 'Stereolithography 3D Mesh',
         category: 'CAD & 3D',
-        canRender: false,
-        outputFormats: [],
-        renderer: 'OpenCASCADE 3D Engine',
+        canRender: true,
+        outputFormats: ['png', 'jpg', 'webp', 'pdf', 'svg', 'obj'],
+        renderer: '3D Mesh Geometry Engine',
         multiPageSupport: false,
-        status: 'coming_soon',
-        requiresEngine: 'OpenCASCADE 3D Mesh Engine Extension',
-        description: '3D printing and CAD manufacturing export (Coming Soon).',
+        status: 'supported',
+        description: 'Stereolithography 3D mesh rendering shaded perspectives, blueprints (PNG, JPG, PDF, SVG) & OBJ export.',
       },
 
       // Design & Vector
@@ -922,6 +914,8 @@ export class ConverterRegistry {
       svg: 'image/svg+xml',
       zip: 'application/zip',
       dxf: 'image/vnd.dxf',
+      stl: 'model/stl',
+      obj: 'model/obj',
     };
     return map[ext.toLowerCase()] || 'application/octet-stream';
   }
@@ -968,6 +962,17 @@ export class ConverterRegistry {
       const head = buffer.subarray(0, 1024).toString('utf-8').toLowerCase();
       if (!head.includes('<svg')) {
         return { valid: false, reason: 'Invalid SVG vector header' };
+      }
+    } else if (fmt === 'obj') {
+      const head = buffer.subarray(0, 1024).toString('utf-8');
+      if (!head.includes('v ') && !head.includes('#') && !head.includes('o ')) {
+        return { valid: false, reason: 'Invalid OBJ 3D model output header' };
+      }
+    } else if (fmt === 'stl') {
+      const sample = buffer.subarray(0, 80).toString('utf-8');
+      const isAscii = sample.toLowerCase().includes('solid');
+      if (!isAscii && buffer.length < 84) {
+        return { valid: false, reason: 'Invalid STL 3D binary file size' };
       }
     }
 

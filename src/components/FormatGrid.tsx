@@ -17,7 +17,10 @@ interface ConversionPair {
 
 const MATRIX_PAIRS: ConversionPair[] = [
   { source: 'DOCX', target: 'PNG / JPG / PDF', bidirectional: false, category: 'Document', notes: 'Renders Microsoft Word DOCX text hierarchy, headings, tables, and pages to high-DPI PNG, JPG, or PDF.' },
+  { source: 'PPTX', target: 'PNG / JPG / PDF', bidirectional: false, category: 'Presentation', notes: 'Renders PowerPoint slides into high-DPI slide canvas images or multi-page PDF presentation deck.' },
   { source: 'XLSX', target: 'PNG / JPG / PDF', bidirectional: false, category: 'Document', notes: 'Visualizes spreadsheet workbooks, cell data, and tabular layouts into PNG, JPG, or PDF.' },
+  { source: 'ODT', target: 'PNG / JPG / PDF', bidirectional: false, category: 'Document', notes: 'Renders OpenDocument text headings, paragraphs, and tables to high-DPI PNG, JPG, or PDF.' },
+  { source: 'RTF', target: 'PNG / JPG / PDF', bidirectional: false, category: 'Document', notes: 'Parses Rich Text Format styled documents into clean, paginated PNG, JPG, or PDF.' },
   { source: 'TXT', target: 'PNG / JPG / PDF', bidirectional: false, category: 'Document', notes: 'Formatted multi-page document pagination with typography layout, headers, and page numbering.' },
   { source: 'PNG', target: 'JPG / JPEG', bidirectional: true, category: 'Image', notes: 'Full bidirectional raster conversion. Transparency gracefully flattened to solid background on JPG export.' },
   { source: 'PNG', target: 'WEBP', bidirectional: true, category: 'Image', notes: 'Full bidirectional modern image conversion with alpha transparency preservation.' },
@@ -30,6 +33,8 @@ const MATRIX_PAIRS: ConversionPair[] = [
   { source: 'PSD', target: 'PNG / JPG / PDF', bidirectional: false, category: 'Adobe', notes: 'Parses Adobe Photoshop layered design composites into crisp PNG (with alpha), JPG, or print-ready PDF.' },
   { source: 'AI', target: 'PDF / PNG / JPG', bidirectional: false, category: 'Adobe', notes: 'Extracts and renders vector artwork and layout paths from Adobe Illustrator vector files.' },
   { source: 'EPS', target: 'PNG / JPG / WEBP / PDF', bidirectional: false, category: 'Adobe', notes: 'Renders Encapsulated PostScript vector graphics to high-DPI raster images or vector-embedded PDF.' },
+  { source: 'OBJ', target: 'STL / SVG / PDF / PNG / JPG', bidirectional: true, category: '3D Mesh', notes: 'Direct 3D geometry engine: renders shaded isometric blueprints and cross-converts OBJ ↔ STL.' },
+  { source: 'STL', target: 'OBJ / SVG / PDF / PNG / JPG', bidirectional: true, category: '3D Mesh', notes: 'Direct 3D stereolithography mesh engine: renders CAD blueprints and cross-converts STL ↔ OBJ.' },
 ];
 
 export const FormatGrid: React.FC<FormatGridProps> = ({ capabilities, onSelectFormat }) => {

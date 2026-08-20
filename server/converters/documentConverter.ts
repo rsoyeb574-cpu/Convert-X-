@@ -8,10 +8,10 @@ import { ConverterEngine, ConvertParams, ConvertResult, ValidationResult } from 
 
 export class DocumentConverter implements ConverterEngine {
   id = 'office-document-engine';
-  name = 'Document & Spreadsheet Visual Export Engine';
-  description = 'Direct visual page renderer converting DOCX, XLSX, TXT, and HTML documents into crisp high-DPI PNG, JPG, and multi-page vector-embedded PDF documents.';
+  name = 'Document, Presentation & Spreadsheet Visual Export Engine';
+  description = 'Direct visual page renderer converting DOCX, PPTX, XLSX, ODT, RTF, TXT, and HTML documents into crisp high-DPI PNG, JPG, and multi-page vector-embedded PDF documents.';
 
-  supportedInputFormats = ['docx', 'xlsx', 'txt', 'html', 'htm'];
+  supportedInputFormats = ['docx', 'xlsx', 'pptx', 'odt', 'rtf', 'txt', 'html', 'htm'];
   supportedOutputFormats = ['png', 'jpg', 'pdf'];
 
   supports(inputFormat: string, outputFormat: string): boolean {
@@ -30,10 +30,17 @@ export class DocumentConverter implements ConverterEngine {
       return { valid: false, reason: 'Empty document file buffer.' };
     }
 
-    if (fmt === 'docx' || fmt === 'xlsx') {
+    if (fmt === 'docx' || fmt === 'xlsx' || fmt === 'pptx' || fmt === 'odt') {
       // Must be a valid zip archive (starts with PK)
       if (fileBuffer.length < 4 || fileBuffer[0] !== 0x50 || fileBuffer[1] !== 0x4b) {
         return { valid: false, reason: `Invalid .${fmt.toUpperCase()} file header: Expected ZIP container.` };
+      }
+    }
+
+    if (fmt === 'rtf') {
+      const headerStr = fileBuffer.slice(0, 20).toString('ascii');
+      if (!headerStr.includes('{\\rtf')) {
+        return { valid: false, reason: 'Invalid .RTF file header: Expected {\\rtf signature.' };
       }
     }
 
@@ -49,6 +56,12 @@ export class DocumentConverter implements ConverterEngine {
 
     if (inFmt === 'docx') {
       pageImages = await this.renderDocxToPageImages(inputBuffer, options, fileName);
+    } else if (inFmt === 'pptx') {
+      pageImages = await this.renderPptxToSlideImages(inputBuffer, options, fileName);
+    } else if (inFmt === 'odt') {
+      pageImages = await this.renderOdtToPageImages(inputBuffer, options, fileName);
+    } else if (inFmt === 'rtf') {
+      pageImages = await this.renderRtfToPageImages(inputBuffer, options, fileName);
     } else if (inFmt === 'xlsx') {
       pageImages = await this.renderXlsxToPageImages(inputBuffer, options);
     } else if (inFmt === 'txt') {
@@ -430,6 +443,186 @@ export class DocumentConverter implements ConverterEngine {
     }
 
     return pages;
+  }
+
+  // --- PPTX RENDERING ---
+  private async renderPptxToSlideImages(buffer: Buffer, options: any, fileName?: string): Promise<Buffer[]> {
+    let zip: JSZip;
+    try {
+      zip = await JSZip.loadAsync(buffer);
+    } catch (err: any) {
+      throw new Error(`Failed to read PPTX presentation: ${err.message || 'Corrupt PPTX file'}`);
+    }
+
+    // Find and sort all slide files: ppt/slides/slide1.xml, slide2.xml, ...
+    const slideEntries = Object.keys(zip.files)
+      .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+      .sort((a, b) => {
+        const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+        return numA - numB;
+      });
+
+    if (slideEntries.length === 0) {
+      return [this.renderEmptyPage('Empty PPTX Presentation')];
+    }
+
+    const pages: Buffer[] = [];
+    const dpi = options?.dpi || 150;
+    const scale = dpi / 72;
+    // 16:9 Widescreen slide dimensions
+    const slideWidth = Math.round(1280 * (scale / 1.5));
+    const slideHeight = Math.round(720 * (scale / 1.5));
+
+    for (let s = 0; s < slideEntries.length; s++) {
+      const slideFileName = slideEntries[s];
+      const slideXml = await zip.file(slideFileName)!.async('string');
+
+      // Extract all text elements: <a:t>...</a:t>
+      const textParagraphs: string[] = [];
+      const textMatches = slideXml.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/gi);
+      for (const m of textMatches) {
+        const t = m[1].replace(/<[^>]+>/g, '').trim();
+        if (t) {
+          textParagraphs.push(t);
+        }
+      }
+
+      const canvas = createCanvas(slideWidth, slideHeight);
+      const ctx = canvas.getContext('2d');
+
+      // Slide Background (default clean gradient or custom background)
+      const bg = options?.backgroundColor && options.backgroundColor !== 'transparent'
+        ? options.backgroundColor
+        : '#F8FAFC';
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, slideWidth, slideHeight);
+
+      // Top Presentation Header Bar
+      ctx.fillStyle = '#1E293B';
+      ctx.fillRect(0, 0, slideWidth, Math.round(60 * (scale / 1.5)));
+
+      // Presentation & Slide Title
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `bold ${Math.round(18 * (scale / 1.5))}px sans-serif`;
+      ctx.fillText(
+        `📽️ ${fileName || 'Presentation'} • Slide ${s + 1} of ${slideEntries.length}`,
+        Math.round(40 * (scale / 1.5)),
+        Math.round(38 * (scale / 1.5))
+      );
+
+      // Main Slide Card Canvas
+      const cardX = Math.round(40 * (scale / 1.5));
+      const cardY = Math.round(80 * (scale / 1.5));
+      const cardW = slideWidth - cardX * 2;
+      const cardH = slideHeight - cardY - Math.round(40 * (scale / 1.5));
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(cardX, cardY, cardW, cardH);
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cardX, cardY, cardW, cardH);
+
+      // Render slide content
+      if (textParagraphs.length === 0) {
+        ctx.fillStyle = '#94A3B8';
+        ctx.font = `${Math.round(16 * (scale / 1.5))}px sans-serif`;
+        ctx.fillText('(Slide contains graphics, media, or empty content)', cardX + 40, cardY + 80);
+      } else {
+        const slideTitle = textParagraphs[0];
+        // Slide Heading
+        ctx.fillStyle = '#0F172A';
+        ctx.font = `bold ${Math.round(22 * (scale / 1.5))}px sans-serif`;
+        ctx.fillText(slideTitle.slice(0, 70), cardX + 30, cardY + Math.round(45 * (scale / 1.5)));
+
+        // Accent divider
+        ctx.fillStyle = '#3B82F6';
+        ctx.fillRect(cardX + 30, cardY + Math.round(60 * (scale / 1.5)), Math.round(120 * (scale / 1.5)), 4);
+
+        // Body bullet points
+        const startBodyY = cardY + Math.round(100 * (scale / 1.5));
+        const bodyLineHeight = Math.round(32 * (scale / 1.5));
+        const bodyParagraphs = textParagraphs.slice(1);
+
+        ctx.fillStyle = '#334155';
+        ctx.font = `${Math.round(15 * (scale / 1.5))}px sans-serif`;
+
+        const maxDisplay = Math.min(bodyParagraphs.length, Math.floor((cardH - 120) / bodyLineHeight));
+        for (let b = 0; b < maxDisplay; b++) {
+          const pointText = bodyParagraphs[b];
+          const y = startBodyY + b * bodyLineHeight;
+          // Bullet dot
+          ctx.fillStyle = '#3B82F6';
+          ctx.beginPath();
+          ctx.arc(cardX + 40, y - 5, 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#1E293B';
+          ctx.fillText(pointText.slice(0, 90), cardX + 55, y);
+        }
+      }
+
+      // Slide Footer
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = `${Math.round(11 * (scale / 1.5))}px sans-serif`;
+      ctx.fillText(
+        `Convert-X Slide Deck Renderer • Slide ${s + 1} of ${slideEntries.length}`,
+        Math.round(40 * (scale / 1.5)),
+        slideHeight - Math.round(15 * (scale / 1.5))
+      );
+
+      pages.push(canvas.toBuffer('image/png'));
+    }
+
+    return pages;
+  }
+
+  // --- ODT RENDERING ---
+  private async renderOdtToPageImages(buffer: Buffer, options: any, fileName?: string): Promise<Buffer[]> {
+    let zip: JSZip;
+    try {
+      zip = await JSZip.loadAsync(buffer);
+    } catch (err: any) {
+      throw new Error(`Failed to read ODT document: ${err.message || 'Corrupt OpenDocument file'}`);
+    }
+
+    const contentFile = zip.file('content.xml');
+    if (!contentFile) {
+      throw new Error('Invalid OpenDocument file: Missing content.xml');
+    }
+
+    const xml = await contentFile.async('string');
+    const paragraphs: string[] = [];
+    const matches = xml.matchAll(/<text:[ph][^>]*>([\s\S]*?)<\/text:[ph]>/gi);
+    for (const m of matches) {
+      const text = m[1].replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+      if (text) {
+        paragraphs.push(text);
+      }
+    }
+
+    const fullText = paragraphs.join('\n\n') || '(OpenDocument contains no readable text)';
+    return this.renderTextToPageImages(fullText, options, `OpenDocument Text: ${fileName || 'document.odt'}`);
+  }
+
+  // --- RTF RENDERING ---
+  private async renderRtfToPageImages(buffer: Buffer, options: any, fileName?: string): Promise<Buffer[]> {
+    const rtf = buffer.toString('latin1');
+    // Parse RTF control streams
+    let text = rtf.replace(/\{\\[^{}]*\}/g, '');
+    text = text.replace(/\\par\b/g, '\n');
+    text = text.replace(/\\line\b/g, '\n');
+    text = text.replace(/\\tab\b/g, '    ');
+    text = text.replace(/\\bullet\b/g, '• ');
+    text = text.replace(/\\[a-zA-Z0-9\-]+ ?/g, '');
+    text = text.replace(/[{}]/g, '');
+    text = text.trim();
+
+    if (!text) {
+      text = `[Rich Text Document: ${fileName || 'document.rtf'}]\n(Empty or unformatted RTF document)`;
+    }
+
+    return this.renderTextToPageImages(text, options, `Rich Text: ${fileName || 'document.rtf'}`);
   }
 
   // --- HTML RENDERING ---

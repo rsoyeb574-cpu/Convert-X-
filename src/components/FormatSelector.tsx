@@ -21,6 +21,8 @@ const FORMAT_DESCRIPTIONS: Record<string, { label: string; subtext: string; icon
   psd: { label: 'PSD', subtext: 'Adobe Photoshop Document', icon: '🎨' },
   ai: { label: 'AI', subtext: 'Adobe Illustrator Vector File', icon: '✨' },
   eps: { label: 'EPS', subtext: 'Encapsulated PostScript Vector', icon: '📐' },
+  obj: { label: 'OBJ', subtext: 'Wavefront 3D Geometry Model', icon: '📐' },
+  stl: { label: 'STL', subtext: 'Stereolithography 3D Mesh', icon: '🧊' },
   zip: { label: 'ZIP', subtext: 'Multi-Page Image Archive', icon: '📦' },
 };
 
