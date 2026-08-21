@@ -12,6 +12,7 @@ import sharp from 'sharp';
 import JSZip from 'jszip';
 import { createServer as createViteServer } from 'vite';
 import { registry } from './server/converters/registry.js';
+import { generateTextToPdf } from './server/converters/textToPdfConverter.js';
 import { jobStorage } from './server/queue/jobStorage.js';
 import { jobQueue } from './server/queue/jobQueue.js';
 import { runCrashRecovery } from './server/queue/crashRecovery.js';
@@ -817,6 +818,132 @@ ${allRoutes
         success: false,
         code: 'COMBINE_FAILED',
         error: err.message || 'Failed to combine files into PDF.',
+      });
+    }
+  });
+
+  // 5b. Dedicated Text to PDF Conversion Endpoint
+  app.post('/api/convert/text-to-pdf', convertRateLimiter, async (req, res) => {
+    try {
+      const {
+        text = '',
+        pageSize = 'a4',
+        orientation = 'portrait',
+        margin = 'normal',
+        customMargin,
+        fontFamily = 'helvetica',
+        fontSize = 12,
+        bold = false,
+        italic = false,
+        underline = false,
+        alignment = 'left',
+        lineSpacing = '1.15',
+        pageNumbers = 'bottom-center',
+        title = 'Document',
+        filename = 'document.pdf',
+        headerText,
+        textColor = '#111827',
+      } = req.body;
+
+      if (!text && text !== '') {
+        return res.status(400).json({
+          success: false,
+          code: 'NO_TEXT',
+          error: 'No text content provided for conversion.',
+        });
+      }
+
+      if (typeof text === 'string' && text.length > 500000) {
+        return res.status(400).json({
+          success: false,
+          code: 'TEXT_TOO_LONG',
+          error: 'Text length exceeds maximum server limit of 500,000 characters.',
+        });
+      }
+
+      // Generate the real PDF server-side using pdf-lib vector engine
+      const result = await generateTextToPdf({
+        text: String(text),
+        pageSize,
+        orientation,
+        margin,
+        customMargin,
+        fontFamily,
+        fontSize: Number(fontSize) || 12,
+        bold: Boolean(bold),
+        italic: Boolean(italic),
+        underline: Boolean(underline),
+        alignment,
+        lineSpacing,
+        pageNumbers,
+        title,
+        filename,
+        headerText,
+        textColor,
+      });
+
+      const sanitizedFilename = sanitizeFilename(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
+      const { filePath } = generateTempFilePath('pdf');
+      fs.writeFileSync(filePath, result.buffer);
+
+      const sessionId = (req.headers['x-session-id'] as string) || req.ip || 'text_to_pdf_session';
+      const job = jobStorage.createJob({
+        originalName: sanitizedFilename,
+        inputFormat: 'text',
+        inputPath: filePath,
+        fileSize: Buffer.byteLength(String(text), 'utf-8'),
+        sessionId,
+      });
+
+      jobStorage.updateJob(job.id, {
+        outputPath: filePath,
+        outputFormat: 'pdf',
+        outputSize: result.buffer.length,
+        outputMimeType: 'application/pdf',
+        status: 'completed',
+        progress: 100,
+        progressStage: 'Text converted to PDF successfully',
+        completedAt: new Date().toISOString(),
+        pdfPageSize: result.pdfPageSize,
+        width: result.width,
+        height: result.height,
+      });
+
+      recordSuccessfulConversion(req, job.id, 1);
+      metricsTracker.recordConversion('text', 'pdf', false);
+
+      // If client explicitly requested JSON metadata
+      const isJsonPreferred = req.query.responseType === 'json' || req.headers.accept === 'application/json';
+      if (isJsonPreferred && req.query.download !== 'direct') {
+        return res.json({
+          success: true,
+          jobId: job.id,
+          filename: sanitizedFilename,
+          pageCount: result.pageCount,
+          width: result.width,
+          height: result.height,
+          outputSize: result.buffer.length,
+          pdfPageSize: result.pdfPageSize,
+          downloadUrl: `/api/download/${job.id}`,
+        });
+      }
+
+      // Direct PDF download stream
+      metricsTracker.recordDownload();
+      const isInline = req.query.preview === 'true';
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `${isInline ? 'inline' : 'attachment'}; filename="${sanitizedFilename}"`);
+      res.setHeader('Content-Length', result.buffer.length.toString());
+      res.setHeader('X-Page-Count', result.pageCount.toString());
+      res.setHeader('X-Job-Id', job.id);
+      res.setHeader('Cache-Control', 'no-cache');
+      return res.send(result.buffer);
+    } catch (err: any) {
+      console.error('Text to PDF conversion error:', err);
+      return res.status(500).json({
+        success: false,
+        code: 'CONVERSION_FAILED',
+        error: err.message || 'Failed to convert text to PDF.',
       });
     }
   });

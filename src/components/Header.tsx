@@ -90,6 +90,24 @@ export const Header: React.FC<HeaderProps> = ({
             Converter
           </a>
           <a
+            id="nav-text-to-pdf-btn"
+            href="/text-to-pdf"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('text-to-pdf');
+            }}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              currentView === 'text-to-pdf'
+                ? 'bg-blue-50 dark:bg-slate-800 text-[#2563EB] dark:text-white font-bold'
+                : 'hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>Text to PDF</span>
+            <span className="px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 text-[10px] font-extrabold">
+              New
+            </span>
+          </a>
+          <a
             id="nav-formats-btn"
             href="/formats"
             onClick={(e) => {

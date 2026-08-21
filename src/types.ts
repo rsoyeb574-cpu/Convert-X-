@@ -116,6 +116,7 @@ export interface ConversionHistoryItem {
 export type PageView =
   | 'home'
   | 'converter'
+  | 'text-to-pdf'
   | 'formats'
   | 'tools'
   | 'referral'
@@ -130,6 +131,26 @@ export type PageView =
   | 'affiliates'
   | 'seo'
   | '404';
+
+export interface TextToPdfSettings {
+  text: string;
+  pageSize: 'a4' | 'a3' | 'letter' | 'legal';
+  orientation: 'portrait' | 'landscape';
+  margin: 'small' | 'normal' | 'large' | 'custom';
+  customMargin?: { top: number; right: number; bottom: number; left: number };
+  fontFamily: 'helvetica' | 'times' | 'courier';
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  alignment: 'left' | 'center' | 'right' | 'justify';
+  lineSpacing: 'single' | '1.15' | '1.5' | 'double' | number;
+  pageNumbers: 'none' | 'bottom-center' | 'bottom-right' | 'top-right';
+  title?: string;
+  filename?: string;
+  headerText?: string;
+  textColor?: string;
+}
 
 export interface UserPreferences {
   defaultTargetFormat: string;

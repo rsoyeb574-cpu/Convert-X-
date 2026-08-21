@@ -16,6 +16,7 @@ import { AiConverter } from './aiConverter.js';
 import { EpsConverter } from './epsConverter.js';
 import { DocumentConverter } from './documentConverter.js';
 import { ThreeDConverter } from './threeDConverter.js';
+import { TextToPdfConverter } from './textToPdfConverter.js';
 import { generateTempFilePath, sanitizeFilename } from '../utils/fileSecurity.js';
 import path from 'path';
 import fs from 'fs';
@@ -37,6 +38,7 @@ export class ConverterRegistry {
     this.registerEngine(new EpsConverter());
     this.registerEngine(new DocumentConverter());
     this.registerEngine(new ThreeDConverter());
+    this.registerEngine(new TextToPdfConverter());
     this.loadPersistedJobs();
   }
 

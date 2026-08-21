@@ -30,6 +30,7 @@ import { SeoLandingPage } from './components/SeoLandingPage.js';
 import { SeoMetaManager } from './components/SeoMetaManager.js';
 import { PricingPage } from './components/PricingPage.js';
 import { ToolsDirectory } from './components/ToolsDirectory.js';
+import { TextToPdfStudio } from './components/TextToPdfStudio.js';
 import { AboutPage } from './components/AboutPage.js';
 import { NotFoundPage } from './components/NotFoundPage.js';
 import { UsageWidget } from './components/UsageWidget.js';
@@ -279,6 +280,7 @@ export default function App() {
       } else if (
         [
           'converter',
+          'text-to-pdf',
           'formats',
           'tools',
           'about',
@@ -1646,6 +1648,26 @@ export default function App() {
               monetization={monetization || DEFAULT_MONETIZATION}
               usedToday={usedToday}
               onNavigate={handleNavigate}
+            />
+          )}
+
+          {/* 3b. Dedicated Text to PDF Studio View */}
+          {currentView === 'text-to-pdf' && (
+            <TextToPdfStudio
+              onNavigate={handleNavigate}
+              showToast={showToast}
+              onRecordHistory={(histItem) => {
+                setHistory((prev) => {
+                  const updated = [histItem, ...prev];
+                  try {
+                    localStorage.setItem('convertx_history', JSON.stringify(updated));
+                  } catch (e) {
+                    console.warn('Failed to persist history item', e);
+                  }
+                  return updated;
+                });
+              }}
+              darkMode={darkMode}
             />
           )}
 

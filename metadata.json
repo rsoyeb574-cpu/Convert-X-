@@ -1,6 +1,6 @@
 {
   "name": "Convert-X",
-  "description": "Convert images, PDFs, vector and professional design files with Convert-X.",
+  "description": "Convert images, PDFs, text documents, vector and professional design files with Convert-X.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

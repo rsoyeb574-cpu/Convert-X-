@@ -108,7 +108,11 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
             href={`/${tool.slug}`}
             onClick={(e) => {
               e.preventDefault();
-              onNavigate('seo', tool.slug);
+              if (tool.slug === 'text-to-pdf') {
+                onNavigate('text-to-pdf');
+              } else {
+                onNavigate('seo', tool.slug);
+              }
             }}
             className="p-6 rounded-3xl bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] dark:hover:border-blue-500 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between space-y-4"
           >

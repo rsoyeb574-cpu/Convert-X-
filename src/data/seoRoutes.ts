@@ -1470,4 +1470,65 @@ export const SEO_ROUTES: Record<string, SeoRouteConfig> = {
     ],
     relatedSlugs: ['image-compressor', 'pdf-to-png', 'pdf-to-jpg', 'png-to-pdf'],
   },
+  'text-to-pdf': {
+    slug: 'text-to-pdf',
+    title: 'Text to PDF Converter - Convert Text and TXT to PDF Online | Convert-X',
+    h1: 'Text to PDF Converter',
+    metaDescription: 'Convert plain text, TXT files, and custom documents into print-ready vector PDF files with custom typography, margins, page sizing, and live preview.',
+    fromFormat: 'text',
+    toFormat: 'pdf',
+    category: 'pdf',
+    badge: 'Vector Typography Engine',
+    shortExplanation: 'Transform raw text, notes, and articles into formatted multi-page PDF documents with customizable fonts, margins, page numbers, and real-time layout preview.',
+    sampleKey: 'sample-txt',
+    supportedInputFormats: ['Plain Text (TXT)', 'Markdown (MD)', 'Rich Text', 'text/plain'],
+    supportedOutputFormats: ['PDF (Portable Document Format)', 'application/pdf'],
+    features: [
+      'Pure vector font rendering with Helvetica, Times Roman, and Courier',
+      'Configurable page sizes: A4, A3, US Letter, and US Legal (Portrait & Landscape)',
+      'Intelligent word wrapping and multi-page layout engine',
+      'Automatic page numbering, customizable margins, and header options',
+    ],
+    whyConvert: {
+      title: 'Why Convert Text to PDF?',
+      description: 'Plain text files lack consistent formatting and look unprofessional when shared. PDF ensures your document renders with exact typography, pagination, and margins across every device and printer.',
+      points: [
+        {
+          title: 'Consistent Multi-Device Typography',
+          text: 'PDF embeds font metrics and layout rules so your document looks identical on Windows, Mac, iOS, Android, and print.',
+        },
+        {
+          title: 'Professional Multi-Page Pagination',
+          text: 'Automatic header, footer, margin, and page number calculation creates clean, publish-ready reports and memos.',
+        },
+        {
+          title: 'Print-Ready Vector Quality',
+          text: 'Unlike screenshot-based converters, vector PDF outputs scale crisply to any resolution and DPI.',
+        },
+      ],
+    },
+    comparison: {
+      fromTitle: 'Raw Plain Text (.txt)',
+      fromPoints: ['No page margins or headers', 'Monotonous unstyled appearance', 'Different wrapping on every device'],
+      toTitle: 'Formatted PDF Document',
+      toPoints: ['Exact typography, line spacing, and margins', 'Multi-page automatic pagination', 'Universal print-ready format'],
+    },
+    howToUse: [
+      { step: 1, title: 'Enter or Paste Text', text: 'Type directly into the editor, select a business preset, or import a .txt file.' },
+      { step: 2, title: 'Customize Layout & Typography', text: 'Select your preferred font family, font size, margins, alignment, and page size.' },
+      { step: 3, title: 'Inspect Live Page Preview', text: 'Review the live multi-page document layout in real time.' },
+      { step: 4, title: 'Download Vector PDF', text: 'Click Convert to PDF to generate and download your high-fidelity PDF.' },
+    ],
+    faq: [
+      {
+        question: 'Is the generated PDF real vector text or an image?',
+        answer: 'Convert-X generates 100% genuine vector PDF documents with selectable, searchable, and printable text streams.',
+      },
+      {
+        question: 'Can I convert long documents with multiple pages?',
+        answer: 'Yes! Our multi-page calculation engine automatically breaks text across pages with proper margins, headers, and page numbering.',
+      },
+    ],
+    relatedSlugs: ['pdf-to-png', 'png-to-pdf', 'pdf-to-jpg', 'compress-pdf'],
+  },
 };
