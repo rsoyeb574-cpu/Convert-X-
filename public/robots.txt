@@ -3,5 +3,7 @@ Allow: /
 Disallow: /api/
 Disallow: /admin/
 Disallow: /private/
+Disallow: /temp/
 
-Sitemap: https://convert-x.com/sitemap.xml
+Sitemap: https://convert-x.onrender.com/sitemap.xml
+

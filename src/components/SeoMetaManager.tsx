@@ -9,7 +9,10 @@ interface SeoMetaManagerProps {
 
 export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seoSlug }) => {
   useEffect(() => {
-    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://convert-x.com';
+    const origin =
+      typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('run.app')
+        ? window.location.origin
+        : 'https://convert-x.onrender.com';
     const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
 
     let title = 'Convert-X - Free Online File Converter';

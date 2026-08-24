@@ -8,7 +8,7 @@ interface ViralShareProps {
 export const ViralShare: React.FC<ViralShareProps> = ({ conversionPair }) => {
   const [copied, setCopied] = useState(false);
 
-  const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://convert-x.com';
+  const siteUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://convert-x.onrender.com';
   const shareText = conversionPair
     ? `Fast ${conversionPair.from.toUpperCase()} to ${conversionPair.to.toUpperCase()} vector & image file conversions with zero file retention on Convert-X!`
     : 'Fast, secure image, vector, and CAD file conversions with zero-retention privacy on Convert-X!';

@@ -61,7 +61,7 @@ export const ReferralPage: React.FC<ReferralPageProps> = ({
   }, []);
 
   const activeCode = stats?.referralCode || initialCode || 'CONVERTX-SHARE';
-  const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://convert-x.com';
+  const siteUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://convert-x.onrender.com';
   const referralLink = `${siteUrl}/?ref=${activeCode}`;
 
   const shareText = `Convert files online with zero file retention on Convert-X. Use my link to get fast, secure conversions:`;

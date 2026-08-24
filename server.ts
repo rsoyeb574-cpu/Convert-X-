@@ -56,6 +56,19 @@ import {
 } from './server/utils/usageService.js';
 import { referralStore } from './server/utils/referralService.js';
 
+// Helper to determine the production canonical base URL
+function getCanonicalSiteUrl(req: express.Request): string {
+  if (process.env.PUBLIC_SITE_URL) {
+    return process.env.PUBLIC_SITE_URL.replace(/\/+$/, '');
+  }
+  const host = (req.get('host') || '').toLowerCase();
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  if (host.includes('localhost') || host.includes('run.app')) {
+    return `${protocol}://${host}`;
+  }
+  return 'https://convert-x.onrender.com';
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -111,9 +124,7 @@ async function startServer() {
   });
 
   app.get('/robots.txt', (req, res) => {
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-    const host = req.get('host') || 'convert-x.com';
-    const siteUrl = `${protocol}://${host}`;
+    const siteUrl = getCanonicalSiteUrl(req);
 
     const robotsTxt = [
       'User-agent: *',
@@ -124,16 +135,17 @@ async function startServer() {
       'Disallow: /temp/',
       '',
       `Sitemap: ${siteUrl}/sitemap.xml`,
+      '',
     ].join('\n');
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.send(robotsTxt);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.removeHeader('X-Robots-Tag');
+    res.status(200).send(robotsTxt);
   });
 
   app.get('/sitemap.xml', (req, res) => {
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-    const host = req.get('host') || 'convert-x.com';
-    const siteUrl = `${protocol}://${host}`;
+    const siteUrl = getCanonicalSiteUrl(req);
 
     const coreRoutes = [
       { loc: '', changefreq: 'daily', priority: '1.0' },
@@ -174,7 +186,9 @@ ${allRoutes
 </urlset>`;
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-    res.send(xml);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.removeHeader('X-Robots-Tag');
+    res.status(200).send(xml);
   });
 
   // --- API ROUTES ---
@@ -1122,7 +1136,7 @@ ${allRoutes
   // --- VITE MIDDLEWARE SETUP ---
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, allowedHosts: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1135,14 +1149,12 @@ ${allRoutes
       try {
         const rawHtml = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
         const reqPath = req.path.replace(/^\/+|\/+$/g, '');
-        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-        const host = req.get('host') || 'convert-x.com';
-        const origin = `${protocol}://${host}`;
+        const origin = getCanonicalSiteUrl(req);
 
         let title = 'Convert-X - Free Online File Converter';
         let description =
           'Convert images, PDFs and supported design files online for free with Convert-X. Fast, simple and easy file conversion.';
-        let canonicalUrl = `${origin}/${reqPath}`;
+        let canonicalUrl = reqPath ? `${origin}/${reqPath}` : `${origin}/`;
 
         if (SEO_ROUTES[reqPath]) {
           const cfg = SEO_ROUTES[reqPath];
@@ -1232,9 +1244,12 @@ ${allRoutes
         }
 
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.send(injectedHtml);
+        res.setHeader('Cache-Control', 'public, max-age=1800');
+        res.removeHeader('X-Robots-Tag');
+        res.status(200).send(injectedHtml);
       } catch (e) {
-        res.sendFile(path.join(distPath, 'index.html'));
+        res.removeHeader('X-Robots-Tag');
+        res.status(200).sendFile(path.join(distPath, 'index.html'));
       }
     });
   }

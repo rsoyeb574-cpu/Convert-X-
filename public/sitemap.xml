@@ -1,138 +1,210 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- Core Application Views -->
+  <!-- Core Public Application Views -->
   <url>
-    <loc>https://convert-x.com/</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/converter</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/tools</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/converter</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/formats</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/formats</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/how-it-works</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/how-it-works</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/faq</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/pricing</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/referral</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/about</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/privacy</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/faq</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/privacy</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/terms</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/terms</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/contact</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/contact</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
 
-  <!-- Supported Raster & Vector Converter Pages -->
+  <!-- Public Converter & Optimization Tool Pages -->
   <url>
-    <loc>https://convert-x.com/png-to-jpg</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/png-to-jpg</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/jpg-to-png</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/jpg-to-png</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/png-to-webp</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/png-to-webp</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/jpg-to-webp</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/jpg-to-webp</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/webp-to-png</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/webp-to-png</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/webp-to-jpg</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/webp-to-jpg</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/png-to-pdf</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/png-to-pdf</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/jpg-to-pdf</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/jpg-to-pdf</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/pdf-to-png</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/image-to-pdf</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/pdf-to-jpg</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/pdf-to-png</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/svg-to-png</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/pdf-to-jpg</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/svg-to-jpg</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/svg-to-png</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/svg-to-pdf</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/svg-to-jpg</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://convert-x.com/dxf-to-pdf</loc>
-    <lastmod>2026-08-14</lastmod>
+    <loc>https://convert-x.onrender.com/svg-to-pdf</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/dxf-to-pdf</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/psd-to-png</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/psd-to-pdf</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/ai-to-pdf</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/ai-to-png</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/image-compressor</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/pdf-compressor</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://convert-x.onrender.com/text-to-pdf</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
 </urlset>

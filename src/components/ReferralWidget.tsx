@@ -29,7 +29,7 @@ export const ReferralWidget: React.FC<ReferralWidgetProps> = ({ onUpgradeClick, 
   }, []);
 
   const referralCode = stats?.referralCode || 'CONVERTX-FREE';
-  const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://convert-x.com';
+  const siteUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://convert-x.onrender.com';
   const referralUrl = `${siteUrl}/?ref=${referralCode}`;
 
   const handleCopyCode = async () => {
