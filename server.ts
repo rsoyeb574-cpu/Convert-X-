@@ -76,25 +76,13 @@ async function startServer() {
   // Run crash recovery on server startup to restore in-flight jobs
   runCrashRecovery();
 
-  // Rate Limiting & Queue Throttling
-  const uploadRateLimiter = createRateLimiter({
-    windowMs: 60 * 1000,
-    maxRequests: 60,
-    actionName: 'upload',
-  });
-
-  const convertRateLimiter = createRateLimiter({
-    windowMs: 60 * 1000,
-    maxRequests: 100,
-    actionName: 'conversion',
-  });
-
-  const queueLimitGuard = checkQueueLimit(20);
+  // Trust reverse proxies (Render, Cloudflare, etc.) for correct protocol and client IP detection
+  app.set('trust proxy', true);
 
   // Global CORS & preflight middleware
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Session-Id');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
@@ -102,33 +90,21 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  // --- IMMEDIATE PUBLIC CRAWLER & SEARCH ENGINE ROUTES (Zero body parsing / zero middleware overhead) ---
 
-  // Multer memory storage configuration for secure magic-byte inspection
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-      fileSize: MAX_FILE_SIZE_BYTES,
-    },
-  });
-
-  // --- SEO & CRAWLER ROUTES ---
-  app.get('/ads.txt', (req, res) => {
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    const adsPath = path.join(process.cwd(), 'public', 'ads.txt');
-    if (fs.existsSync(adsPath)) {
-      return res.send(fs.readFileSync(adsPath, 'utf8'));
-    }
-    res.send('google.com, pub-8954286467084824, DIRECT, f08c47fec0942fa0\n');
-  });
-
-  app.get('/robots.txt', (req, res) => {
+  // 1. /robots.txt (Handles GET and HEAD for Googlebot and all search engine spiders)
+  app.all(['/robots.txt', '/robots.txt/'], (req, res) => {
     const siteUrl = getCanonicalSiteUrl(req);
+    const userAgent = req.get('user-agent') || 'Unknown';
+    const clientIp = req.ip || req.socket.remoteAddress || 'Unknown';
+    const method = req.method;
+
+    console.log(`[ROBOTS.TXT] ${method} request from IP: ${clientIp} | User-Agent: "${userAgent}" | Host: ${req.get('host')} -> Status 200`);
 
     const robotsTxt = [
       'User-agent: *',
       'Allow: /',
+      '',
       'Disallow: /api/',
       'Disallow: /admin/',
       'Disallow: /private/',
@@ -139,13 +115,23 @@ async function startServer() {
     ].join('\n');
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.removeHeader('X-Robots-Tag');
-    res.status(200).send(robotsTxt);
+    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+    res.setHeader('X-Robots-Tag', 'index, follow');
+    res.status(200);
+
+    if (method === 'HEAD') {
+      return res.end();
+    }
+    return res.send(robotsTxt);
   });
 
-  app.get('/sitemap.xml', (req, res) => {
+  // 2. /sitemap.xml (Public sitemap index for search engines)
+  app.all(['/sitemap.xml', '/sitemap.xml/'], (req, res) => {
     const siteUrl = getCanonicalSiteUrl(req);
+    const userAgent = req.get('user-agent') || 'Unknown';
+    const method = req.method;
+
+    console.log(`[SITEMAP.XML] ${method} request from User-Agent: "${userAgent}" | Host: ${req.get('host')} -> Status 200`);
 
     const coreRoutes = [
       { loc: '', changefreq: 'daily', priority: '1.0' },
@@ -176,7 +162,7 @@ async function startServer() {
 ${allRoutes
   .map(
     (r) => `  <url>
-    <loc>${siteUrl}${r.loc ? `/${r.loc}` : ''}</loc>
+    <loc>${siteUrl}${r.loc ? `/${r.loc}` : '/'}</loc>
     <lastmod>${today}</lastmod>
     <changefreq>${r.changefreq}</changefreq>
     <priority>${r.priority}</priority>
@@ -186,10 +172,54 @@ ${allRoutes
 </urlset>`;
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.removeHeader('X-Robots-Tag');
-    res.status(200).send(xml);
+    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+    res.setHeader('X-Robots-Tag', 'index, follow');
+    res.status(200);
+
+    if (method === 'HEAD') {
+      return res.end();
+    }
+    return res.send(xml);
   });
+
+  // 3. /ads.txt
+  app.all('/ads.txt', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const adsPath = path.join(process.cwd(), 'public', 'ads.txt');
+    if (fs.existsSync(adsPath)) {
+      return res.send(fs.readFileSync(adsPath, 'utf8'));
+    }
+    return res.send('google.com, pub-8954286467084824, DIRECT, f08c47fec0942fa0\n');
+  });
+
+  // Rate Limiting & Queue Throttling (for API and uploads)
+  const uploadRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 60,
+    actionName: 'upload',
+  });
+
+  const convertRateLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: 100,
+    actionName: 'conversion',
+  });
+
+  const queueLimitGuard = checkQueueLimit(20);
+
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // Multer memory storage configuration for secure magic-byte inspection
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: MAX_FILE_SIZE_BYTES,
+    },
+  });
+
+
 
   // --- API ROUTES ---
 
