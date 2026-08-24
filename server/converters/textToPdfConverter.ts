@@ -1,4 +1,8 @@
+import 'regenerator-runtime/runtime.js';
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import fs from 'fs';
+import path from 'path';
 import { ConverterEngine, ConvertParams, ConvertResult, ValidationResult } from './types.js';
 
 export interface TextToPdfOptions {
@@ -7,13 +11,13 @@ export interface TextToPdfOptions {
   orientation?: 'portrait' | 'landscape';
   margin?: 'small' | 'normal' | 'large' | 'custom' | number;
   customMargin?: { top?: number; right?: number; bottom?: number; left?: number };
-  fontFamily?: 'helvetica' | 'times' | 'courier';
+  fontFamily?: 'helvetica' | 'sans' | 'times' | 'serif' | 'courier' | 'mono' | 'devanagari' | 'arabic';
   fontSize?: number;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
   alignment?: 'left' | 'center' | 'right' | 'justify';
-  lineSpacing?: number | 'single' | '1.15' | '1.5' | 'double' | '2.0';
+  lineSpacing?: number | 'single' | '1.0' | '1.15' | '1.5' | 'double' | '2.0';
   pageNumbers?: 'none' | 'bottom-center' | 'bottom-right' | 'top-right';
   title?: string;
   filename?: string;
@@ -35,31 +39,29 @@ const MARGIN_PRESETS: Record<string, { top: number; right: number; bottom: numbe
   large: { top: 54, right: 54, bottom: 54, left: 54 },
 };
 
-/**
- * Normalizes unicode characters to standard WinAnsi / Latin-1 printable characters
- * preventing pdf-lib encoding crashes when users paste smart quotes or special punctuation.
- */
-function normalizeTextForPdf(input: string): string {
-  if (!input) return '';
-  return input
-    .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
-    .replace(/[\u2013\u2014\u2212]/g, '-')
-    .replace(/\u2026/g, '...')
-    .replace(/\u00A0/g, ' ')
-    .replace(/[\u2022\u25AA\u25CF\u2023]/g, '* ')
-    .replace(/\t/g, '    ')
-    .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, (char) => {
-      // Return printable character if ASCII-convertible, or clean space
-      const code = char.charCodeAt(0);
-      if (code >= 32 && code <= 126) return char;
-      return ' ';
-    });
+// Font cache for fast server-side reuse
+const fontBufferCache: Map<string, Buffer> = new Map();
+
+function getCachedFontBuffer(filename: string): Buffer | null {
+  if (fontBufferCache.has(filename)) {
+    return fontBufferCache.get(filename)!;
+  }
+  const fontPath = path.join(process.cwd(), 'server', 'fonts', filename);
+  if (fs.existsSync(fontPath)) {
+    try {
+      const buf = fs.readFileSync(fontPath);
+      fontBufferCache.set(filename, buf);
+      return buf;
+    } catch (e) {
+      console.warn(`Could not load font from ${fontPath}:`, e);
+    }
+  }
+  return null;
 }
 
 function parseHexColor(hex?: string): { r: number; g: number; b: number } {
   if (!hex || !hex.startsWith('#') || (hex.length !== 7 && hex.length !== 4)) {
-    return { r: 0.07, g: 0.09, b: 0.15 }; // Default dark slate #111827
+    return { r: 0.07, g: 0.09, b: 0.15 }; // Default slate #111827
   }
   let c = hex.slice(1);
   if (c.length === 3) {
@@ -71,6 +73,42 @@ function parseHexColor(hex?: string): { r: number; g: number; b: number } {
     g: ((num >> 8) & 255) / 255,
     b: (num & 255) / 255,
   };
+}
+
+/**
+ * Detect script characteristics to choose the optimal font & text direction
+ */
+function isDevanagari(text: string): boolean {
+  return /[\u0900-\u097F]/.test(text);
+}
+
+function isArabicOrUrdu(text: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+}
+
+interface EmbeddedFontSet {
+  regular: PDFFont;
+  bold: PDFFont;
+  devaRegular?: PDFFont;
+  devaBold?: PDFFont;
+  arabicRegular?: PDFFont;
+  serifRegular?: PDFFont;
+  serifBold?: PDFFont;
+  monoRegular?: PDFFont;
+}
+
+interface LineItem {
+  text: string;
+  size: number;
+  font: PDFFont;
+  isHeading: boolean;
+  headingLevel?: number;
+  isListItem: boolean;
+  listBullet?: string;
+  indent: number;
+  isParagraphBreak: boolean;
+  isRtl: boolean;
+  words: string[];
 }
 
 export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
@@ -85,9 +123,8 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
     throw new Error('Text exceeds maximum limit of 500,000 characters for a single conversion.');
   }
 
-  const cleanText = normalizeTextForPdf(rawText);
-
   const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
 
   // 1. Page Dimensions & Orientation
   const sizeKey = (options.pageSize || 'a4').toLowerCase();
@@ -97,9 +134,9 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
   const pageHeight = isLandscape ? baseW : baseH;
 
   // 2. Margins
-  let margins = MARGIN_PRESETS.normal;
+  let margins = { ...MARGIN_PRESETS.normal };
   if (typeof options.margin === 'string' && MARGIN_PRESETS[options.margin.toLowerCase()]) {
-    margins = MARGIN_PRESETS[options.margin.toLowerCase()];
+    margins = { ...MARGIN_PRESETS[options.margin.toLowerCase()] };
   } else if (typeof options.margin === 'number' && !isNaN(options.margin)) {
     const m = Math.max(10, Math.min(100, options.margin));
     margins = { top: m, right: m, bottom: m, left: m };
@@ -112,109 +149,236 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
     };
   }
 
-  const printableWidth = pageWidth - margins.left - margins.right;
-  const printableHeight = pageHeight - margins.top - margins.bottom;
+  // Reserve space for header and footer to guarantee zero overlap
+  const hasHeader = Boolean(options.headerText && options.headerText.trim().length > 0);
+  const pageNumStyle = options.pageNumbers || 'bottom-center';
+  const hasFooter = pageNumStyle !== 'none';
 
-  if (printableWidth <= 50 || printableHeight <= 50) {
+  const effectiveTopMargin = hasHeader ? Math.max(margins.top, 42) : margins.top;
+  const effectiveBottomMargin = hasFooter ? Math.max(margins.bottom, 42) : margins.bottom;
+
+  const printableWidth = pageWidth - margins.left - margins.right;
+  const printableHeight = pageHeight - effectiveTopMargin - effectiveBottomMargin;
+
+  if (printableWidth <= 60 || printableHeight <= 60) {
     throw new Error('Specified margins are too large for the chosen page size.');
   }
 
-  // 3. Font Selection
-  const fontFamily = (options.fontFamily || 'helvetica').toLowerCase();
-  const isBold = Boolean(options.bold);
-  const isItalic = Boolean(options.italic);
+  // 3. Load & Embed High-Quality Unicode Fonts (Lazy on-demand embedding)
+  const userFontFam = (options.fontFamily || 'sans').toLowerCase();
+  const hasDevanagari = isDevanagari(rawText);
+  const hasArabic = isArabicOrUrdu(rawText);
 
-  let fontName: StandardFonts = StandardFonts.Helvetica;
-  if (fontFamily === 'times') {
-    if (isBold && isItalic) fontName = StandardFonts.TimesRomanBoldItalic;
-    else if (isBold) fontName = StandardFonts.TimesRomanBold;
-    else if (isItalic) fontName = StandardFonts.TimesRomanItalic;
-    else fontName = StandardFonts.TimesRoman;
-  } else if (fontFamily === 'courier') {
-    if (isBold && isItalic) fontName = StandardFonts.CourierBoldOblique;
-    else if (isBold) fontName = StandardFonts.CourierBold;
-    else if (isItalic) fontName = StandardFonts.CourierOblique;
-    else fontName = StandardFonts.Courier;
-  } else {
-    // Helvetica default
-    if (isBold && isItalic) fontName = StandardFonts.HelveticaBoldOblique;
-    else if (isBold) fontName = StandardFonts.HelveticaBold;
-    else if (isItalic) fontName = StandardFonts.HelveticaOblique;
-    else fontName = StandardFonts.Helvetica;
+  const sansRegBuf = getCachedFontBuffer('NotoSans-Regular.ttf');
+  const mainFont = sansRegBuf ? await pdfDoc.embedFont(sansRegBuf) : await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  let devaFont: PDFFont | undefined;
+  if (hasDevanagari) {
+    const devaRegBuf = getCachedFontBuffer('NotoSansDevanagari-Regular.ttf');
+    if (devaRegBuf) {
+      devaFont = await pdfDoc.embedFont(devaRegBuf);
+    }
   }
 
-  const font = await pdfDoc.embedFont(fontName);
-  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  let arabicFont: PDFFont | undefined;
+  if (hasArabic) {
+    const arabicRegBuf = getCachedFontBuffer('NotoSansArabic-Regular.ttf');
+    if (arabicRegBuf) {
+      arabicFont = await pdfDoc.embedFont(arabicRegBuf);
+    }
+  }
+
+  let serifFont: PDFFont | undefined;
+  if (userFontFam === 'serif' || userFontFam === 'times') {
+    const serifRegBuf = getCachedFontBuffer('NotoSerif-Regular.ttf');
+    if (serifRegBuf) {
+      serifFont = await pdfDoc.embedFont(serifRegBuf);
+    }
+  }
+
+  let monoFont: PDFFont | undefined;
+  if (userFontFam === 'mono' || userFontFam === 'courier') {
+    const monoRegBuf = getCachedFontBuffer('NotoSansMono-Regular.ttf');
+    if (monoRegBuf) {
+      monoFont = await pdfDoc.embedFont(monoRegBuf);
+    }
+  }
+
+  const fontSet: EmbeddedFontSet = {
+    regular: mainFont,
+    bold: mainFont,
+    devaRegular: devaFont,
+    arabicRegular: arabicFont,
+    serifRegular: serifFont,
+    monoRegular: monoFont,
+  };
+
+  // Helper to pick the appropriate font based on user preference and text script
+  const selectFontForText = (str: string, isHeading: boolean = false): PDFFont => {
+    if (isDevanagari(str) && fontSet.devaRegular) {
+      return fontSet.devaRegular;
+    }
+    if (isArabicOrUrdu(str) && fontSet.arabicRegular) {
+      return fontSet.arabicRegular;
+    }
+    if ((userFontFam === 'times' || userFontFam === 'serif') && fontSet.serifRegular) {
+      return fontSet.serifRegular;
+    }
+    if ((userFontFam === 'courier' || userFontFam === 'mono') && fontSet.monoRegular) {
+      return fontSet.monoRegular;
+    }
+    return fontSet.regular;
+  };
 
   // 4. Typography Parameters
-  const fontSize = Math.max(6, Math.min(72, Number(options.fontSize) || 12));
-  
-  // Line spacing multiplier
-  let lineSpacingFactor = 1.25;
+  const baseFontSize = Math.max(6, Math.min(72, Number(options.fontSize) || 12));
+
+  let lineSpacingMultiplier = 1.25;
   if (typeof options.lineSpacing === 'number' && !isNaN(options.lineSpacing)) {
-    lineSpacingFactor = Math.max(0.9, Math.min(3.0, options.lineSpacing * 1.15));
+    lineSpacingMultiplier = Math.max(0.9, Math.min(3.0, options.lineSpacing * 1.15));
   } else if (typeof options.lineSpacing === 'string') {
     const val = options.lineSpacing.toLowerCase();
-    if (val === 'single' || val === '1.0' || val === '1') lineSpacingFactor = 1.15;
-    else if (val === '1.15') lineSpacingFactor = 1.35;
-    else if (val === '1.5') lineSpacingFactor = 1.75;
-    else if (val === 'double' || val === '2.0' || val === '2') lineSpacingFactor = 2.3;
+    if (val === 'single' || val === '1.0' || val === '1') lineSpacingMultiplier = 1.15;
+    else if (val === '1.15') lineSpacingMultiplier = 1.35;
+    else if (val === '1.5') lineSpacingMultiplier = 1.75;
+    else if (val === 'double' || val === '2.0' || val === '2') lineSpacingMultiplier = 2.3;
   }
 
-  const lineHeight = fontSize * lineSpacingFactor;
-  const alignment = (options.alignment || 'left').toLowerCase();
+  const baseAlignment = (options.alignment || 'left').toLowerCase();
   const shouldUnderline = Boolean(options.underline);
   const colorRgb = parseHexColor(options.textColor);
   const textColor = rgb(colorRgb.r, colorRgb.g, colorRgb.b);
 
-  // 5. Line Wrapping Algorithm
-  interface FormattedLine {
-    text: string;
-    isParagraphEnd: boolean;
-    words: string[];
-  }
+  // 5. Structure & Markdown-Like Header/List Parser
+  const linesToRender: LineItem[] = [];
+  const rawParagraphs = rawText.split(/\r\n|\r|\n/);
 
-  const linesToRender: FormattedLine[] = [];
-  const paragraphs = cleanText.split(/\r\n|\r|\n/);
+  for (const rawLine of rawParagraphs) {
+    const trimmed = rawLine.trim();
 
-  for (const para of paragraphs) {
-    if (para.trim() === '') {
-      linesToRender.push({ text: '', isParagraphEnd: true, words: [] });
+    // Empty line -> paragraph separator
+    if (!trimmed) {
+      linesToRender.push({
+        text: '',
+        size: baseFontSize,
+        font: fontSet.regular,
+        isHeading: false,
+        isListItem: false,
+        indent: 0,
+        isParagraphBreak: true,
+        isRtl: false,
+        words: [],
+      });
       continue;
     }
 
-    const words = para.split(' ');
+    // Check for Headings: # Heading 1, ## Heading 2, ### Heading 3
+    let headingLevel = 0;
+    let lineContent = rawLine;
+    let currentFontSize = baseFontSize;
+    let isHeading = false;
+
+    if (/^#\s+/.test(trimmed)) {
+      headingLevel = 1;
+      lineContent = trimmed.replace(/^#\s+/, '');
+      currentFontSize = Math.round(baseFontSize * 1.5);
+      isHeading = true;
+    } else if (/^##\s+/.test(trimmed)) {
+      headingLevel = 2;
+      lineContent = trimmed.replace(/^##\s+/, '');
+      currentFontSize = Math.round(baseFontSize * 1.25);
+      isHeading = true;
+    } else if (/^###\s+/.test(trimmed)) {
+      headingLevel = 3;
+      lineContent = trimmed.replace(/^###\s+/, '');
+      currentFontSize = Math.round(baseFontSize * 1.1);
+      isHeading = true;
+    }
+
+    // Check for Lists: Bullet points (•, *, -) or Numbered (1., 2., 10.)
+    let isListItem = false;
+    let listBullet = '';
+    let indent = 0;
+
+    if (!isHeading) {
+      const bulletMatch = rawLine.match(/^(\s*)([•\*\-]|(?:\d+\.))\s+(.*)$/);
+      if (bulletMatch) {
+        isListItem = true;
+        const leadingSpaces = bulletMatch[1].length;
+        indent = Math.min(60, 16 + leadingSpaces * 4);
+        listBullet = bulletMatch[2].match(/^[\*\-]$/) ? '•' : bulletMatch[2];
+        lineContent = bulletMatch[3];
+      }
+    }
+
+    const currentFont = selectFontForText(lineContent, isHeading);
+    const isRtl = isArabicOrUrdu(lineContent);
+    const effectiveWidth = printableWidth - indent;
+
+    // Word Wrap with precise font measurement
+    const words = lineContent.split(' ');
     let currentLineWords: string[] = [];
 
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
       const testLine = currentLineWords.length === 0 ? word : `${currentLineWords.join(' ')} ${word}`;
-      const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+      let testWidth = 0;
+      try {
+        testWidth = currentFont.widthOfTextAtSize(testLine, currentFontSize);
+      } catch {
+        testWidth = testLine.length * (currentFontSize * 0.55);
+      }
 
-      if (testWidth <= printableWidth) {
+      if (testWidth <= effectiveWidth) {
         currentLineWords.push(word);
       } else {
         if (currentLineWords.length > 0) {
           linesToRender.push({
             text: currentLineWords.join(' '),
-            isParagraphEnd: false,
+            size: currentFontSize,
+            font: currentFont,
+            isHeading,
+            headingLevel,
+            isListItem,
+            listBullet: linesToRender.length > 0 && linesToRender[linesToRender.length - 1].isListItem ? '' : listBullet,
+            indent,
+            isParagraphBreak: false,
+            isRtl,
             words: currentLineWords,
           });
           currentLineWords = [word];
+          // For wrapped lines of a list item, subsequent lines do not re-print the bullet symbol
+          listBullet = '';
         } else {
-          // Word itself is wider than printable area: break word by characters
+          // Single word exceeds printable area: break by characters
           let partialWord = '';
           for (const char of word) {
             const testPartial = partialWord + char;
-            if (font.widthOfTextAtSize(testPartial, fontSize) <= printableWidth) {
+            let partialWidth = 0;
+            try {
+              partialWidth = currentFont.widthOfTextAtSize(testPartial, currentFontSize);
+            } catch {
+              partialWidth = testPartial.length * (currentFontSize * 0.55);
+            }
+
+            if (partialWidth <= effectiveWidth) {
               partialWord = testPartial;
             } else {
               if (partialWord.length > 0) {
                 linesToRender.push({
                   text: partialWord,
-                  isParagraphEnd: false,
+                  size: currentFontSize,
+                  font: currentFont,
+                  isHeading,
+                  headingLevel,
+                  isListItem,
+                  listBullet,
+                  indent,
+                  isParagraphBreak: false,
+                  isRtl,
                   words: [partialWord],
                 });
+                listBullet = '';
               }
               partialWord = char;
             }
@@ -229,177 +393,280 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
     if (currentLineWords.length > 0) {
       linesToRender.push({
         text: currentLineWords.join(' '),
-        isParagraphEnd: true,
+        size: currentFontSize,
+        font: currentFont,
+        isHeading,
+        headingLevel,
+        isListItem,
+        listBullet,
+        indent,
+        isParagraphBreak: false,
+        isRtl,
         words: currentLineWords,
       });
     }
   }
 
-  // Handle empty input gracefully (create single page with clean layout)
+  // Handle empty input gracefully
   if (linesToRender.length === 0) {
-    linesToRender.push({ text: '', isParagraphEnd: true, words: [] });
+    linesToRender.push({
+      text: '',
+      size: baseFontSize,
+      font: fontSet.regular,
+      isHeading: false,
+      isListItem: false,
+      indent: 0,
+      isParagraphBreak: true,
+      isRtl: false,
+      words: [],
+    });
   }
 
-  // 6. Multi-Page Layout & Drawing
+  // 6. Multi-Page Rendering Engine with Strict Bounds
   let currentPage: PDFPage = pdfDoc.addPage([pageWidth, pageHeight]);
-  let currentY = pageHeight - margins.top - fontSize;
+  let currentY = pageHeight - effectiveTopMargin - baseFontSize;
 
-  for (const lineObj of linesToRender) {
-    // If empty line, add paragraph separation
-    if (lineObj.text === '') {
-      currentY -= lineHeight * 0.75;
-      if (currentY < margins.bottom + fontSize) {
+  for (let i = 0; i < linesToRender.length; i++) {
+    const item = linesToRender[i];
+    const itemLineHeight = item.size * lineSpacingMultiplier;
+
+    // Paragraph break spacing
+    if (item.isParagraphBreak) {
+      currentY -= itemLineHeight * 0.65;
+      if (currentY < effectiveBottomMargin + baseFontSize) {
         currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-        currentY = pageHeight - margins.top - fontSize;
+        currentY = pageHeight - effectiveTopMargin - baseFontSize;
       }
       continue;
     }
 
-    // Check if line exceeds bottom margin
-    if (currentY < margins.bottom + fontSize) {
-      currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-      currentY = pageHeight - margins.top - fontSize;
+    // Extra top spacing for headings
+    if (item.isHeading && item.headingLevel === 1 && currentY < pageHeight - effectiveTopMargin - 30) {
+      currentY -= itemLineHeight * 0.4;
     }
 
-    const lineWidth = font.widthOfTextAtSize(lineObj.text, fontSize);
+    // New page trigger if content exceeds bottom margin boundary
+    if (currentY < effectiveBottomMargin + item.size) {
+      currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
+      currentY = pageHeight - effectiveTopMargin - item.size;
+    }
 
-    let startX = margins.left;
-    const isJustifyActive = alignment === 'justify' && !lineObj.isParagraphEnd && lineObj.words.length > 1;
+    let measuredLineWidth = 0;
+    try {
+      measuredLineWidth = item.font.widthOfTextAtSize(item.text, item.size);
+    } catch {
+      measuredLineWidth = item.text.length * (item.size * 0.55);
+    }
+
+    const startX = margins.left + item.indent;
+    const availWidth = printableWidth - item.indent;
+
+    // Draw List Bullet if applicable
+    if (item.isListItem && item.listBullet) {
+      const bulletFont = selectFontForText(item.listBullet, false);
+      const bulletX = margins.left + Math.max(0, item.indent - 14);
+      try {
+        currentPage.drawText(item.listBullet, {
+          x: bulletX,
+          y: currentY,
+          size: item.size,
+          font: bulletFont,
+          color: textColor,
+        });
+      } catch (e) {
+        console.warn('Bullet render fallback:', e);
+      }
+    }
+
+    // Determine Alignment (support explicit or automatic RTL for Urdu/Arabic)
+    let alignment = baseAlignment;
+    if (item.isRtl && alignment === 'left') {
+      alignment = 'right';
+    }
+
+    let renderX = startX;
 
     if (alignment === 'center') {
-      startX = margins.left + Math.max(0, (printableWidth - lineWidth) / 2);
-      currentPage.drawText(lineObj.text, {
-        x: startX,
-        y: currentY,
-        size: fontSize,
-        font,
-        color: textColor,
-      });
-      if (shouldUnderline) {
+      renderX = startX + Math.max(0, (availWidth - measuredLineWidth) / 2);
+      try {
+        currentPage.drawText(item.text, {
+          x: renderX,
+          y: currentY,
+          size: item.size,
+          font: item.font,
+          color: textColor,
+        });
+      } catch (e) {
+        console.warn('Draw text fallback:', e);
+      }
+      if (shouldUnderline || item.headingLevel === 1) {
         currentPage.drawLine({
-          start: { x: startX, y: currentY - 2 },
-          end: { x: startX + lineWidth, y: currentY - 2 },
-          thickness: Math.max(0.6, fontSize * 0.05),
+          start: { x: renderX, y: currentY - 2 },
+          end: { x: renderX + measuredLineWidth, y: currentY - 2 },
+          thickness: item.headingLevel === 1 ? 1.2 : Math.max(0.6, item.size * 0.05),
           color: textColor,
         });
       }
     } else if (alignment === 'right') {
-      startX = margins.left + Math.max(0, printableWidth - lineWidth);
-      currentPage.drawText(lineObj.text, {
-        x: startX,
-        y: currentY,
-        size: fontSize,
-        font,
-        color: textColor,
-      });
+      renderX = startX + Math.max(0, availWidth - measuredLineWidth);
+      try {
+        currentPage.drawText(item.text, {
+          x: renderX,
+          y: currentY,
+          size: item.size,
+          font: item.font,
+          color: textColor,
+        });
+      } catch (e) {
+        console.warn('Draw text fallback:', e);
+      }
+      if (shouldUnderline) {
+        currentPage.drawLine({
+          start: { x: renderX, y: currentY - 2 },
+          end: { x: renderX + measuredLineWidth, y: currentY - 2 },
+          thickness: Math.max(0.6, item.size * 0.05),
+          color: textColor,
+        });
+      }
+    } else if (alignment === 'justify' && item.words.length > 1 && i < linesToRender.length - 1 && !linesToRender[i + 1].isParagraphBreak) {
+      // Justified alignment across available width
+      let wordsTotalWidth = 0;
+      for (const w of item.words) {
+        try {
+          wordsTotalWidth += item.font.widthOfTextAtSize(w, item.size);
+        } catch {
+          wordsTotalWidth += w.length * (item.size * 0.55);
+        }
+      }
+      const totalSpace = availWidth - wordsTotalWidth;
+      const spaceBetween = totalSpace / (item.words.length - 1);
+
+      let runningX = startX;
+      for (const word of item.words) {
+        try {
+          currentPage.drawText(word, {
+            x: runningX,
+            y: currentY,
+            size: item.size,
+            font: item.font,
+            color: textColor,
+          });
+          runningX += item.font.widthOfTextAtSize(word, item.size) + spaceBetween;
+        } catch {
+          runningX += word.length * (item.size * 0.55) + spaceBetween;
+        }
+      }
       if (shouldUnderline) {
         currentPage.drawLine({
           start: { x: startX, y: currentY - 2 },
-          end: { x: startX + lineWidth, y: currentY - 2 },
-          thickness: Math.max(0.6, fontSize * 0.05),
-          color: textColor,
-        });
-      }
-    } else if (isJustifyActive) {
-      // Justify words across full printable width
-      const wordsTotalWidth = lineObj.words.reduce((sum, w) => sum + font.widthOfTextAtSize(w, fontSize), 0);
-      const totalSpacing = printableWidth - wordsTotalWidth;
-      const spaceBetween = totalSpacing / (lineObj.words.length - 1);
-
-      let runningX = margins.left;
-      for (const word of lineObj.words) {
-        currentPage.drawText(word, {
-          x: runningX,
-          y: currentY,
-          size: fontSize,
-          font,
-          color: textColor,
-        });
-        runningX += font.widthOfTextAtSize(word, fontSize) + spaceBetween;
-      }
-      if (shouldUnderline) {
-        currentPage.drawLine({
-          start: { x: margins.left, y: currentY - 2 },
-          end: { x: margins.left + printableWidth, y: currentY - 2 },
-          thickness: Math.max(0.6, fontSize * 0.05),
+          end: { x: startX + availWidth, y: currentY - 2 },
+          thickness: Math.max(0.6, item.size * 0.05),
           color: textColor,
         });
       }
     } else {
       // Left alignment default
-      startX = margins.left;
-      currentPage.drawText(lineObj.text, {
-        x: startX,
-        y: currentY,
-        size: fontSize,
-        font,
-        color: textColor,
-      });
-      if (shouldUnderline) {
+      renderX = startX;
+      try {
+        currentPage.drawText(item.text, {
+          x: renderX,
+          y: currentY,
+          size: item.size,
+          font: item.font,
+          color: textColor,
+        });
+      } catch (e) {
+        console.warn('Draw text fallback:', e);
+      }
+      if (shouldUnderline || item.headingLevel === 1) {
         currentPage.drawLine({
-          start: { x: startX, y: currentY - 2 },
-          end: { x: startX + lineWidth, y: currentY - 2 },
-          thickness: Math.max(0.6, fontSize * 0.05),
+          start: { x: renderX, y: currentY - 2 },
+          end: { x: renderX + (item.headingLevel === 1 ? availWidth : measuredLineWidth), y: currentY - 2 },
+          thickness: item.headingLevel === 1 ? 0.8 : Math.max(0.6, item.size * 0.05),
           color: textColor,
         });
       }
     }
 
-    currentY -= lineHeight;
+    currentY -= itemLineHeight;
   }
 
-  // 7. Page Numbers & Header Footer Layering
+  // 7. Header and Footer / Page Numbering on All Pages (Never overlaps content)
   const totalPages = pdfDoc.getPageCount();
-  const pageNumStyle = options.pageNumbers || 'bottom-center';
+  const pages = pdfDoc.getPages();
+  const metaFont = fontSet.regular;
 
-  if (pageNumStyle !== 'none' || options.headerText) {
-    const pages = pdfDoc.getPages();
-    for (let i = 0; i < pages.length; i++) {
-      const p = pages[i];
+  for (let i = 0; i < pages.length; i++) {
+    const p = pages[i];
+
+    // Optional Header
+    if (options.headerText && options.headerText.trim()) {
+      const headerStr = options.headerText.trim();
+      const headerFont = selectFontForText(headerStr, false);
+      const headerY = pageHeight - Math.max(16, effectiveTopMargin / 2);
+
+      try {
+        p.drawText(headerStr, {
+          x: margins.left,
+          y: headerY,
+          size: 9,
+          font: headerFont,
+          color: rgb(0.45, 0.45, 0.5),
+        });
+        // Subtle divider line under header
+        p.drawLine({
+          start: { x: margins.left, y: headerY - 4 },
+          end: { x: pageWidth - margins.right, y: headerY - 4 },
+          thickness: 0.5,
+          color: rgb(0.85, 0.88, 0.92),
+        });
+      } catch (e) {
+        console.warn('Header render error:', e);
+      }
+    }
+
+    // Page Numbers
+    if (pageNumStyle !== 'none') {
       const pageNumStr = `Page ${i + 1} of ${totalPages}`;
-      const numWidth = regularFont.widthOfTextAtSize(pageNumStr, 9);
+      let numWidth = 50;
+      try {
+        numWidth = metaFont.widthOfTextAtSize(pageNumStr, 9);
+      } catch {
+        numWidth = 50;
+      }
+
+      const footerY = Math.max(12, effectiveBottomMargin / 2 - 4);
 
       if (pageNumStyle === 'bottom-center') {
         p.drawText(pageNumStr, {
           x: (pageWidth - numWidth) / 2,
-          y: Math.max(12, margins.bottom / 2 - 4),
+          y: footerY,
           size: 9,
-          font: regularFont,
-          color: rgb(0.45, 0.45, 0.45),
+          font: metaFont,
+          color: rgb(0.45, 0.45, 0.5),
         });
       } else if (pageNumStyle === 'bottom-right') {
         p.drawText(pageNumStr, {
           x: pageWidth - margins.right - numWidth,
-          y: Math.max(12, margins.bottom / 2 - 4),
+          y: footerY,
           size: 9,
-          font: regularFont,
-          color: rgb(0.45, 0.45, 0.45),
+          font: metaFont,
+          color: rgb(0.45, 0.45, 0.5),
         });
       } else if (pageNumStyle === 'top-right') {
         p.drawText(pageNumStr, {
           x: pageWidth - margins.right - numWidth,
-          y: pageHeight - Math.max(12, margins.top / 2),
+          y: pageHeight - Math.max(16, effectiveTopMargin / 2),
           size: 9,
-          font: regularFont,
-          color: rgb(0.45, 0.45, 0.45),
-        });
-      }
-
-      if (options.headerText) {
-        const cleanHeader = normalizeTextForPdf(options.headerText);
-        p.drawText(cleanHeader, {
-          x: margins.left,
-          y: pageHeight - Math.max(12, margins.top / 2),
-          size: 9,
-          font: regularFont,
-          color: rgb(0.5, 0.5, 0.5),
+          font: metaFont,
+          color: rgb(0.45, 0.45, 0.5),
         });
       }
     }
   }
 
-  // 8. Document Metadata
-  pdfDoc.setTitle(options.title || 'Document');
+  // 8. Standard PDF Metadata
+  pdfDoc.setTitle(options.title || 'Text Document');
   pdfDoc.setAuthor('Convert-X User');
   pdfDoc.setCreator('Convert-X Universal PDF Engine');
   pdfDoc.setProducer('pdf-lib & Convert-X Text-to-PDF Studio');
@@ -422,7 +689,7 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
 export class TextToPdfConverter implements ConverterEngine {
   id = 'text_to_pdf_engine';
   name = 'Convert-X Universal Text-to-PDF Engine';
-  description = 'Direct typographic vector PDF layout engine with multi-page flow and word wrap.';
+  description = 'Direct typographic vector PDF layout engine with Unicode font embedding and multi-page flow.';
   supportedInputFormats = ['txt', 'text'];
   supportedOutputFormats = ['pdf'];
 
@@ -476,3 +743,4 @@ export class TextToPdfConverter implements ConverterEngine {
     };
   }
 }
+

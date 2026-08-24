@@ -31,16 +31,64 @@ import {
   ShieldCheck,
   Printer,
   Settings2,
+  LayoutGrid,
+  Ruler,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface TextToPdfStudioProps {
-  onNavigate: (view: PageView) => void;
-  showToast: (title: string, message?: string, type?: 'success' | 'error' | 'info') => void;
+  onNavigate: (view: PageView, seoSlug?: string) => void;
+  showToast: (title: string, message?: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   onRecordHistory?: (item: any) => void;
   darkMode?: boolean;
 }
 
 const TEMPLATES: Record<string, { label: string; text: string; settings?: Partial<TextToPdfSettings> }> = {
+  multilingualReport: {
+    label: 'Multilingual Document (English, हिंदी, اردو)',
+    text: `# Convert-X Multilingual Document
+Official Vector PDF Layout Engine
+
+## 1. English Executive Summary
+This document demonstrates high-fidelity text-to-PDF conversion with complete Unicode character rendering, multi-page vector typesetting, and strict margins.
+
+Key Capabilities:
+• Real selectable and searchable vector text layer
+• Automatic word wrapping and dynamic pagination
+• Preservation of bullet points, numbered lists, and paragraph breaks
+• Zero overlap between content, headers, and footers
+
+## 2. हिंदी विवरण (Hindi - Devanagari Script)
+यह एक उन्नत और सुरक्षित ऑनलाइन टेक्स्ट से पीडीएफ कनवर्टर है। 
+आप हिंदी और देवनागरी लिपि के किसी भी पाठ को आसानी से पीडीएफ में बदल सकते हैं।
+
+मुख्य विशेषताएं:
+• संपूर्ण देवनागरी लिपि और संयुक्त अक्षरों का शुद्ध प्रतिपादन
+• स्पष्ट फॉन्ट और सटीक पेज नंबरिंग
+• सभी मोबाइल और कंप्यूटर ब्राउज़रों में पूरी तरह से खोजने योग्य
+
+## 3. اردو تفصیل (Urdu / Arabic Script)
+یہ ایک جدید اور معیاری ٹیکسٹ سے پی ڈی ایف کنورٹر ہے۔ یہ اردو اور عربی متن کو مکمل درستگی اور خوبصورت خطاطی کے ساتھ پیش کرتا ہے۔
+
+نمایاں خصوصیات:
+• حقیقی تلاش کے قابل اور کاپی کرنے کے قابل ٹیکسٹ لیئر
+• درست پیجیشن اور حاشیوں کی ترتیب
+• تمام موبائل اور ڈیسک ٹاپ سسٹمز پر یکساں کارکردگی
+
+## 4. Action Items & Verification
+1. Verify document layout and typography across all target pages.
+2. Confirm that text remains selectable and searchable inside any PDF reader.
+3. Export or download vector PDF for offline printing or distribution.`,
+    settings: {
+      pageSize: 'a4',
+      fontFamily: 'sans' as any,
+      fontSize: 11,
+      lineSpacing: '1.15',
+      alignment: 'left',
+      margin: 'normal',
+      pageNumbers: 'bottom-center',
+    },
+  },
   formalLetter: {
     label: 'Formal Business Letter',
     text: `ACME CORPORATION
@@ -72,7 +120,7 @@ Chief Executive Officer
 Acme Corporation`,
     settings: {
       pageSize: 'a4',
-      fontFamily: 'times',
+      fontFamily: 'times' as any,
       fontSize: 12,
       lineSpacing: '1.15',
       alignment: 'left',
@@ -107,7 +155,7 @@ AGENDA & TOPICS DISCUSSED:
 Next meeting scheduled for Monday, November 2, 2026 at 09:00 AM PST.`,
     settings: {
       pageSize: 'a4',
-      fontFamily: 'helvetica',
+      fontFamily: 'helvetica' as any,
       fontSize: 11,
       lineSpacing: '1.15',
       alignment: 'left',
@@ -154,7 +202,7 @@ Bank: Silicon Premier Bank | Routing: 121000358 | Account: 9876543210
 Thank you for your business!`,
     settings: {
       pageSize: 'letter',
-      fontFamily: 'courier',
+      fontFamily: 'courier' as any,
       fontSize: 11,
       lineSpacing: '1.15',
       alignment: 'left',
@@ -170,35 +218,38 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
   onRecordHistory,
   darkMode = true,
 }) => {
-  const [text, setText] = useState<string>(() => TEMPLATES.formalLetter.text);
+  const [text, setText] = useState<string>(() => TEMPLATES.multilingualReport.text);
   const [pageSize, setPageSize] = useState<'a4' | 'a3' | 'letter' | 'legal'>('a4');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [margin, setMargin] = useState<'small' | 'normal' | 'large' | 'custom'>('normal');
   const [customMarginVal, setCustomMarginVal] = useState<number>(36);
-  const [fontFamily, setFontFamily] = useState<'helvetica' | 'times' | 'courier'>('helvetica');
-  const [fontSize, setFontSize] = useState<number>(12);
+  const [fontFamily, setFontFamily] = useState<'helvetica' | 'sans' | 'times' | 'serif' | 'courier' | 'mono' | 'devanagari' | 'arabic'>('sans');
+  const [fontSize, setFontSize] = useState<number>(11);
   const [bold, setBold] = useState<boolean>(false);
   const [italic, setItalic] = useState<boolean>(false);
   const [underline, setUnderline] = useState<boolean>(false);
   const [alignment, setAlignment] = useState<'left' | 'center' | 'right' | 'justify'>('left');
   const [lineSpacing, setLineSpacing] = useState<'single' | '1.15' | '1.5' | 'double'>('1.15');
   const [pageNumbers, setPageNumbers] = useState<'none' | 'bottom-center' | 'bottom-right' | 'top-right'>('bottom-center');
-  const [documentTitle, setDocumentTitle] = useState<string>('My Document');
+  const [documentTitle, setDocumentTitle] = useState<string>('Multilingual Document');
   const [filename, setFilename] = useState<string>('document.pdf');
-  const [headerText, setHeaderText] = useState<string>('');
+  const [headerText, setHeaderText] = useState<string>('CONVERT-X OFFICIAL VECTOR PDF');
   const [textColor, setTextColor] = useState<string>('#111827');
 
   // UI View States
-  const [activeTab, setActiveTab] = useState<'editor' | 'preview' | 'settings'>('editor');
+  const [mobileTab, setMobileTab] = useState<'editor' | 'preview' | 'settings'>('editor');
   const [isConverting, setIsConverting] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
-  const [previewZoom, setPreviewZoom] = useState<number>(100);
   const [currentPreviewPage, setCurrentPreviewPage] = useState<number>(1);
+  const [previewViewMode, setPreviewViewMode] = useState<'single' | 'grid'>('single');
+  const [showMarginGuides, setShowMarginGuides] = useState<boolean>(false);
+  const [previewZoom, setPreviewZoom] = useState<number>(100);
   const [showRealPdfModal, setShowRealPdfModal] = useState<boolean>(false);
   const [realPdfUrl, setRealPdfUrl] = useState<string | null>(null);
   const [isLoadingRealPdf, setIsLoadingRealPdf] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Statistics
   const wordCount = useMemo(() => {
@@ -478,10 +529,31 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
     }
   };
 
+  // Insert formatting helper at cursor or append
+  const insertFormatting = (prefix: string, suffix: string = '', defaultText: string = 'text') => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setText((prev) => `${prev}${prefix}${defaultText}${suffix}`);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = text.substring(start, end) || defaultText;
+    const replacement = `${prefix}${selectedText}${suffix}`;
+    const newText = text.substring(0, start) + replacement + text.substring(end);
+    setText(newText);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
+    }, 50);
+  };
+
   // Font family CSS mapping for live typography preview
   const previewFontFamilyClass = useMemo(() => {
-    if (fontFamily === 'times') return 'font-serif';
-    if (fontFamily === 'courier') return 'font-mono';
+    if (fontFamily === 'times' || fontFamily === 'serif') return 'font-serif';
+    if (fontFamily === 'courier' || fontFamily === 'mono') return 'font-mono';
     return 'font-sans';
   }, [fontFamily]);
 
@@ -553,10 +625,47 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
         </div>
       </div>
 
+      {/* Mobile Tab Switcher */}
+      <div className="flex lg:hidden items-center p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-[#E2E8F0] dark:border-[#1E293B]">
+        <button
+          onClick={() => setMobileTab('editor')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer ${
+            mobileTab === 'editor'
+              ? 'bg-white dark:bg-[#111827] text-[#2563EB] dark:text-blue-400 shadow-xs'
+              : 'text-[#64748B] dark:text-[#94A3B8]'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Editor</span>
+        </button>
+        <button
+          onClick={() => setMobileTab('preview')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer ${
+            mobileTab === 'preview'
+              ? 'bg-white dark:bg-[#111827] text-[#2563EB] dark:text-blue-400 shadow-xs'
+              : 'text-[#64748B] dark:text-[#94A3B8]'
+          }`}
+        >
+          <Eye className="w-4 h-4" />
+          <span>Live Preview ({previewPages.length}p)</span>
+        </button>
+        <button
+          onClick={() => setMobileTab('settings')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer ${
+            mobileTab === 'settings'
+              ? 'bg-white dark:bg-[#111827] text-[#2563EB] dark:text-blue-400 shadow-xs'
+              : 'text-[#64748B] dark:text-[#94A3B8]'
+          }`}
+        >
+          <Settings2 className="w-4 h-4" />
+          <span>Page Setup</span>
+        </button>
+      </div>
+
       {/* Main Studio Workspace: 2-Column Grid on Desktop, Tabbed on Mobile */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT / MAIN COLUMN: Editor & Formatting Toolbar (7 Cols) */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className={`lg:col-span-7 space-y-4 ${mobileTab === 'editor' ? 'block' : 'hidden lg:block'}`}>
           {/* Main Formatting Toolbar */}
           <div className="bg-white dark:bg-[#111827] p-4 rounded-3xl border border-[#E2E8F0] dark:border-[#1E293B] shadow-xs space-y-3">
             {/* Top Toolbar Row: Presets, Import, Copy, Clear */}
@@ -565,9 +674,10 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 <span className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Preset:</span>
                 <select
                   onChange={(e) => handleSelectTemplate(e.target.value)}
-                  defaultValue="formalLetter"
-                  className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer"
+                  defaultValue="multilingualReport"
+                  className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer min-h-[38px]"
                 >
+                  <option value="multilingualReport">Multilingual (English, हिंदी, اردو)</option>
                   <option value="formalLetter">Formal Letter</option>
                   <option value="meetingNotes">Meeting Notes</option>
                   <option value="invoiceQuote">Invoice / Quote</option>
@@ -584,7 +694,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer min-h-[38px]"
                   title="Upload a .txt or .md file"
                 >
                   <Upload className="w-3.5 h-3.5" />
@@ -592,7 +702,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 </button>
                 <button
                   onClick={handleCopyText}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer min-h-[38px]"
                   title="Copy text to clipboard"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
@@ -600,7 +710,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 </button>
                 <button
                   onClick={handleClear}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-1.5 cursor-pointer min-h-[38px]"
                   title="Clear document text"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -609,25 +719,27 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
               </div>
             </div>
 
-            {/* Middle Toolbar Row: Typography (Font Family, Size, Weight, Alignment, Spacing) */}
+            {/* Middle Toolbar Row: Typography (Font Family, Size, Weight, Alignment, Spacing, Color) */}
             <div className="flex items-center flex-wrap gap-2 pt-1">
               {/* Font Family */}
               <select
                 value={fontFamily}
                 onChange={(e) => setFontFamily(e.target.value as any)}
-                className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer min-h-[38px]"
                 title="Font Family"
               >
-                <option value="helvetica">Helvetica (Sans-Serif)</option>
-                <option value="times">Times Roman (Serif)</option>
-                <option value="courier">Courier (Monospace)</option>
+                <option value="sans">Modern Sans (Noto / Helvetica)</option>
+                <option value="serif">Classic Serif (Noto Serif / Times)</option>
+                <option value="mono">Monospace (Noto Mono / Courier)</option>
+                <option value="devanagari">Hindi Devanagari (Noto Sans)</option>
+                <option value="arabic">Urdu / Arabic (Noto Sans)</option>
               </select>
 
               {/* Font Size */}
-              <div className="flex items-center rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] overflow-hidden">
+              <div className="flex items-center rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] overflow-hidden min-h-[38px]">
                 <button
                   onClick={() => setFontSize((prev) => Math.max(6, prev - 1))}
-                  className="px-2 py-1.5 text-xs text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white cursor-pointer font-bold"
+                  className="px-2.5 py-2 text-xs text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white cursor-pointer font-bold"
                   title="Decrease font size"
                 >
                   -
@@ -635,7 +747,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 <select
                   value={fontSize}
                   onChange={(e) => setFontSize(Number(e.target.value))}
-                  className="px-1.5 py-1.5 bg-transparent text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none cursor-pointer"
+                  className="px-2 py-2 bg-transparent text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none cursor-pointer"
                   title="Font Size"
                 >
                   {[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 32].map((s) => (
@@ -646,18 +758,50 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 </select>
                 <button
                   onClick={() => setFontSize((prev) => Math.min(72, prev + 1))}
-                  className="px-2 py-1.5 text-xs text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white cursor-pointer font-bold"
+                  className="px-2.5 py-2 text-xs text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white cursor-pointer font-bold"
                   title="Increase font size"
                 >
                   +
                 </button>
               </div>
 
+              {/* Document Structure Insertion Helpers */}
+              <div className="flex items-center rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] p-0.5 min-h-[38px]">
+                <button
+                  onClick={() => insertFormatting('\n# ', '\n', 'Document Heading')}
+                  className="px-2 py-1.5 rounded-lg text-xs font-extrabold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                  title="Insert Heading 1"
+                >
+                  H1
+                </button>
+                <button
+                  onClick={() => insertFormatting('\n## ', '\n', 'Section Subheading')}
+                  className="px-2 py-1.5 rounded-lg text-xs font-extrabold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                  title="Insert Heading 2"
+                >
+                  H2
+                </button>
+                <button
+                  onClick={() => insertFormatting('\n• ', '\n', 'Bullet list item')}
+                  className="px-2 py-1.5 rounded-lg text-xs font-extrabold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                  title="Insert Bullet Point"
+                >
+                  • List
+                </button>
+                <button
+                  onClick={() => insertFormatting('\n1. ', '\n', 'Numbered list item')}
+                  className="px-2 py-1.5 rounded-lg text-xs font-extrabold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                  title="Insert Numbered List"
+                >
+                  1. List
+                </button>
+              </div>
+
               {/* Styles: Bold, Italic, Underline */}
-              <div className="flex items-center rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] p-0.5">
+              <div className="flex items-center rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] p-0.5 min-h-[38px]">
                 <button
                   onClick={() => setBold(!bold)}
-                  className={`p-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  className={`p-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     bold ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
                   }`}
                   title="Bold (B)"
@@ -666,7 +810,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 </button>
                 <button
                   onClick={() => setItalic(!italic)}
-                  className={`p-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  className={`p-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     italic ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
                   }`}
                   title="Italic (I)"
@@ -675,7 +819,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 </button>
                 <button
                   onClick={() => setUnderline(!underline)}
-                  className={`p-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  className={`p-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                     underline ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
                   }`}
                   title="Underline (U)"
@@ -685,10 +829,10 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
               </div>
 
               {/* Alignment */}
-              <div className="flex items-center rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] p-0.5">
+              <div className="flex items-center rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] p-0.5 min-h-[38px]">
                 <button
                   onClick={() => setAlignment('left')}
-                  className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                  className={`p-2 rounded-lg text-xs transition-colors cursor-pointer ${
                     alignment === 'left' ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
                   }`}
                   title="Align Left"
@@ -697,7 +841,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 </button>
                 <button
                   onClick={() => setAlignment('center')}
-                  className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                  className={`p-2 rounded-lg text-xs transition-colors cursor-pointer ${
                     alignment === 'center' ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
                   }`}
                   title="Align Center"
@@ -706,7 +850,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 </button>
                 <button
                   onClick={() => setAlignment('right')}
-                  className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                  className={`p-2 rounded-lg text-xs transition-colors cursor-pointer ${
                     alignment === 'right' ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
                   }`}
                   title="Align Right"
@@ -715,7 +859,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 </button>
                 <button
                   onClick={() => setAlignment('justify')}
-                  className={`p-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                  className={`p-2 rounded-lg text-xs transition-colors cursor-pointer ${
                     alignment === 'justify' ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
                   }`}
                   title="Justify"
@@ -728,7 +872,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
               <select
                 value={lineSpacing}
                 onChange={(e) => setLineSpacing(e.target.value as any)}
-                className="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer min-h-[38px]"
                 title="Line Spacing"
               >
                 <option value="single">Single (1.0x)</option>
@@ -738,7 +882,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
               </select>
 
               {/* Text Color */}
-              <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B]">
+              <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] min-h-[38px]">
                 <span className="text-[10px] font-bold text-[#64748B] dark:text-[#94A3B8]">Color</span>
                 <input
                   type="color"
@@ -769,19 +913,18 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
 
               <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Auto-formatting active</span>
+                <span>Vector text engine active</span>
               </div>
             </div>
 
             <textarea
+              ref={textareaRef}
               id="text-to-pdf-main-textarea"
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Paste or start typing your document text here..."
               rows={18}
-              className={`w-full p-6 bg-transparent text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 focus:outline-none resize-y min-h-[380px] max-h-[700px] text-sm leading-relaxed ${
-                fontFamily === 'courier' ? 'font-mono' : fontFamily === 'times' ? 'font-serif' : 'font-sans'
-              }`}
+              className={`w-full p-6 bg-transparent text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 focus:outline-none resize-y min-h-[380px] max-h-[700px] text-sm leading-relaxed ${previewFontFamilyClass}`}
               style={{
                 textAlign: alignment,
                 fontWeight: bold ? 'bold' : 'normal',
@@ -792,7 +935,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
           </div>
 
           {/* Quick Preset Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {Object.entries(TEMPLATES).map(([key, tpl]) => (
               <button
                 key={key}
@@ -800,8 +943,8 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 className="p-3.5 rounded-2xl bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] dark:hover:border-blue-500 text-left transition-all group cursor-pointer"
               >
                 <div className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB] transition-colors flex items-center justify-between">
-                  <span>{tpl.label}</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-[#2563EB] group-hover:translate-x-0.5 transition-transform" />
+                  <span className="line-clamp-1">{tpl.label}</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-[#2563EB] group-hover:translate-x-0.5 transition-transform shrink-0 ml-1" />
                 </div>
                 <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] line-clamp-1 mt-1">
                   Load ready-made structure & styling
@@ -812,9 +955,9 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
         </div>
 
         {/* RIGHT COLUMN: Settings & Live Document Preview (5 Cols) */}
-        <div className="lg:col-span-5 space-y-4">
+        <div className={`lg:col-span-5 space-y-4 ${mobileTab !== 'editor' ? 'block' : 'hidden lg:block'}`}>
           {/* Document Settings Panel */}
-          <div className="bg-white dark:bg-[#111827] p-5 rounded-3xl border border-[#E2E8F0] dark:border-[#1E293B] shadow-xs space-y-4">
+          <div className={`bg-white dark:bg-[#111827] p-5 rounded-3xl border border-[#E2E8F0] dark:border-[#1E293B] shadow-xs space-y-4 ${mobileTab === 'preview' ? 'hidden lg:block' : 'block'}`}>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-2">
                 <Settings2 className="w-4 h-4 text-[#2563EB]" />
@@ -832,7 +975,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 <select
                   value={pageSize}
                   onChange={(e) => setPageSize(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer min-h-[44px]"
                 >
                   <option value="a4">A4 (210 × 297 mm)</option>
                   <option value="a3">A3 (297 × 420 mm)</option>
@@ -843,10 +986,10 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8]">Orientation</label>
-                <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-800/80 p-1 rounded-xl border border-[#E2E8F0] dark:border-[#1E293B]">
+                <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-800/80 p-1 rounded-xl border border-[#E2E8F0] dark:border-[#1E293B] min-h-[44px]">
                   <button
                     onClick={() => setOrientation('portrait')}
-                    className={`py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                       orientation === 'portrait' ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8]'
                     }`}
                   >
@@ -854,7 +997,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                   </button>
                   <button
                     onClick={() => setOrientation('landscape')}
-                    className={`py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                       orientation === 'landscape' ? 'bg-[#2563EB] text-white shadow-xs' : 'text-[#64748B] dark:text-[#94A3B8]'
                     }`}
                   >
@@ -871,7 +1014,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 <select
                   value={margin}
                   onChange={(e) => setMargin(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer min-h-[44px]"
                 >
                   <option value="small">Small (0.28 in / 20 pt)</option>
                   <option value="normal">Normal (0.5 in / 36 pt)</option>
@@ -885,7 +1028,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                 <select
                   value={pageNumbers}
                   onChange={(e) => setPageNumbers(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] cursor-pointer min-h-[44px]"
                 >
                   <option value="none">No Page Numbers</option>
                   <option value="bottom-center">Bottom Center</option>
@@ -921,7 +1064,7 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                   value={filename}
                   onChange={(e) => setFilename(e.target.value)}
                   placeholder="document.pdf"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB]"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] min-h-[44px]"
                 />
               </div>
               <div className="space-y-1.5">
@@ -931,108 +1074,386 @@ export const TextToPdfStudio: React.FC<TextToPdfStudioProps> = ({
                   value={headerText}
                   onChange={(e) => setHeaderText(e.target.value)}
                   placeholder="e.g. Confidential Report"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB]"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:border-[#2563EB] min-h-[44px]"
                 />
               </div>
             </div>
           </div>
 
           {/* Live Interactive Document Preview Card */}
-          <div className="bg-white dark:bg-[#111827] rounded-3xl border border-[#E2E8F0] dark:border-[#1E293B] shadow-xs overflow-hidden flex flex-col">
+          <div className={`bg-white dark:bg-[#111827] rounded-3xl border border-[#E2E8F0] dark:border-[#1E293B] shadow-xs overflow-hidden flex flex-col ${mobileTab === 'settings' ? 'hidden lg:flex' : 'flex'}`}>
             {/* Preview Toolbar */}
-            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-[#64748B] dark:text-[#94A3B8] bg-slate-50/50 dark:bg-slate-900/30">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between flex-wrap gap-2 text-xs text-[#64748B] dark:text-[#94A3B8] bg-slate-50/50 dark:bg-slate-900/30">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC]">Live Layout Preview</span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-[10px] font-bold">
-                  {previewPages.length} Page(s)
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 text-[10px] font-bold border border-blue-200 dark:border-blue-800/40">
+                  {previewPages.length} Page{previewPages.length > 1 ? 's' : ''}
                 </span>
               </div>
 
-              {/* Page Navigator */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  disabled={currentPreviewPage <= 1}
-                  onClick={() => setCurrentPreviewPage((p) => Math.max(1, p - 1))}
-                  className="p-1 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white disabled:opacity-30 cursor-pointer"
-                  title="Previous Page"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
-                  {Math.min(currentPreviewPage, previewPages.length)} / {previewPages.length}
-                </span>
-                <button
-                  disabled={currentPreviewPage >= previewPages.length}
-                  onClick={() => setCurrentPreviewPage((p) => Math.min(previewPages.length, p + 1))}
-                  className="p-1 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white disabled:opacity-30 cursor-pointer"
-                  title="Next Page"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Preview Stage Container with realistic shadow and page margins */}
-            <div className="p-4 sm:p-6 bg-slate-100 dark:bg-slate-950/80 flex items-center justify-center overflow-auto min-h-[380px]">
-              <div
-                className="bg-white text-slate-900 shadow-xl rounded-sm transition-all relative flex flex-col justify-between"
-                style={{
-                  width: orientation === 'landscape' ? '100%' : '82%',
-                  aspectRatio: `${pageAspect}`,
-                  padding: `${Math.max(16, marginPt * 0.55)}px`,
-                  color: textColor,
-                }}
-              >
-                {/* Header preview */}
-                {headerText ? (
-                  <div className="text-[9px] text-slate-400 border-b border-slate-200 pb-1 mb-2 font-sans tracking-wide">
-                    {headerText}
-                  </div>
-                ) : null}
-
-                {/* Page Content */}
-                <div
-                  className={`flex-1 overflow-hidden space-y-2 ${previewFontFamilyClass} ${previewLineHeightClass}`}
-                  style={{
-                    fontSize: `${Math.max(8, fontSize * 0.75)}px`,
-                    textAlign: alignment,
-                    fontWeight: bold ? 'bold' : 'normal',
-                    fontStyle: italic ? 'italic' : 'normal',
-                    textDecoration: underline ? 'underline' : 'none',
-                  }}
-                >
-                  {(previewPages[Math.min(currentPreviewPage - 1, previewPages.length - 1)] || []).map(
-                    (para, idx) => (
-                      <p key={idx} className="whitespace-pre-wrap">
-                        {para || <br />}
-                      </p>
-                    )
-                  )}
+              {/* View Controls: Mode Toggle, Margin Guides, Zoom, Pagination */}
+              <div className="flex items-center flex-wrap gap-1.5">
+                {/* View Mode Toggle: Single Page vs Grid */}
+                <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg">
+                  <button
+                    onClick={() => setPreviewViewMode('single')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                      previewViewMode === 'single'
+                        ? 'bg-white dark:bg-[#111827] text-[#2563EB] dark:text-blue-400 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                    title="Single page inspection with thumbnail strip"
+                  >
+                    <FileText className="w-3 h-3" />
+                    <span>Single</span>
+                  </button>
+                  <button
+                    onClick={() => setPreviewViewMode('grid')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                      previewViewMode === 'grid'
+                        ? 'bg-white dark:bg-[#111827] text-[#2563EB] dark:text-blue-400 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                    title="View all pages in a comparative grid"
+                  >
+                    <LayoutGrid className="w-3 h-3" />
+                    <span>All Pages</span>
+                  </button>
                 </div>
 
-                {/* Footer / Page Number Preview */}
-                {pageNumbers !== 'none' && (
-                  <div
-                    className={`text-[9px] text-slate-400 pt-2 font-sans flex ${
-                      pageNumbers === 'bottom-center'
-                        ? 'justify-center'
-                        : pageNumbers === 'bottom-right'
-                        ? 'justify-end'
-                        : 'justify-end'
-                    }`}
+                {/* Margin Guides Toggle */}
+                <button
+                  onClick={() => setShowMarginGuides(!showMarginGuides)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border cursor-pointer ${
+                    showMarginGuides
+                      ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-800 text-[#2563EB] dark:text-blue-400'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Toggle visual margin boundary guides"
+                >
+                  <Ruler className="w-3 h-3" />
+                  <span>Guides</span>
+                </button>
+
+                {/* Zoom Controls */}
+                <div className="hidden sm:flex items-center bg-slate-200/80 dark:bg-slate-800 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setPreviewZoom((z) => Math.max(75, z - 25))}
+                    disabled={previewZoom <= 75}
+                    className="p-1 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white disabled:opacity-30 cursor-pointer"
+                    title="Zoom Out"
                   >
-                    <span>
-                      Page {Math.min(currentPreviewPage, previewPages.length)} of {previewPages.length}
+                    <ZoomOut className="w-3 h-3" />
+                  </button>
+                  <span className="px-1.5 text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                    {previewZoom}%
+                  </span>
+                  <button
+                    onClick={() => setPreviewZoom((z) => Math.min(150, z + 25))}
+                    disabled={previewZoom >= 150}
+                    className="p-1 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white disabled:opacity-30 cursor-pointer"
+                    title="Zoom In"
+                  >
+                    <ZoomIn className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Single Page Navigator */}
+                {previewViewMode === 'single' && (
+                  <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-1 py-0.5">
+                    <button
+                      disabled={currentPreviewPage <= 1}
+                      onClick={() => setCurrentPreviewPage((p) => Math.max(1, p - 1))}
+                      className="p-0.5 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white disabled:opacity-30 cursor-pointer"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[11px] font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                      {Math.min(currentPreviewPage, previewPages.length)} / {previewPages.length}
                     </span>
+                    <button
+                      disabled={currentPreviewPage >= previewPages.length}
+                      onClick={() => setCurrentPreviewPage((p) => Math.min(previewPages.length, p + 1))}
+                      className="p-0.5 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white disabled:opacity-30 cursor-pointer"
+                      title="Next Page"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Margin Measurement Bar (When guides active) */}
+            {showMarginGuides && (
+              <div className="px-4 py-1.5 bg-blue-50/80 dark:bg-blue-950/40 border-b border-blue-200/60 dark:border-blue-900/40 flex items-center justify-between text-[11px] text-blue-700 dark:text-blue-300">
+                <div className="flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5" />
+                  <span className="font-semibold">Margin Boundary:</span>
+                  <span className="font-bold">{marginPt} pt ({(marginPt / 72).toFixed(2)} in / {((marginPt / 72) * 25.4).toFixed(1)} mm)</span>
+                </div>
+                <div className="text-[10px] bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded text-blue-800 dark:text-blue-200 font-medium">
+                  {orientation.toUpperCase()} • {pageSize.toUpperCase()}
+                </div>
+              </div>
+            )}
+
+            {/* Preview Stage Body */}
+            {previewViewMode === 'single' ? (
+              /* SINGLE PAGE INSPECTION VIEW */
+              <div className="p-4 sm:p-6 bg-slate-100 dark:bg-slate-950/80 flex flex-col items-center justify-center overflow-auto min-h-[380px] max-h-[560px]">
+                <div
+                  className="bg-white text-slate-900 shadow-xl rounded-sm transition-all relative flex flex-col justify-between"
+                  style={{
+                    width: orientation === 'landscape' ? `${Math.min(100, previewZoom)}%` : `${Math.min(95, (previewZoom / 100) * 82)}%`,
+                    aspectRatio: `${pageAspect}`,
+                    padding: `${Math.max(16, marginPt * 0.55 * (previewZoom / 100))}px`,
+                    color: textColor,
+                    transform: `scale(${previewZoom === 100 ? 1 : previewZoom / 100})`,
+                    transformOrigin: 'top center',
+                  }}
+                >
+                  {/* Margin Visual Guides Overlay */}
+                  {showMarginGuides && (
+                    <div
+                      className="absolute inset-0 pointer-events-none border border-dashed border-blue-400/80 m-[2px]"
+                      style={{
+                        margin: `${Math.max(16, marginPt * 0.55 * (previewZoom / 100))}px`,
+                      }}
+                    >
+                      <span className="absolute -top-3.5 left-1 text-[8px] font-mono font-bold bg-blue-600 text-white px-1 rounded">
+                        top: {marginPt}pt
+                      </span>
+                      <span className="absolute top-1 -left-3.5 text-[8px] font-mono font-bold bg-blue-600 text-white px-1 rounded -rotate-90">
+                        {marginPt}pt
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Header preview */}
+                  {headerText ? (
+                    <div className="text-[9px] text-slate-400 border-b border-slate-200 pb-1 mb-2 font-sans tracking-wide">
+                      {headerText}
+                    </div>
+                  ) : null}
+
+                  {/* Page Content */}
+                  <div
+                    className={`flex-1 overflow-hidden space-y-2 ${previewFontFamilyClass} ${previewLineHeightClass}`}
+                    style={{
+                      fontSize: `${Math.max(8, fontSize * 0.75 * (previewZoom / 100))}px`,
+                      textAlign: alignment,
+                      fontWeight: bold ? 'bold' : 'normal',
+                      fontStyle: italic ? 'italic' : 'normal',
+                      textDecoration: underline ? 'underline' : 'none',
+                    }}
+                  >
+                    {(previewPages[Math.min(currentPreviewPage - 1, previewPages.length - 1)] || []).map(
+                      (para, idx) => (
+                        <p key={idx} className="whitespace-pre-wrap">
+                          {para || <br />}
+                        </p>
+                      )
+                    )}
+                  </div>
+
+                  {/* Footer / Page Number Preview */}
+                  {pageNumbers !== 'none' && (
+                    <div
+                      className={`text-[9px] text-slate-400 pt-2 font-sans flex ${
+                        pageNumbers === 'bottom-center'
+                          ? 'justify-center'
+                          : pageNumbers === 'bottom-right'
+                          ? 'justify-end'
+                          : 'justify-end'
+                      }`}
+                    >
+                      <span>
+                        Page {Math.min(currentPreviewPage, previewPages.length)} of {previewPages.length}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* ALL PAGES GRID VIEW */
+              <div className="p-4 bg-slate-100 dark:bg-slate-950/80 overflow-y-auto max-h-[560px]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {previewPages.map((pageParagraphs, pIdx) => {
+                    const pageNum = pIdx + 1;
+                    const isActive = pageNum === currentPreviewPage;
+                    return (
+                      <div
+                        key={pIdx}
+                        onClick={() => setCurrentPreviewPage(pageNum)}
+                        className={`bg-white dark:bg-slate-900 rounded-2xl p-3 border transition-all cursor-pointer flex flex-col justify-between ${
+                          isActive
+                            ? 'border-[#2563EB] ring-2 ring-blue-500/30 shadow-md'
+                            : 'border-slate-200 dark:border-slate-800 hover:border-blue-400'
+                        }`}
+                      >
+                        {/* Miniature Page Header Indicator */}
+                        <div className="flex items-center justify-between mb-2 text-[10px] text-slate-500">
+                          <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                            Page {pageNum} of {previewPages.length}
+                          </span>
+                          {isActive ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Active
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-slate-400 hover:text-blue-500 font-medium">Click to focus</span>
+                          )}
+                        </div>
+
+                        {/* Page Canvas Box */}
+                        <div
+                          className="bg-white text-slate-900 shadow-sm rounded border border-slate-200 relative flex flex-col justify-between mx-auto w-full"
+                          style={{
+                            aspectRatio: `${pageAspect}`,
+                            padding: `${Math.max(10, marginPt * 0.35)}px`,
+                            color: textColor,
+                          }}
+                        >
+                          {showMarginGuides && (
+                            <div
+                              className="absolute inset-0 pointer-events-none border border-dashed border-blue-400/80 m-[1px]"
+                              style={{
+                                margin: `${Math.max(10, marginPt * 0.35)}px`,
+                              }}
+                            />
+                          )}
+
+                          {headerText ? (
+                            <div className="text-[7px] text-slate-400 border-b border-slate-100 pb-0.5 mb-1 font-sans line-clamp-1">
+                              {headerText}
+                            </div>
+                          ) : null}
+
+                          <div
+                            className={`flex-1 overflow-hidden space-y-1 ${previewFontFamilyClass}`}
+                            style={{
+                              fontSize: '7px',
+                              lineHeight: '1.2',
+                              textAlign: alignment,
+                              fontWeight: bold ? 'bold' : 'normal',
+                              fontStyle: italic ? 'italic' : 'normal',
+                            }}
+                          >
+                            {pageParagraphs.slice(0, 6).map((para, idx) => (
+                              <p key={idx} className="line-clamp-2">
+                                {para}
+                              </p>
+                            ))}
+                            {pageParagraphs.length > 6 && (
+                              <span className="text-[6px] text-slate-400">+{pageParagraphs.length - 6} more lines...</span>
+                            )}
+                          </div>
+
+                          {pageNumbers !== 'none' && (
+                            <div className="text-[7px] text-slate-400 pt-1 font-sans text-center border-t border-slate-100">
+                              Page {pageNum} of {previewPages.length}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* VISUAL PAGE THUMBNAILS CAROUSEL / STRIP (In Single Page Mode) */}
+            {previewViewMode === 'single' && (
+              <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                    <Layers className="w-3.5 h-3.5 text-[#2563EB]" />
+                    <span>Page Thumbnails ({previewPages.length})</span>
+                  </div>
+                  <span className="text-[10px] text-[#64748B] dark:text-[#94A3B8]">
+                    Click any page to verify pagination & margins
+                  </span>
+                </div>
+
+                {/* Thumbnails Row */}
+                <div className="flex items-center gap-3 overflow-x-auto pb-1 pt-1 no-scrollbar">
+                  {previewPages.map((pageParagraphs, pIdx) => {
+                    const pageNum = pIdx + 1;
+                    const isActive = pageNum === currentPreviewPage;
+                    return (
+                      <button
+                        key={pIdx}
+                        onClick={() => setCurrentPreviewPage(pageNum)}
+                        className={`group shrink-0 relative p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col items-center gap-1 text-left ${
+                          isActive
+                            ? 'bg-blue-50/70 dark:bg-blue-950/40 border-[#2563EB] ring-2 ring-[#2563EB] shadow-xs'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400 hover:scale-102'
+                        }`}
+                        title={`Jump to Page ${pageNum}`}
+                      >
+                        {/* Miniature Page Canvas */}
+                        <div
+                          className="bg-white text-slate-800 rounded shadow-xs relative flex flex-col justify-between overflow-hidden border border-slate-200 dark:border-slate-700"
+                          style={{
+                            width: orientation === 'landscape' ? '88px' : '62px',
+                            aspectRatio: `${pageAspect}`,
+                            padding: '4px',
+                          }}
+                        >
+                          {/* Miniature Margin Guide */}
+                          {showMarginGuides && (
+                            <div className="absolute inset-1 border border-dashed border-blue-400/80 pointer-events-none" />
+                          )}
+
+                          {/* Mini Header */}
+                          {headerText ? (
+                            <div className="h-[2px] bg-slate-300 w-3/4 rounded-full mb-0.5" />
+                          ) : null}
+
+                          {/* Mini text line representations */}
+                          <div className="flex-1 space-y-0.5 overflow-hidden">
+                            {pageParagraphs.slice(0, 5).map((para, i) => (
+                              <div
+                                key={i}
+                                className="h-[2px] bg-slate-400 rounded-full"
+                                style={{
+                                  width: `${Math.min(100, Math.max(30, (para.length % 70) * 1.5))}%`,
+                                  marginLeft: alignment === 'right' ? 'auto' : alignment === 'center' ? 'auto' : '0',
+                                  marginRight: alignment === 'center' ? 'auto' : '0',
+                                }}
+                              />
+                            ))}
+                          </div>
+
+                          {/* Mini footer */}
+                          <div className="h-[2px] bg-slate-300 w-1/3 mx-auto rounded-full mt-0.5" />
+                        </div>
+
+                        {/* Page label */}
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={`text-[10px] font-bold ${
+                              isActive ? 'text-[#2563EB] dark:text-blue-400' : 'text-[#64748B] dark:text-[#94A3B8]'
+                            }`}
+                          >
+                            Page {pageNum}
+                          </span>
+                          {isActive && <Check className="w-2.5 h-2.5 text-[#2563EB] dark:text-blue-400" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Bottom Conversion CTA in Preview Card */}
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex items-center justify-between flex-wrap gap-2">
               <div className="text-xs text-[#64748B] dark:text-[#94A3B8]">
-                Ready to download <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC]">{filename}</span>
+                Ready to export <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC]">{filename}</span> ({previewPages.length}p)
               </div>
               <button
                 onClick={handleConvertToPdf}

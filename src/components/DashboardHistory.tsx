@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import JSZip from 'jszip';
 import { ConversionHistoryItem, ConversionQueueItem, FormatCapability, PageView, AppLimits, UserPreferences } from '../types.js';
 import {
@@ -26,6 +26,12 @@ import {
   Flame,
   Settings,
   User,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  SlidersHorizontal,
+  Calendar,
+  Search,
 } from 'lucide-react';
 import { ReferralWidget } from './ReferralWidget.js';
 import { AdSlot } from './AdSlot.js';
@@ -93,6 +99,137 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   const [popularTools, setPopularTools] = useState<
     { slug: string; from: string; to: string; count: number; name: string }[]
   >([]);
+
+  // Queue sorting state
+  type QueueSortField = 'createdAt' | 'fileName' | 'fileSize' | 'status';
+  type HistorySortField = 'date' | 'fileName' | 'size' | 'status';
+  type SortDirection = 'asc' | 'desc';
+
+  const [queueSortField, setQueueSortField] = useState<QueueSortField>('createdAt');
+  const [queueSortDir, setQueueSortDir] = useState<SortDirection>('desc');
+  const [queueSearchQuery, setQueueSearchQuery] = useState<string>('');
+
+  // History sorting state
+  const [historySortField, setHistorySortField] = useState<HistorySortField>('date');
+  const [historySortDir, setHistorySortDir] = useState<SortDirection>('desc');
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+
+  const handleQueueSort = (field: QueueSortField) => {
+    if (queueSortField === field) {
+      setQueueSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setQueueSortField(field);
+      setQueueSortDir(field === 'fileName' ? 'asc' : 'desc');
+    }
+  };
+
+  const handleHistorySort = (field: HistorySortField) => {
+    if (historySortField === field) {
+      setHistorySortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setHistorySortField(field);
+      setHistorySortDir(field === 'fileName' ? 'asc' : 'desc');
+    }
+  };
+
+  const formatUploadTime = (isoString?: string): string => {
+    if (!isoString) return '—';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return '—';
+      const now = Date.now();
+      const diffSec = Math.floor((now - d.getTime()) / 1000);
+      if (diffSec < 10) return 'Just now';
+      if (diffSec < 60) return `${diffSec}s ago`;
+      if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '—';
+    }
+  };
+
+  const sortedAndFilteredQueue = useMemo(() => {
+    let list = queue;
+    if (queueSearchQuery.trim()) {
+      const q = queueSearchQuery.toLowerCase();
+      list = list.filter(
+        (item) =>
+          item.fileName.toLowerCase().includes(q) ||
+          item.inputFormat.toLowerCase().includes(q) ||
+          item.outputFormat.toLowerCase().includes(q) ||
+          item.status.toLowerCase().includes(q)
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      let cmp = 0;
+      if (queueSortField === 'fileName') {
+        cmp = (a.fileName || '').localeCompare(b.fileName || '', undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      } else if (queueSortField === 'fileSize') {
+        const sizeA = a.result?.outputSize || a.fileSize || 0;
+        const sizeB = b.result?.outputSize || b.fileSize || 0;
+        cmp = sizeA - sizeB;
+      } else if (queueSortField === 'createdAt') {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        cmp = timeA - timeB;
+      } else if (queueSortField === 'status') {
+        const statusWeight: Record<string, number> = {
+          uploading: 0,
+          converting: 1,
+          pending: 2,
+          failed: 3,
+          completed: 4,
+        };
+        cmp = (statusWeight[a.status] ?? 5) - (statusWeight[b.status] ?? 5);
+      }
+      return queueSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [queue, queueSortField, queueSortDir, queueSearchQuery]);
+
+  const sortedAndFilteredHistory = useMemo(() => {
+    let list = history;
+    if (historySearchQuery.trim()) {
+      const q = historySearchQuery.toLowerCase();
+      list = list.filter(
+        (item) =>
+          item.fileName.toLowerCase().includes(q) ||
+          item.inputFormat.toLowerCase().includes(q) ||
+          item.outputFormat.toLowerCase().includes(q) ||
+          item.status.toLowerCase().includes(q)
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      let cmp = 0;
+      if (historySortField === 'fileName') {
+        cmp = (a.fileName || '').localeCompare(b.fileName || '', undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      } else if (historySortField === 'size') {
+        const sizeA = a.outputSize || a.fileSize || a.originalSize || 0;
+        const sizeB = b.outputSize || b.fileSize || b.originalSize || 0;
+        cmp = sizeA - sizeB;
+      } else if (historySortField === 'date') {
+        const timeA = a.date ? new Date(a.date).getTime() : 0;
+        const timeB = b.date ? new Date(b.date).getTime() : 0;
+        cmp = timeA - timeB;
+      } else if (historySortField === 'status') {
+        const statusWeight: Record<string, number> = {
+          queued: 0,
+          processing: 1,
+          failed: 2,
+          completed: 3,
+        };
+        cmp = (statusWeight[a.status] ?? 4) - (statusWeight[b.status] ?? 4);
+      }
+      return historySortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [history, historySortField, historySortDir, historySearchQuery]);
 
   useEffect(() => {
     fetch('/api/metrics/popular-tools')
@@ -780,227 +917,468 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           </div>
         )}
 
-        {/* Queue Table */}
+        {/* Queue Table with Sorting Controls */}
         {queue.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
-                  <th className="py-3 px-3">Filename</th>
-                  <th className="py-3 px-3">Format</th>
-                  <th className="py-3 px-3">Size</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]">
-                {queue.map((item) => {
-                  const cap = capabilities.find(
-                    (c) => c.extension === item.inputFormat.toLowerCase() || (item.inputFormat.toLowerCase() === 'jpeg' && c.extension === 'jpg')
-                  );
-                  const supportedOutputs =
-                    item.uploadedFile?.supportedOutputs && item.uploadedFile.supportedOutputs.length > 0
-                      ? item.uploadedFile.supportedOutputs
-                      : cap?.supportedOutputs || ['png', 'jpg', 'pdf'];
-                  return (
-                    <tr
-                      key={item.id}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+          <div className="space-y-3">
+            {/* Sorting & Filter Toolbar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
+              {/* Left: Quick Sort Controls */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider flex items-center gap-1 mr-1">
+                  <SlidersHorizontal className="w-3 h-3 text-[#2563EB]" />
+                  <span>Sort by:</span>
+                </span>
+
+                {/* Upload Date Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleQueueSort('createdAt')}
+                  id="sort-queue-date-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    queueSortField === 'createdAt'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title={`Sort by Upload Date (${queueSortField === 'createdAt' && queueSortDir === 'desc' ? 'Newest first' : 'Oldest first'})`}
+                >
+                  <Calendar className="w-3 h-3" />
+                  <span>Upload Date</span>
+                  {queueSortField === 'createdAt' && (
+                    queueSortDir === 'desc' ? <ArrowDown className="w-3 h-3 text-[#2563EB]" /> : <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
+
+                {/* File Name Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleQueueSort('fileName')}
+                  id="sort-queue-name-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    queueSortField === 'fileName'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title={`Sort by File Name (${queueSortField === 'fileName' && queueSortDir === 'asc' ? 'A to Z' : 'Z to A'})`}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>File Name</span>
+                  {queueSortField === 'fileName' && (
+                    queueSortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-[#2563EB]" /> : <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
+
+                {/* File Size Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleQueueSort('fileSize')}
+                  id="sort-queue-size-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    queueSortField === 'fileSize'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title={`Sort by File Size (${queueSortField === 'fileSize' && queueSortDir === 'desc' ? 'Largest first' : 'Smallest first'})`}
+                >
+                  <span>Size</span>
+                  {queueSortField === 'fileSize' && (
+                    queueSortDir === 'desc' ? <ArrowDown className="w-3 h-3 text-[#2563EB]" /> : <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
+
+                {/* Status Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleQueueSort('status')}
+                  id="sort-queue-status-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    queueSortField === 'status'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title="Sort by Status"
+                >
+                  <span>Status</span>
+                  {queueSortField === 'status' && (
+                    queueSortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-[#2563EB]" /> : <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
+
+                {/* Toggle Direction Button */}
+                <button
+                  type="button"
+                  onClick={() => setQueueSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title={`Current order: ${queueSortDir === 'asc' ? 'Ascending' : 'Descending'}. Click to toggle.`}
+                >
+                  {queueSortDir === 'asc' ? (
+                    <>
+                      <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                      <span className="text-[11px]">Asc</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                      <span className="text-[11px]">Desc</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Right: Search Filter Input */}
+              {queue.length > 2 && (
+                <div className="relative shrink-0 max-w-xs w-full sm:w-48">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={queueSearchQuery}
+                    onChange={(e) => setQueueSearchQuery(e.target.value)}
+                    placeholder="Filter queue files..."
+                    className="w-full pl-8 pr-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  />
+                  {queueSearchQuery && (
+                    <button
+                      onClick={() => setQueueSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
                     >
-                      {/* Filename */}
-                      <td className="py-3.5 px-3 max-w-[200px] sm:max-w-xs truncate">
-                        <div className="flex items-center gap-2">
-                          <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
-                            {getFormatIcon(item.inputFormat)}
-                          </div>
-                          <div className="truncate">
-                            <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC] block truncate">
-                              {item.fileName}
-                            </span>
-                            {item.error && (
-                              <span className="text-[11px] font-medium text-rose-500 block truncate mt-0.5">
-                                {item.error}
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Queue Table */}
+            {sortedAndFilteredQueue.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
+                      {/* Sortable Filename Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleQueueSort('fileName')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by file name"
+                        >
+                          <span className={queueSortField === 'fileName' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Filename
+                          </span>
+                          {queueSortField === 'fileName' ? (
+                            queueSortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
+
+                      {/* Format Header */}
+                      <th className="py-3 px-3">Format</th>
+
+                      {/* Sortable Size Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleQueueSort('fileSize')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by file size"
+                        >
+                          <span className={queueSortField === 'fileSize' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Size
+                          </span>
+                          {queueSortField === 'fileSize' ? (
+                            queueSortDir === 'desc' ? (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
+
+                      {/* Sortable Status Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleQueueSort('status')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by status"
+                        >
+                          <span className={queueSortField === 'status' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Status
+                          </span>
+                          {queueSortField === 'status' ? (
+                            queueSortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
+
+                      {/* Sortable Upload Date / Time Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleQueueSort('createdAt')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by upload date"
+                        >
+                          <span className={queueSortField === 'createdAt' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Uploaded
+                          </span>
+                          {queueSortField === 'createdAt' ? (
+                            queueSortDir === 'desc' ? (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
+
+                      {/* Actions Header */}
+                      <th className="py-3 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]">
+                    {sortedAndFilteredQueue.map((item) => {
+                      const cap = capabilities.find(
+                        (c) => c.extension === item.inputFormat.toLowerCase() || (item.inputFormat.toLowerCase() === 'jpeg' && c.extension === 'jpg')
+                      );
+                      const supportedOutputs =
+                        item.uploadedFile?.supportedOutputs && item.uploadedFile.supportedOutputs.length > 0
+                          ? item.uploadedFile.supportedOutputs
+                          : cap?.supportedOutputs || ['png', 'jpg', 'pdf'];
+                      return (
+                        <tr
+                          key={item.id}
+                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                        >
+                          {/* Filename */}
+                          <td className="py-3.5 px-3 max-w-[200px] sm:max-w-xs truncate">
+                            <div className="flex items-center gap-2">
+                              <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
+                                {getFormatIcon(item.inputFormat)}
+                              </div>
+                              <div className="truncate">
+                                <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC] block truncate" title={item.fileName}>
+                                  {item.fileName}
+                                </span>
+                                {item.error && (
+                                  <span className="text-[11px] font-medium text-rose-500 block truncate mt-0.5" title={item.error}>
+                                    {item.error}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Format (Input -> Output) */}
+                          <td className="py-3.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] font-mono uppercase font-semibold text-[11px]">
+                                .{item.inputFormat}
+                              </span>
+                              <span className="text-[#64748B] dark:text-[#94A3B8]">→</span>
+                              {item.status === 'pending' || item.status === 'failed' ? (
+                                <select
+                                  value={item.outputFormat}
+                                  onChange={(e) =>
+                                    onUpdateQueueItemFormat && onUpdateQueueItemFormat(item.id, e.target.value)
+                                  }
+                                  className="px-2 py-0.5 rounded-md bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-bold text-xs focus:ring-2 focus:ring-[#2563EB] focus:outline-none cursor-pointer"
+                                >
+                                  {supportedOutputs.map((out) => (
+                                    <option key={out} value={out}>
+                                      .{out.toUpperCase()}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 font-mono uppercase font-bold text-[11px]">
+                                  .{item.outputFormat}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Size */}
+                          <td className="py-3.5 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
+                            {item.result?.outputSize ? (
+                              <span className="font-medium text-[#0F172A] dark:text-[#F8FAFC]">{formatSize(item.result.outputSize)}</span>
+                            ) : (
+                              <span>{formatSize(item.fileSize)}</span>
+                            )}
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-3.5 px-3 min-w-[140px]">
+                            {item.status === 'pending' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 font-semibold text-[11px]">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                Queued
                               </span>
                             )}
-                          </div>
-                        </div>
-                      </td>
 
-                      {/* Format (Input -> Output) */}
-                      <td className="py-3.5 px-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] font-mono uppercase font-semibold text-[11px]">
-                            .{item.inputFormat}
-                          </span>
-                          <span className="text-[#64748B] dark:text-[#94A3B8]">→</span>
-                          {item.status === 'pending' || item.status === 'failed' ? (
-                            <select
-                              value={item.outputFormat}
-                              onChange={(e) =>
-                                onUpdateQueueItemFormat && onUpdateQueueItemFormat(item.id, e.target.value)
-                              }
-                              className="px-2 py-0.5 rounded-md bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-bold text-xs focus:ring-2 focus:ring-[#2563EB] focus:outline-none cursor-pointer"
-                            >
-                              {supportedOutputs.map((out) => (
-                                <option key={out} value={out}>
-                                  .{out.toUpperCase()}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 font-mono uppercase font-bold text-[11px]">
-                              .{item.outputFormat}
+                            {item.status === 'uploading' && (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-semibold truncate max-w-[130px]">
+                                    <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
+                                    <span className="truncate">{item.statusText || 'Uploading...'}</span>
+                                  </span>
+                                  <span className="text-[10px] font-mono text-slate-400">{Math.round(item.progress || 30)}%</span>
+                                </div>
+                                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                                    style={{ width: `${item.progress || 30}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {item.status === 'converting' && (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="inline-flex items-center gap-1.5 text-[#2563EB] dark:text-blue-300 font-semibold truncate max-w-[130px]">
+                                    <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
+                                    <span className="truncate">Processing...</span>
+                                  </span>
+                                  <span className="text-[10px] font-mono text-blue-500 dark:text-blue-400 font-bold">{Math.round(item.progress || 40)}%</span>
+                                </div>
+                                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 h-1.5 rounded-full transition-all duration-300"
+                                    style={{ width: `${item.progress || 40}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {item.status === 'completed' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Completed
+                              </span>
+                            )}
+
+                            {item.status === 'failed' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold text-[11px]">
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                Failed
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Upload Date / Time */}
+                          <td className="py-3.5 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
+                            <span title={item.createdAt ? new Date(item.createdAt).toLocaleString() : ''} className="text-[11px]">
+                              {formatUploadTime(item.createdAt)}
                             </span>
-                          )}
-                        </div>
-                      </td>
+                          </td>
 
-                      {/* Size */}
-                      <td className="py-3.5 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
-                        {item.result?.outputSize ? (
-                          <span>{formatSize(item.result.outputSize)}</span>
-                        ) : (
-                          <span>{formatSize(item.fileSize)}</span>
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3.5 px-3 min-w-[140px]">
-                        {item.status === 'pending' && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 font-semibold text-[11px]">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            Queued
-                          </span>
-                        )}
-
-                        {item.status === 'uploading' && (
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-semibold truncate max-w-[130px]">
-                                <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
-                                <span className="truncate">{item.statusText || 'Uploading...'}</span>
-                              </span>
-                              <span className="text-[10px] font-mono text-slate-400">{Math.round(item.progress || 30)}%</span>
-                            </div>
-                            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
-                                style={{ width: `${item.progress || 30}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {item.status === 'converting' && (
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="inline-flex items-center gap-1.5 text-[#2563EB] dark:text-blue-300 font-semibold truncate max-w-[130px]">
-                                <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
-                                <span className="truncate">Processing...</span>
-                              </span>
-                              <span className="text-[10px] font-mono text-blue-500 dark:text-blue-400 font-bold">{Math.round(item.progress || 40)}%</span>
-                            </div>
-                            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 h-1.5 rounded-full transition-all duration-300"
-                                style={{ width: `${item.progress || 40}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {item.status === 'completed' && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Completed
-                          </span>
-                        )}
-
-                        {item.status === 'failed' && (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold text-[11px]">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            Failed
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-3 text-right space-x-2 whitespace-nowrap">
-                        {item.status === 'pending' && onConvertQueueItem && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              onConvertQueueItem(item.id);
-                            }}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white font-semibold text-[11px] transition-colors shadow-sm cursor-pointer"
-                          >
-                            <Zap className="w-3 h-3 text-amber-300" />
-                            <span>Convert</span>
-                          </button>
-                        )}
-
-                        {item.status === 'failed' && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              if (onRetryQueueItem) {
-                                onRetryQueueItem(item.id);
-                              } else if (onConvertQueueItem) {
-                                onConvertQueueItem(item.id);
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[11px] transition-colors shadow-sm cursor-pointer"
-                          >
-                            <RefreshCw className="w-3 h-3" />
-                            <span>Retry</span>
-                          </button>
-                        )}
-
-                        {item.status === 'completed' && (item.result?.jobId || item.uploadedFile?.jobId) && (
-                          <div className="inline-flex items-center gap-1.5">
-                            <a
-                              href={`/api/download/${item.result?.jobId || item.uploadedFile?.jobId}`}
-                              download
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors shadow-sm"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>Download</span>
-                            </a>
-                            {onConvertAgain && (
+                          {/* Actions */}
+                          <td className="py-3.5 px-3 text-right space-x-2 whitespace-nowrap">
+                            {item.status === 'pending' && onConvertQueueItem && (
                               <button
                                 type="button"
-                                onClick={() => onConvertAgain(item)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] font-semibold text-[11px] transition-colors"
-                                title="Convert this file again with different format or settings"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  onConvertQueueItem(item.id);
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white font-semibold text-[11px] transition-colors shadow-sm cursor-pointer"
                               >
-                                <RotateCcw className="w-3 h-3" />
-                                <span>Convert Again</span>
+                                <Zap className="w-3 h-3 text-amber-300" />
+                                <span>Convert</span>
                               </button>
                             )}
-                          </div>
-                        )}
 
-                        {onRemoveQueueItem && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              onRemoveQueueItem(item.id);
-                            }}
-                            className="p-1 rounded text-[#64748B] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
-                            title="Remove from queue"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            {item.status === 'failed' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (onRetryQueueItem) {
+                                    onRetryQueueItem(item.id);
+                                  } else if (onConvertQueueItem) {
+                                    onConvertQueueItem(item.id);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-[11px] transition-colors shadow-sm cursor-pointer"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                <span>Retry</span>
+                              </button>
+                            )}
+
+                            {item.status === 'completed' && (item.result?.jobId || item.uploadedFile?.jobId) && (
+                              <div className="inline-flex items-center gap-1.5">
+                                <a
+                                  href={`/api/download/${item.result?.jobId || item.uploadedFile?.jobId}`}
+                                  download
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors shadow-sm"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download</span>
+                                </a>
+                                {onConvertAgain && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onConvertAgain(item)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] font-semibold text-[11px] transition-colors"
+                                    title="Convert this file again with different format or settings"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    <span>Convert Again</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
+                            {onRemoveQueueItem && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  onRemoveQueueItem(item.id);
+                                }}
+                                className="p-1 rounded text-[#64748B] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                                title="Remove from queue"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0B1120] rounded-xl border border-[#E2E8F0] dark:border-[#1E293B]">
+                No files match filter &quot;{queueSearchQuery}&quot;.{' '}
+                <button
+                  onClick={() => setQueueSearchQuery('')}
+                  className="text-[#2563EB] dark:text-blue-400 font-bold hover:underline ml-1"
+                >
+                  Clear filter
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-10 space-y-3 bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl">
@@ -1064,113 +1442,346 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         </div>
 
         {history.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
-                  <th className="py-3 px-3">Filename</th>
-                  <th className="py-3 px-3">Format</th>
-                  <th className="py-3 px-3">Size</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Time</th>
-                  <th className="py-3 px-3 text-right">Download / Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]">
-                {history.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    {/* Filename */}
-                    <td className="py-3 px-3 font-bold text-[#0F172A] dark:text-[#F8FAFC] max-w-xs truncate">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
-                          {getFormatIcon(item.inputFormat)}
-                        </div>
-                        <span className="truncate">{item.fileName}</span>
-                      </div>
-                    </td>
+          <div className="space-y-3">
+            {/* Sorting & Filter Toolbar for History */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
+              {/* Left: Quick Sort Controls */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider flex items-center gap-1 mr-1">
+                  <SlidersHorizontal className="w-3 h-3 text-[#2563EB]" />
+                  <span>Sort by:</span>
+                </span>
 
-                    {/* Format */}
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-1">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] font-mono uppercase font-semibold text-[10px]">
-                          .{item.inputFormat}
-                        </span>
-                        <span className="text-[#64748B] dark:text-[#94A3B8]">→</span>
-                        <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 font-mono uppercase font-bold text-[10px]">
-                          .{item.outputFormat}
-                        </span>
-                      </div>
-                    </td>
+                {/* Date Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleHistorySort('date')}
+                  id="sort-history-date-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    historySortField === 'date'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title={`Sort by Date (${historySortField === 'date' && historySortDir === 'desc' ? 'Newest first' : 'Oldest first'})`}
+                >
+                  <Calendar className="w-3 h-3" />
+                  <span>Date</span>
+                  {historySortField === 'date' && (
+                    historySortDir === 'desc' ? <ArrowDown className="w-3 h-3 text-[#2563EB]" /> : <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
 
-                    {/* Size */}
-                    <td className="py-3 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
-                      {formatSize(item.outputSize || item.fileSize || item.originalSize)}
-                    </td>
+                {/* File Name Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleHistorySort('fileName')}
+                  id="sort-history-name-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    historySortField === 'fileName'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title={`Sort by File Name (${historySortField === 'fileName' && historySortDir === 'asc' ? 'A to Z' : 'Z to A'})`}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>File Name</span>
+                  {historySortField === 'fileName' && (
+                    historySortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-[#2563EB]" /> : <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
 
-                    {/* Status */}
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      {item.isExpired ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-medium text-[10px] border border-slate-200 dark:border-slate-700">
-                          File expired — convert again
-                        </span>
-                      ) : item.status === 'completed' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold text-[10px]">
-                          <Check className="w-3 h-3" /> Completed
-                        </span>
-                      ) : item.status === 'failed' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold text-[10px]">
-                          <AlertTriangle className="w-3 h-3" /> Failed
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] dark:text-blue-400 font-semibold text-[10px]">
-                          {item.status}
-                        </span>
-                      )}
-                    </td>
+                {/* Size Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleHistorySort('size')}
+                  id="sort-history-size-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    historySortField === 'size'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title={`Sort by Size (${historySortField === 'size' && historySortDir === 'desc' ? 'Largest first' : 'Smallest first'})`}
+                >
+                  <span>Size</span>
+                  {historySortField === 'size' && (
+                    historySortDir === 'desc' ? <ArrowDown className="w-3 h-3 text-[#2563EB]" /> : <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
 
-                    {/* Time */}
-                    <td className="py-3 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
-                      {item.completionTime || (item.date ? new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')}
-                    </td>
+                {/* Status Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleHistorySort('status')}
+                  id="sort-history-status-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    historySortField === 'status'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title="Sort by Status"
+                >
+                  <span>Status</span>
+                  {historySortField === 'status' && (
+                    historySortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-[#2563EB]" /> : <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
 
-                    {/* Actions */}
-                    <td className="py-3 px-3 text-right space-x-1.5 whitespace-nowrap">
-                      {/* Active Download */}
-                      {!item.isExpired && item.status === 'completed' && item.jobId && (
-                        <a
-                          href={`/api/download/${item.jobId}`}
-                          download
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-600 text-white font-semibold text-[11px] transition-colors shadow-xs"
-                        >
-                          <Download className="w-3 h-3" />
-                          <span>Download</span>
-                        </a>
-                      )}
+                {/* Toggle Direction Button */}
+                <button
+                  type="button"
+                  onClick={() => setHistorySortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title={`Current order: ${historySortDir === 'asc' ? 'Ascending' : 'Descending'}. Click to toggle.`}
+                >
+                  {historySortDir === 'asc' ? (
+                    <>
+                      <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                      <span className="text-[11px]">Asc</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                      <span className="text-[11px]">Desc</span>
+                    </>
+                  )}
+                </button>
+              </div>
 
-                      {/* Convert Again (Always available) */}
-                      {onConvertAgain && (
+              {/* Right: Search Filter Input */}
+              {history.length > 2 && (
+                <div className="relative shrink-0 max-w-xs w-full sm:w-48">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    placeholder="Filter history..."
+                    className="w-full pl-8 pr-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  />
+                  {historySearchQuery && (
+                    <button
+                      onClick={() => setHistorySearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* History Table */}
+            {sortedAndFilteredHistory.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
+                      {/* Sortable Filename Header */}
+                      <th className="py-3 px-3">
                         <button
                           type="button"
-                          onClick={() => onConvertAgain(item)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] font-semibold text-[11px] transition-colors cursor-pointer"
+                          onClick={() => handleHistorySort('fileName')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by file name"
                         >
-                          <RotateCcw className="w-3 h-3" />
-                          <span>Convert Again</span>
+                          <span className={historySortField === 'fileName' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Filename
+                          </span>
+                          {historySortField === 'fileName' ? (
+                            historySortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
                         </button>
-                      )}
+                      </th>
 
-                      <button
-                        onClick={() => onRemoveItem(item.id)}
-                        className="p-1 rounded text-[#64748B] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
-                        title="Remove from history"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {/* Format Header */}
+                      <th className="py-3 px-3">Format</th>
+
+                      {/* Sortable Size Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleHistorySort('size')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by size"
+                        >
+                          <span className={historySortField === 'size' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Size
+                          </span>
+                          {historySortField === 'size' ? (
+                            historySortDir === 'desc' ? (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
+
+                      {/* Sortable Status Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleHistorySort('status')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by status"
+                        >
+                          <span className={historySortField === 'status' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Status
+                          </span>
+                          {historySortField === 'status' ? (
+                            historySortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
+
+                      {/* Sortable Date / Time Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleHistorySort('date')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by conversion date"
+                        >
+                          <span className={historySortField === 'date' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Time
+                          </span>
+                          {historySortField === 'date' ? (
+                            historySortDir === 'desc' ? (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
+
+                      {/* Actions Header */}
+                      <th className="py-3 px-3 text-right">Download / Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]">
+                    {sortedAndFilteredHistory.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        {/* Filename */}
+                        <td className="py-3 px-3 font-bold text-[#0F172A] dark:text-[#F8FAFC] max-w-xs truncate">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
+                              {getFormatIcon(item.inputFormat)}
+                            </div>
+                            <span className="truncate" title={item.fileName}>{item.fileName}</span>
+                          </div>
+                        </td>
+
+                        {/* Format */}
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] font-mono uppercase font-semibold text-[10px]">
+                              .{item.inputFormat}
+                            </span>
+                            <span className="text-[#64748B] dark:text-[#94A3B8]">→</span>
+                            <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 font-mono uppercase font-bold text-[10px]">
+                              .{item.outputFormat}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Size */}
+                        <td className="py-3 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
+                          {formatSize(item.outputSize || item.fileSize || item.originalSize)}
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {item.isExpired ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-medium text-[10px] border border-slate-200 dark:border-slate-700">
+                              File expired — convert again
+                            </span>
+                          ) : item.status === 'completed' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold text-[10px]">
+                              <Check className="w-3 h-3" /> Completed
+                            </span>
+                          ) : item.status === 'failed' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold text-[10px]">
+                              <AlertTriangle className="w-3 h-3" /> Failed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] dark:text-blue-400 font-semibold text-[10px]">
+                              {item.status}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Time */}
+                        <td className="py-3 px-3 text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
+                          {item.completionTime || (item.date ? new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—')}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-3 px-3 text-right space-x-1.5 whitespace-nowrap">
+                          {/* Active Download */}
+                          {!item.isExpired && item.status === 'completed' && item.jobId && (
+                            <a
+                              href={`/api/download/${item.jobId}`}
+                              download
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-600 text-white font-semibold text-[11px] transition-colors shadow-xs"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>Download</span>
+                            </a>
+                          )}
+
+                          {/* Convert Again (Always available) */}
+                          {onConvertAgain && (
+                            <button
+                              type="button"
+                              onClick={() => onConvertAgain(item)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-[#F8FAFC] font-semibold text-[11px] transition-colors cursor-pointer"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Convert Again</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => onRemoveItem(item.id)}
+                            className="p-1 rounded text-[#64748B] hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                            title="Remove from history"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0B1120] rounded-xl border border-[#E2E8F0] dark:border-[#1E293B]">
+                No history records match filter &quot;{historySearchQuery}&quot;.{' '}
+                <button
+                  onClick={() => setHistorySearchQuery('')}
+                  className="text-[#2563EB] dark:text-blue-400 font-bold hover:underline ml-1"
+                >
+                  Clear filter
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-8 space-y-2 bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl">
