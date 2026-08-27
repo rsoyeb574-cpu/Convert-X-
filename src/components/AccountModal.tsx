@@ -110,10 +110,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#E2E8F0] dark:border-[#1E293B] px-6 bg-slate-50/50 dark:bg-[#0B1120]/50">
+        <div className="flex overflow-x-auto whitespace-nowrap border-b border-[#E2E8F0] dark:border-[#1E293B] px-3 sm:px-6 bg-slate-50/50 dark:bg-[#0B1120]/50 scrollbar-none">
           <button
             onClick={() => setActiveTab('profile')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+            className={`py-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all cursor-pointer shrink-0 ${
               activeTab === 'profile'
                 ? 'border-[#2563EB] text-[#2563EB] dark:text-blue-400'
                 : 'border-transparent text-[#64748B] hover:text-[#0F172A] dark:hover:text-white'
@@ -123,7 +123,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('preferences')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+            className={`py-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all cursor-pointer shrink-0 ${
               activeTab === 'preferences'
                 ? 'border-[#2563EB] text-[#2563EB] dark:text-blue-400'
                 : 'border-transparent text-[#64748B] hover:text-[#0F172A] dark:hover:text-white'
@@ -133,7 +133,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('referrals')}
-            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+            className={`py-3 px-3 sm:px-4 text-xs font-bold border-b-2 transition-all cursor-pointer shrink-0 ${
               activeTab === 'referrals'
                 ? 'border-[#2563EB] text-[#2563EB] dark:text-blue-400'
                 : 'border-transparent text-[#64748B] hover:text-[#0F172A] dark:hover:text-white'
@@ -144,7 +144,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         </div>
 
         {/* Tab Content */}
-        <div className="p-6 overflow-y-auto space-y-6">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6">
           {/* TAB 1: PROFILE OVERVIEW */}
           {activeTab === 'profile' && (
             <div className="space-y-5">

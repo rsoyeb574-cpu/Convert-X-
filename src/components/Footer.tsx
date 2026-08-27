@@ -15,9 +15,9 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenMetrics }) => 
   return (
     <footer className="bg-white dark:bg-[#0B1120] border-t border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] transition-colors mt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-8 lg:gap-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-8 lg:gap-10">
           {/* Brand Info */}
-          <div className="space-y-4 md:col-span-2">
+          <div className="space-y-4 sm:col-span-2">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#2563EB] to-[#7C3AED] flex items-center justify-center text-white shadow-md shadow-blue-500/20">
                 <Layers className="w-4 h-4" />
@@ -227,9 +227,9 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenMetrics }) => 
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-8 mt-8 border-t border-[#E2E8F0] dark:border-[#1E293B] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+        <div className="pt-8 mt-8 border-t border-[#E2E8F0] dark:border-[#1E293B] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-center sm:text-left">
           <p>© 2026 Convert-X. All rights reserved.</p>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-x-3 gap-y-1.5">
             {onOpenMetrics && (
               <>
                 <button

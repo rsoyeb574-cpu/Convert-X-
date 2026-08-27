@@ -16,6 +16,7 @@ import {
   QrCode,
   Smartphone,
   X,
+  Share2,
 } from 'lucide-react';
 import { ViralShare } from './ViralShare.js';
 import { AdSlot } from './AdSlot.js';
@@ -40,6 +41,7 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
   const [selectedAltFormat, setSelectedAltFormat] = useState<string>(result.outputFormat);
   const [isProcessingAlt, setIsProcessingAlt] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [shareSuccess, setShareSuccess] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
@@ -79,6 +81,33 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
     } catch (err) {
       console.error('Failed to copy conversion link to clipboard:', err);
     }
+  };
+
+  const handleWebShare = async () => {
+    const fullUrl = `${window.location.origin}${downloadUrl}`;
+    const shareData = {
+      title: `${convertedFilename} - Convert-X`,
+      text: `Converted ${result.inputFormat.toUpperCase()} to ${result.outputFormat.toUpperCase()} (${formatSize(result.outputSize)}) on Convert-X:`,
+      url: fullUrl,
+    };
+
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share(shareData);
+        setShareSuccess(true);
+        setTimeout(() => setShareSuccess(false), 3000);
+        return;
+      } catch (err: any) {
+        // User dismissed/canceled the share sheet, which throws AbortError
+        if (err?.name === 'AbortError') {
+          return;
+        }
+        console.warn('Native Web Share failed, falling back to copy link:', err);
+      }
+    }
+
+    // Fallback if Web Share API is unavailable or encountered non-abort error
+    await handleCopyLink();
   };
 
   const handleToggleQrCode = async () => {
@@ -216,6 +245,24 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
           <div className="flex items-center gap-3">
             <button
               type="button"
+              onClick={handleWebShare}
+              className="text-[11px] font-semibold text-[#2563EB] dark:text-blue-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+              title="Share converted file link via mobile apps or social channels"
+            >
+              {shareSuccess ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">Shared!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 text-[#2563EB]" />
+                  <span>Share</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={handleToggleQrCode}
               className="text-[11px] font-semibold text-[#2563EB] dark:text-blue-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
               title="Generate QR code for mobile phone scanning"
@@ -312,6 +359,7 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
 
       {/* Primary Action Buttons */}
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+        {/* Download File Button */}
         <a
           href={downloadUrl}
           download={convertedFilename}
@@ -321,6 +369,56 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
           <Download className="w-4 h-4" />
           <span>Download .{result.outputFormat.toUpperCase()}</span>
         </a>
+
+        {/* Copy Link to Clipboard Button alongside Download */}
+        <button
+          type="button"
+          onClick={handleCopyLink}
+          id="copy-to-clipboard-btn"
+          className={`w-full sm:w-auto px-5 py-3.5 rounded-xl border text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
+            copiedLink
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border-[#E2E8F0] dark:border-slate-700 text-[#0F172A] dark:text-[#F8FAFC]'
+          }`}
+          title="Copy the direct download link of this converted file to clipboard"
+        >
+          {copiedLink ? (
+            <>
+              <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Copied to Clipboard!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-4 h-4 text-[#2563EB]" />
+              <span>Copy to Clipboard</span>
+            </>
+          )}
+        </button>
+
+        {/* Web Share API Button for Mobile / Desktop */}
+        <button
+          type="button"
+          onClick={handleWebShare}
+          id="web-share-file-btn"
+          className={`w-full sm:w-auto px-5 py-3.5 rounded-xl border text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
+            shareSuccess
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/30'
+              : 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-900/40 dark:hover:to-indigo-900/40 border-blue-200 dark:border-blue-800 text-[#2563EB] dark:text-blue-300'
+          }`}
+          title="Share converted file link directly via mobile apps, email, or messaging"
+        >
+          {shareSuccess ? (
+            <>
+              <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Shared!</span>
+            </>
+          ) : (
+            <>
+              <Share2 className="w-4 h-4 text-[#2563EB] dark:text-blue-400" />
+              <span>Share Link</span>
+            </>
+          )}
+        </button>
 
         {/* Generate QR Code Button */}
         <button
@@ -342,31 +440,7 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
           <span>{showQrCode ? 'Hide QR Code' : 'Generate QR Code'}</span>
         </button>
 
-        {/* Copy Link to Clipboard Button */}
-        <button
-          type="button"
-          onClick={handleCopyLink}
-          id="copy-result-link-btn"
-          className={`w-full sm:w-auto px-5 py-3.5 rounded-xl border text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
-            copiedLink
-              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/30'
-              : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border-[#E2E8F0] dark:border-slate-700 text-[#0F172A] dark:text-[#F8FAFC]'
-          }`}
-          title="Copy the direct download link of this converted file to clipboard"
-        >
-          {copiedLink ? (
-            <>
-              <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Link Copied!</span>
-            </>
-          ) : (
-            <>
-              <Link2 className="w-4 h-4 text-[#2563EB]" />
-              <span>Copy Link</span>
-            </>
-          )}
-        </button>
-
+        {/* Convert Another File Button */}
         <button
           onClick={onConvertAnother}
           id="convert-another-file-btn"
@@ -430,8 +504,26 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
                 </button>
               </div>
 
-              {/* Save QR Image Button */}
+              {/* Save QR Image Button & Share via Apps Button */}
               <div className="pt-1 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleWebShare}
+                  id="qr-mobile-share-btn"
+                  className="px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-bold transition-colors inline-flex items-center gap-1.5 shadow-sm shadow-blue-500/20 cursor-pointer"
+                >
+                  {shareSuccess ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Shared!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Share File Link</span>
+                    </>
+                  )}
+                </button>
                 <a
                   href={qrDataUrl}
                   download={`convertx_${baseName}_qr.png`}

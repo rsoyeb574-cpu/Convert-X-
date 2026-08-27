@@ -138,7 +138,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         onClick={() => fileInputRef.current?.click()}
         onKeyDown={handleKeyDown}
         id="upload-drop-zone"
-        className={`relative group rounded-[20px] p-8 sm:p-12 text-center border-2 border-dashed cursor-pointer transition-all duration-300 shadow-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2 overflow-hidden ${
+        className={`relative group rounded-[20px] p-5 sm:p-10 md:p-12 text-center border-2 border-dashed cursor-pointer transition-all duration-300 shadow-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2 overflow-hidden ${
           isDragOver
             ? 'bg-blue-100/90 dark:bg-blue-950/70 border-[#2563EB] scale-[1.02] ring-4 ring-blue-500/20 shadow-2xl shadow-blue-500/20'
             : 'bg-white dark:bg-[#111827] border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] dark:hover:border-[#2563EB] hover:-translate-y-1 hover:shadow-2xl'
@@ -159,19 +159,19 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
           multiple
         />
 
-        <div className="flex flex-col items-center space-y-4">
+        <div className="flex flex-col items-center space-y-3.5 sm:space-y-4">
           {/* Upload Icon Circle */}
-          <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border flex items-center justify-center transition-all duration-300 ${
+          <div className={`w-14 h-14 sm:w-20 sm:h-20 rounded-2xl border flex items-center justify-center transition-all duration-300 ${
             isDragOver
               ? 'bg-[#2563EB] text-white border-[#2563EB] scale-110 shadow-lg shadow-blue-500/30 rotate-2'
               : 'bg-gradient-to-tr from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-blue-950/60 border-blue-100 dark:border-blue-900/40 text-[#2563EB] group-hover:scale-110 group-hover:rotate-3'
           }`}>
-            <Upload className={`w-8 h-8 sm:w-10 sm:h-10 ${isDragOver ? 'text-white animate-bounce' : 'text-[#2563EB]'}`} />
+            <Upload className={`w-7 h-7 sm:w-10 sm:h-10 ${isDragOver ? 'text-white animate-bounce' : 'text-[#2563EB]'}`} />
           </div>
 
           {/* Heading */}
-          <div className="space-y-1.5">
-            <h3 className="text-lg sm:text-xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+          <div className="space-y-1">
+            <h3 className="text-base sm:text-xl font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
               {isDragOver ? (
                 <span className="text-[#2563EB] dark:text-blue-400 font-black tracking-wide">
                   Release to drop files here
@@ -195,7 +195,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
 
           {/* Staged / Selected Files Counter Badge */}
           {selectedFilesCount > 0 && (
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/50 text-[#2563EB] dark:text-blue-300 font-bold text-xs shadow-xs animate-fade-in">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/50 text-[#2563EB] dark:text-blue-300 font-bold text-xs shadow-xs animate-fade-in">
               <FileCheck className="w-4 h-4 text-emerald-500" />
               <span>Selected: {selectedFilesCount} {selectedFilesCount === 1 ? 'file' : 'files'}</span>
             </div>
@@ -222,7 +222,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
             <button
               type="button"
               id="browse-files-btn"
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 pointer-events-none"
+              className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#7C3AED] hover:from-blue-600 hover:to-violet-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 pointer-events-none"
             >
               <FileUp className="w-4 h-4" />
               <span>Select Files</span>
@@ -233,7 +233,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
           </div>
 
           {/* Required Trust & Retention Privacy Message */}
-          <div className="flex items-center gap-2 pt-2 text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8] max-w-md text-center">
+          <div className="flex items-center gap-2 pt-1 sm:pt-2 text-[10px] sm:text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8] max-w-md text-center">
             <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>Your files are processed temporarily and automatically removed according to our retention policy.</span>
           </div>
@@ -263,12 +263,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       )}
 
       {/* Quick Try Samples Bar */}
-      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-4 shadow-sm space-y-2">
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-3 sm:p-4 shadow-sm space-y-2">
         <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] text-center">
           Or try converting a sample design file instantly:
         </p>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
           {samples.map((s) => (
             <button
               key={s.key}

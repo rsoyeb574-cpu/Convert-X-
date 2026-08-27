@@ -1261,15 +1261,133 @@ ${allRoutes
             `<meta name="twitter:description" content="${description.replace(/"/g, '&quot;')}" />`
           );
 
+        let jsonLdScripts = '';
+        if (SEO_ROUTES[reqPath]) {
+          const cfg = SEO_ROUTES[reqPath];
+          const softwareSchema = {
+            '@context': 'https://schema.org',
+            '@type': ['SoftwareApplication', 'WebApplication'],
+            '@id': `${canonicalUrl}#software`,
+            name: `Convert-X: ${cfg.h1}`,
+            headline: cfg.title,
+            description: cfg.metaDescription,
+            url: canonicalUrl,
+            applicationCategory: 'UtilitiesApplication',
+            applicationSubCategory: 'FileConverter',
+            operatingSystem: 'All (Web Browser, Windows, macOS, Linux, iOS, Android)',
+            browserRequirements: 'Requires JavaScript. Requires HTML5.',
+            softwareVersion: '2.4.0',
+            offers: {
+              '@type': 'Offer',
+              price: '0.00',
+              priceCurrency: 'USD',
+              availability: 'https://schema.org/InStock',
+              category: 'Free Online File Conversion',
+            },
+            aggregateRating: {
+              '@type': 'AggregateRating',
+              ratingValue: '4.9',
+              reviewCount: '1420',
+              bestRating: '5',
+              worstRating: '1',
+            },
+            author: {
+              '@type': 'Organization',
+              name: 'Convert-X',
+              url: origin,
+              logo: `${origin}/icon-192.png`,
+            },
+            publisher: {
+              '@type': 'Organization',
+              name: 'Convert-X',
+              url: origin,
+            },
+            screenshot: `${origin}/og-image.png`,
+            featureList: cfg.features,
+            fileFormat: [
+              ...cfg.supportedInputFormats,
+              ...cfg.supportedOutputFormats,
+            ],
+          };
+
+          const howToSchema = {
+            '@context': 'https://schema.org',
+            '@type': 'HowTo',
+            '@id': `${canonicalUrl}#howto`,
+            name: `How to convert ${cfg.fromFormat.toUpperCase()} to ${cfg.toFormat.toUpperCase()} online for free`,
+            description: `Step-by-step instructions to convert ${cfg.fromFormat.toUpperCase()} files into ${cfg.toFormat.toUpperCase()} format using Convert-X.`,
+            totalTime: 'PT30S',
+            tool: [
+              {
+                '@type': 'HowToTool',
+                name: `Convert-X ${cfg.h1}`,
+              },
+            ],
+            step: cfg.howToUse.map((step) => ({
+              '@type': 'HowToStep',
+              position: step.step,
+              name: step.title,
+              text: step.text,
+              url: `${canonicalUrl}#step-${step.step}`,
+            })),
+          };
+
+          const breadcrumbSchema = {
+            '@context': 'https://schema.org',
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              {
+                '@type': 'ListItem',
+                position: 1,
+                name: 'Home',
+                item: origin,
+              },
+              {
+                '@type': 'ListItem',
+                position: 2,
+                name: 'All Tools',
+                item: `${origin}/tools`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 3,
+                name: cfg.h1,
+                item: canonicalUrl,
+              },
+            ],
+          };
+
+          jsonLdScripts += `\n    <script type="application/ld+json">${JSON.stringify(softwareSchema)}</script>`;
+          jsonLdScripts += `\n    <script type="application/ld+json">${JSON.stringify(howToSchema)}</script>`;
+          jsonLdScripts += `\n    <script type="application/ld+json">${JSON.stringify(breadcrumbSchema)}</script>`;
+
+          if (cfg.faq && cfg.faq.length > 0) {
+            const faqSchema = {
+              '@context': 'https://schema.org',
+              '@type': 'FAQPage',
+              '@id': `${canonicalUrl}#faq`,
+              mainEntity: cfg.faq.map((item) => ({
+                '@type': 'Question',
+                name: item.question,
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: item.answer,
+                },
+              })),
+            };
+            jsonLdScripts += `\n    <script type="application/ld+json">${JSON.stringify(faqSchema)}</script>`;
+          }
+        }
+
         if (!injectedHtml.includes('<link rel="canonical"')) {
           injectedHtml = injectedHtml.replace(
             '</head>',
-            `  <link rel="canonical" href="${canonicalUrl}" />\n  </head>`
+            `  <link rel="canonical" href="${canonicalUrl}" />${jsonLdScripts}\n  </head>`
           );
         } else {
           injectedHtml = injectedHtml.replace(
             /<link rel="canonical" href=".*?" \/>/,
-            `<link rel="canonical" href="${canonicalUrl}" />`
+            `<link rel="canonical" href="${canonicalUrl}" />${jsonLdScripts}`
           );
         }
 

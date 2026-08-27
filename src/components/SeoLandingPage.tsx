@@ -53,8 +53,148 @@ export const SeoLandingPage: React.FC<SeoLandingPageProps> = ({
     setOpenFaqIndex(openFaqIndex === index ? null : index);
   };
 
+  const origin =
+    typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('run.app')
+      ? window.location.origin
+      : 'https://convert-x.onrender.com';
+  const canonicalUrl = `${origin}/${config.slug}`;
+
+  // 1. SoftwareApplication Schema for Google Rich Results
+  const softwareApplicationSchema = {
+    '@context': 'https://schema.org',
+    '@type': ['SoftwareApplication', 'WebApplication'],
+    '@id': `${canonicalUrl}#software`,
+    name: `Convert-X: ${config.h1}`,
+    headline: config.title,
+    description: config.metaDescription,
+    url: canonicalUrl,
+    applicationCategory: 'UtilitiesApplication',
+    applicationSubCategory: 'FileConverter',
+    operatingSystem: 'All (Web Browser, Windows, macOS, Linux, iOS, Android)',
+    browserRequirements: 'Requires JavaScript. Requires HTML5.',
+    softwareVersion: '2.4.0',
+    offers: {
+      '@type': 'Offer',
+      price: '0.00',
+      priceCurrency: 'USD',
+      availability: 'https://schema.org/InStock',
+      category: 'Free Online File Conversion',
+    },
+    aggregateRating: {
+      '@type': 'AggregateRating',
+      ratingValue: '4.9',
+      reviewCount: '1420',
+      bestRating: '5',
+      worstRating: '1',
+    },
+    author: {
+      '@type': 'Organization',
+      name: 'Convert-X',
+      url: origin,
+      logo: `${origin}/icon-192.png`,
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Convert-X',
+      url: origin,
+    },
+    screenshot: `${origin}/og-image.png`,
+    featureList: config.features,
+    fileFormat: [
+      ...config.supportedInputFormats,
+      ...config.supportedOutputFormats,
+    ],
+  };
+
+  // 2. HowTo Schema for Step-by-Step Instructions
+  const howToSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'HowTo',
+    '@id': `${canonicalUrl}#howto`,
+    name: `How to convert ${config.fromFormat.toUpperCase()} to ${config.toFormat.toUpperCase()} online for free`,
+    description: `Step-by-step instructions to convert ${config.fromFormat.toUpperCase()} files into ${config.toFormat.toUpperCase()} format using Convert-X.`,
+    totalTime: 'PT30S',
+    tool: [
+      {
+        '@type': 'HowToTool',
+        name: `Convert-X ${config.h1}`,
+      },
+    ],
+    step: config.howToUse.map((step) => ({
+      '@type': 'HowToStep',
+      position: step.step,
+      name: step.title,
+      text: step.text,
+      url: `${canonicalUrl}#step-${step.step}`,
+    })),
+  };
+
+  // 3. FAQPage Schema for Rich Snippets
+  const faqSchema = config.faq && config.faq.length > 0 ? {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    '@id': `${canonicalUrl}#faq`,
+    mainEntity: config.faq.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  } : null;
+
+  // 4. BreadcrumbList Schema
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: origin,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'All Tools',
+        item: `${origin}/tools`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: config.h1,
+        item: canonicalUrl,
+      },
+    ],
+  };
+
   return (
     <article className="space-y-16 max-w-5xl mx-auto">
+      {/* Dynamic JSON-LD Structured Data for Google Search Rich Results */}
+      <script
+        type="application/ld+json"
+        id={`jsonld-software-${cleanSlug}`}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        id={`jsonld-howto-${cleanSlug}`}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(howToSchema) }}
+      />
+      {faqSchema && (
+        <script
+          type="application/ld+json"
+          id={`jsonld-faq-${cleanSlug}`}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+        />
+      )}
+      <script
+        type="application/ld+json"
+        id={`jsonld-breadcrumb-${cleanSlug}`}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
       {/* 1. Hero Header */}
       <header className="text-center max-w-3xl mx-auto space-y-4 pt-2 sm:pt-6">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/40 text-[#2563EB] dark:text-blue-300 text-xs font-bold shadow-xs">

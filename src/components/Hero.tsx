@@ -53,17 +53,17 @@ export const Hero: React.FC<HeroProps> = ({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 text-center">
         {/* Main Hero Headings */}
-        <div className="max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/40 text-[#2563EB] dark:text-blue-300 text-xs font-bold shadow-xs">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-            <span>High-Speed Online File Converter & Image Converter</span>
+        <div className="max-w-3xl mx-auto space-y-3 sm:space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/40 text-[#2563EB] dark:text-blue-300 text-[11px] sm:text-xs font-bold shadow-xs max-w-full">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
+            <span className="truncate sm:whitespace-normal">High-Speed Online File & Image Converter</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight leading-tight">
+          <h1 className="text-2xl sm:text-5xl lg:text-6xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight leading-tight">
             Convert Files <span className="bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED] bg-clip-text text-transparent">Fast and Easily</span>
           </h1>
 
-          <p className="text-base sm:text-lg text-[#64748B] dark:text-[#94A3B8] leading-relaxed font-medium max-w-2xl mx-auto">
+          <p className="text-sm sm:text-lg text-[#64748B] dark:text-[#94A3B8] leading-relaxed font-medium max-w-2xl mx-auto">
             Convert images and documents directly in your browser and server without complicated software.
           </p>
         </div>
@@ -152,7 +152,7 @@ export const Hero: React.FC<HeroProps> = ({
             Active Server-Side Processing Engines
           </p>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl mx-auto">
             {categories.map((cat) => (
               <div
                 key={cat.name}

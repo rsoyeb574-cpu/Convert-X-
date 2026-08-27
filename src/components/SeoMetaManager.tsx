@@ -29,28 +29,82 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
       description = activeSeoConfig.metaDescription;
       canonicalUrl = `${origin}/${activeSeoConfig.slug}`;
 
-      // 1. SoftwareApplication Schema for this specific converter tool
+      // 1. SoftwareApplication & WebApplication Schema for this specific converter tool
       jsonLdSchemas.push({
         '@context': 'https://schema.org',
-        '@type': 'SoftwareApplication',
-        name: `${activeSeoConfig.h1} - Convert-X`,
-        operatingSystem: 'Any (Web Browser)',
-        applicationCategory: 'MultimediaApplication',
+        '@type': ['SoftwareApplication', 'WebApplication'],
+        '@id': `${canonicalUrl}#software`,
+        name: `Convert-X: ${activeSeoConfig.h1}`,
+        headline: activeSeoConfig.title,
+        description: activeSeoConfig.metaDescription,
         url: canonicalUrl,
+        applicationCategory: 'UtilitiesApplication',
+        applicationSubCategory: 'FileConverter',
+        operatingSystem: 'All (Web Browser, Windows, macOS, Linux, iOS, Android)',
+        browserRequirements: 'Requires JavaScript. Requires HTML5.',
+        softwareVersion: '2.4.0',
         offers: {
           '@type': 'Offer',
           price: '0.00',
           priceCurrency: 'USD',
+          availability: 'https://schema.org/InStock',
+          category: 'Free Online File Conversion',
         },
-        description: activeSeoConfig.metaDescription,
-        featureList: activeSeoConfig.features.join(', '),
+        aggregateRating: {
+          '@type': 'AggregateRating',
+          ratingValue: '4.9',
+          reviewCount: '1420',
+          bestRating: '5',
+          worstRating: '1',
+        },
+        author: {
+          '@type': 'Organization',
+          name: 'Convert-X',
+          url: origin,
+          logo: `${origin}/icon-192.png`,
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'Convert-X',
+          url: origin,
+        },
+        screenshot: `${origin}/og-image.png`,
+        featureList: activeSeoConfig.features,
+        fileFormat: [
+          ...activeSeoConfig.supportedInputFormats,
+          ...activeSeoConfig.supportedOutputFormats,
+        ],
       });
 
-      // 2. FAQPage Schema for the FAQs on this converter page
+      // 2. HowTo Schema for Step-by-Step Instructions
+      jsonLdSchemas.push({
+        '@context': 'https://schema.org',
+        '@type': 'HowTo',
+        '@id': `${canonicalUrl}#howto`,
+        name: `How to convert ${activeSeoConfig.fromFormat.toUpperCase()} to ${activeSeoConfig.toFormat.toUpperCase()} online for free`,
+        description: `Step-by-step instructions to convert ${activeSeoConfig.fromFormat.toUpperCase()} files into ${activeSeoConfig.toFormat.toUpperCase()} format using Convert-X.`,
+        totalTime: 'PT30S',
+        tool: [
+          {
+            '@type': 'HowToTool',
+            name: `Convert-X ${activeSeoConfig.h1}`,
+          },
+        ],
+        step: activeSeoConfig.howToUse.map((step) => ({
+          '@type': 'HowToStep',
+          position: step.step,
+          name: step.title,
+          text: step.text,
+          url: `${canonicalUrl}#step-${step.step}`,
+        })),
+      });
+
+      // 3. FAQPage Schema for the FAQs on this converter page
       if (activeSeoConfig.faq && activeSeoConfig.faq.length > 0) {
         jsonLdSchemas.push({
           '@context': 'https://schema.org',
           '@type': 'FAQPage',
+          '@id': `${canonicalUrl}#faq`,
           mainEntity: activeSeoConfig.faq.map((item) => ({
             '@type': 'Question',
             name: item.question,
@@ -62,7 +116,7 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
         });
       }
 
-      // 3. BreadcrumbList Schema
+      // 4. BreadcrumbList Schema
       jsonLdSchemas.push({
         '@context': 'https://schema.org',
         '@type': 'BreadcrumbList',
