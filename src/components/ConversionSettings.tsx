@@ -1,12 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ConversionOptions } from '../types.js';
-import { Sliders, FileText, Maximize2, Shield, Eye, Layers, Sparkles } from 'lucide-react';
+import { Sliders, FileText, Maximize2, Shield, Eye, Layers, Sparkles, Check, CheckSquare, Square } from 'lucide-react';
 
 interface ConversionSettingsProps {
   inputFormat?: string;
   outputFormat: string;
   options: ConversionOptions;
   onChangeOptions: (options: ConversionOptions) => void;
+  applyToAll?: boolean;
+  onToggleApplyToAll?: (applyToAll: boolean) => void;
+  queuedCount?: number;
+  onApplyToAll?: (options: ConversionOptions) => void;
 }
 
 export const ConversionSettings: React.FC<ConversionSettingsProps> = ({
@@ -14,7 +18,43 @@ export const ConversionSettings: React.FC<ConversionSettingsProps> = ({
   outputFormat,
   options,
   onChangeOptions,
+  applyToAll: controlledApplyToAll,
+  onToggleApplyToAll,
+  queuedCount = 0,
+  onApplyToAll,
 }) => {
+  const [internalApplyToAll, setInternalApplyToAll] = useState<boolean>(false);
+  const [syncedFeedback, setSyncedFeedback] = useState<boolean>(false);
+
+  const isApplyToAllActive = controlledApplyToAll !== undefined ? controlledApplyToAll : internalApplyToAll;
+
+  const handleToggleApplyToAll = (checked: boolean) => {
+    if (controlledApplyToAll === undefined) {
+      setInternalApplyToAll(checked);
+    }
+    if (onToggleApplyToAll) {
+      onToggleApplyToAll(checked);
+    }
+    if (checked && onApplyToAll) {
+      onApplyToAll(options);
+      triggerSyncedAnimation();
+    }
+  };
+
+  const triggerSyncedAnimation = () => {
+    setSyncedFeedback(true);
+    setTimeout(() => {
+      setSyncedFeedback(false);
+    }, 2000);
+  };
+
+  const handleManualSyncNow = () => {
+    if (onApplyToAll) {
+      onApplyToAll(options);
+      triggerSyncedAnimation();
+    }
+  };
+
   const inFmtClean = inputFormat.toLowerCase() === 'jpeg' ? 'jpg' : inputFormat.toLowerCase();
   const outFmtClean = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
@@ -39,6 +79,86 @@ export const ConversionSettings: React.FC<ConversionSettingsProps> = ({
         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
           Target: .{outFmtClean.toUpperCase()}
         </span>
+      </div>
+
+      {/* 'Apply to All' Queued Items Synchronization Box */}
+      <div
+        className={`p-3.5 sm:p-4 rounded-xl border transition-all ${
+          isApplyToAllActive
+            ? 'bg-blue-50/80 dark:bg-blue-950/40 border-[#2563EB]/50 dark:border-blue-800/60 shadow-sm'
+            : 'bg-slate-50 dark:bg-[#0B1120] border-[#E2E8F0] dark:border-[#1E293B]'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <label
+            htmlFor="apply-to-all-checkbox"
+            className="flex items-start gap-3 cursor-pointer select-none group flex-1"
+          >
+            <div className="relative flex items-center justify-center mt-0.5">
+              <input
+                type="checkbox"
+                id="apply-to-all-checkbox"
+                checked={isApplyToAllActive}
+                onChange={(e) => handleToggleApplyToAll(e.target.checked)}
+                className="sr-only"
+              />
+              <div
+                className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
+                  isApplyToAllActive
+                    ? 'bg-[#2563EB] border-[#2563EB] text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 group-hover:border-[#2563EB]'
+                }`}
+              >
+                {isApplyToAllActive && <Check className="w-3 h-3 stroke-[3]" />}
+              </div>
+            </div>
+
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB] transition-colors">
+                  Apply to All Queued Files
+                </span>
+                {queuedCount > 0 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-blue-100 dark:bg-blue-900/60 text-[#2563EB] dark:text-blue-300 font-mono">
+                    {queuedCount} {queuedCount === 1 ? 'file' : 'files'}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                Sync quality ({options.quality || 90}%), DPI ({options.dpi || 300}), and format settings across all queued items with one click.
+              </p>
+            </div>
+          </label>
+
+          {/* Sync status / Instant Sync Trigger */}
+          {onApplyToAll && (
+            <button
+              type="button"
+              id="sync-all-now-btn"
+              onClick={handleManualSyncNow}
+              className={`shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                syncedFeedback
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : isApplyToAllActive
+                  ? 'bg-[#2563EB] hover:bg-blue-600 text-white shadow-xs'
+                  : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#2563EB] dark:text-blue-400 border border-[#E2E8F0] dark:border-[#1E293B]'
+              }`}
+              title="Instantly apply current quality, DPI, and formatting parameters to all queued files"
+            >
+              {syncedFeedback ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Synced!</span>
+                </>
+              ) : (
+                <>
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Sync All</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">

@@ -117,6 +117,7 @@ export default function App() {
     pageSize: 'a4',
     orientation: 'portrait',
   });
+  const [applyToAllQueued, setApplyToAllQueued] = useState<boolean>(false);
 
   // Multi-File Conversion Queue State with LocalStorage Persistence Recovery
   const [queue, setQueue] = useState<ConversionQueueItem[]>(() => {
@@ -637,6 +638,57 @@ export default function App() {
       setError(err.message || 'Error loading sample file');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle Options Change with Auto Sync across Queue when 'Apply to All' is enabled
+  const handleOptionsChange = (newOptions: ConversionOptions) => {
+    setOptions(newOptions);
+    if (applyToAllQueued) {
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
+            ? {
+                ...q,
+                options: { ...q.options, ...newOptions },
+              }
+            : q
+        )
+      );
+    }
+  };
+
+  // Explicitly apply options to all queued items with immediate feedback
+  const handleApplyOptionsToAllQueue = (optsToApply?: ConversionOptions) => {
+    const targetOpts = optsToApply || options;
+    const targetItems = queue.filter(
+      (q) => q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
+    );
+    const count = targetItems.length > 0 ? targetItems.length : queue.length;
+
+    setQueue((prev) =>
+      prev.map((q) =>
+        q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
+          ? {
+              ...q,
+              options: { ...q.options, ...targetOpts },
+            }
+          : q
+      )
+    );
+
+    if (count > 0) {
+      showToast(
+        'Settings Applied to All',
+        `Applied ${targetOpts.dpi || 300} DPI and ${targetOpts.quality || 90}% quality across ${count} queued item(s).`,
+        'success'
+      );
+    } else {
+      showToast(
+        'Apply to All Enabled',
+        'Conversion parameters will automatically apply to items added to the queue.',
+        'info'
+      );
     }
   };
 
@@ -1558,7 +1610,20 @@ export default function App() {
                           inputFormat={uploadedFile.detectedFormat}
                           outputFormat={selectedOutputFormat}
                           options={options}
-                          onChangeOptions={setOptions}
+                          onChangeOptions={handleOptionsChange}
+                          applyToAll={applyToAllQueued}
+                          onToggleApplyToAll={(checked) => {
+                            setApplyToAllQueued(checked);
+                            if (checked) {
+                              handleApplyOptionsToAllQueue(options);
+                            }
+                          }}
+                          queuedCount={
+                            queue.filter(
+                              (q) => q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
+                            ).length || queue.length
+                          }
+                          onApplyToAll={handleApplyOptionsToAllQueue}
                         />
 
                         {/* Progress Bar & Convert Button */}
