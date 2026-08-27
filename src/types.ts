@@ -155,6 +155,7 @@ export interface TextToPdfSettings {
 export interface UserPreferences {
   defaultTargetFormat: string;
   autoDownload: boolean;
+  autoConvertOnUpload: boolean;
   imageQuality: number;
   preserveMetadata: boolean;
   theme: 'dark' | 'light' | 'system';

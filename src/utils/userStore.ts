@@ -7,6 +7,7 @@ const RETURNING_USER_KEY = 'convertx_user_visits_v1';
 export const DEFAULT_PREFERENCES: UserPreferences = {
   defaultTargetFormat: 'png',
   autoDownload: false,
+  autoConvertOnUpload: false,
   imageQuality: 92,
   preserveMetadata: true,
   theme: 'system',
@@ -29,6 +30,10 @@ export function getStoredUserPreferences(): UserPreferences {
     return {
       ...DEFAULT_PREFERENCES,
       ...parsed,
+      autoConvertOnUpload:
+        typeof parsed.autoConvertOnUpload === 'boolean'
+          ? parsed.autoConvertOnUpload
+          : DEFAULT_PREFERENCES.autoConvertOnUpload,
       favoriteTools: Array.isArray(parsed.favoriteTools) ? parsed.favoriteTools : DEFAULT_PREFERENCES.favoriteTools,
       recentTools: Array.isArray(parsed.recentTools) ? parsed.recentTools : DEFAULT_PREFERENCES.recentTools,
     };

@@ -44,6 +44,8 @@ interface DashboardHistoryProps {
   usedToday?: number;
   limits?: AppLimits;
   isPro?: boolean;
+  userPreferences?: UserPreferences;
+  onPreferencesChange?: (prefs: UserPreferences) => void;
   onClearHistory: () => void;
   onRemoveItem: (id: string) => void;
   onConvertNew: () => void;
@@ -71,6 +73,8 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   usedToday = 0,
   limits,
   isPro = false,
+  userPreferences,
+  onPreferencesChange,
   onClearHistory,
   onRemoveItem,
   onConvertNew,
@@ -95,7 +99,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   const [zipStatusMessage, setZipStatusMessage] = useState<string | null>(null);
   const [zipProgress, setZipProgress] = useState<number>(0);
   const [zipError, setZipError] = useState<string | null>(null);
-  const [userPrefs, setUserPrefs] = useState<UserPreferences>(getStoredUserPreferences());
+  const [userPrefs, setUserPrefs] = useState<UserPreferences>(() => userPreferences || getStoredUserPreferences());
+
+  useEffect(() => {
+    if (userPreferences) {
+      setUserPrefs(userPreferences);
+    }
+  }, [userPreferences]);
   const [popularTools, setPopularTools] = useState<
     { slug: string; from: string; to: string; count: number; name: string }[]
   >([]);
@@ -776,6 +786,27 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Quick Auto-Convert on Upload Toggle Button */}
+            <button
+              type="button"
+              id="quick-auto-convert-toggle-btn"
+              onClick={() => {
+                const nextVal = !userPrefs.autoConvertOnUpload;
+                const updated = saveUserPreferences({ autoConvertOnUpload: nextVal });
+                setUserPrefs(updated);
+                if (onPreferencesChange) onPreferencesChange(updated);
+              }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                userPrefs.autoConvertOnUpload
+                  ? 'bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-300 border-blue-300 dark:border-blue-800/80 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#1E293B]'
+              }`}
+              title="Toggle auto-convert on upload: automatically convert new files when added to the queue"
+            >
+              <Zap className={`w-3.5 h-3.5 ${userPrefs.autoConvertOnUpload ? 'text-[#2563EB] fill-current' : 'text-slate-400'}`} />
+              <span>Auto-convert: {userPrefs.autoConvertOnUpload ? 'ON' : 'OFF'}</span>
+            </button>
+
             {/* Add More Files Button */}
             {onAddFiles && (
               <button

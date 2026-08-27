@@ -250,6 +250,34 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 </div>
               </div>
 
+              {/* Auto Convert on Upload Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-[#2563EB]" />
+                    <span>Auto-Convert on Upload</span>
+                  </span>
+                  <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                    Automatically convert files upon addition to the queue without manually clicking Convert.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  id="account-auto-convert-toggle"
+                  onClick={() => handlePreferenceUpdate('autoConvertOnUpload', !preferences.autoConvertOnUpload)}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    preferences.autoConvertOnUpload ? 'bg-[#2563EB]' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                  aria-label="Toggle auto-convert on upload"
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                      preferences.autoConvertOnUpload ? 'translate-x-6' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
               {/* Auto Download Toggle */}
               <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
                 <div className="space-y-0.5">
