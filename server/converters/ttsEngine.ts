@@ -34,6 +34,24 @@ export interface TtsSynthesisOptions {
   onProgress?: (progress: number, stage: string) => void;
 }
 
+export interface TtsWordTiming {
+  word: string;
+  startTime: number;
+  endTime: number;
+  startChar: number;
+  endChar: number;
+}
+
+export interface TtsSegmentTiming {
+  index: number;
+  text: string;
+  startChar: number;
+  endChar: number;
+  startTime: number;
+  endTime: number;
+  words: TtsWordTiming[];
+}
+
 export interface TtsSynthesisResult {
   jobId: string;
   buffer: Buffer;
@@ -50,6 +68,7 @@ export interface TtsSynthesisResult {
   downloadUrl: string;
   previewUrl: string;
   filename: string;
+  segments?: TtsSegmentTiming[];
 }
 
 // Supported Real Voices
@@ -566,6 +585,70 @@ export class TtsEngine {
     const totalSeconds = processedPcm.length / (sampleRate * 2);
     const wordCount = cleanedText.split(/\s+/).filter(Boolean).length;
 
+    // Compute fine-grained segment and word timing boundaries for real-time editor highlighting
+    const segments: TtsSegmentTiming[] = [];
+    let charSearchCursor = 0;
+    let timeCursor = 0;
+    const totalPcmLength = pcmChunks.reduce((acc, b) => acc + b.length, 0);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const pcmChunk = pcmChunks[i * 2] || pcmChunks[i]; // accounts for silence interleaving
+
+      // Determine character span in cleanedText
+      const foundIdx = cleanedText.indexOf(chunk, charSearchCursor);
+      const startChar = foundIdx >= 0 ? foundIdx : charSearchCursor;
+      const endChar = startChar + chunk.length;
+      charSearchCursor = endChar;
+
+      // Determine duration of this chunk
+      const chunkFraction = totalPcmLength > 0 && pcmChunk ? pcmChunk.length / totalPcmLength : 1 / chunks.length;
+      const chunkDuration = chunkFraction * totalSeconds;
+      const segStartTime = Number(timeCursor.toFixed(3));
+      const segEndTime = Number(Math.min(totalSeconds, timeCursor + chunkDuration).toFixed(3));
+
+      // Calculate word timings within the segment
+      const wordsInChunk: TtsWordTiming[] = [];
+      const wordRegex = /\S+/g;
+      let match: RegExpExecArray | null;
+      const rawChunkWords: { word: string; start: number; end: number }[] = [];
+      while ((match = wordRegex.exec(chunk)) !== null) {
+        rawChunkWords.push({
+          word: match[0],
+          start: match.index,
+          end: match.index + match[0].length,
+        });
+      }
+
+      const chunkCharLength = Math.max(1, chunk.length);
+      for (const rw of rawChunkWords) {
+        const wStartRatio = rw.start / chunkCharLength;
+        const wEndRatio = rw.end / chunkCharLength;
+        const wStartTime = Number((segStartTime + wStartRatio * (segEndTime - segStartTime)).toFixed(3));
+        const wEndTime = Number((segStartTime + wEndRatio * (segEndTime - segStartTime)).toFixed(3));
+
+        wordsInChunk.push({
+          word: rw.word,
+          startChar: startChar + rw.start,
+          endChar: startChar + rw.end,
+          startTime: wStartTime,
+          endTime: Math.max(wStartTime + 0.05, wEndTime),
+        });
+      }
+
+      segments.push({
+        index: i,
+        text: chunk,
+        startChar,
+        endChar,
+        startTime: segStartTime,
+        endTime: segEndTime,
+        words: wordsInChunk,
+      });
+
+      timeCursor = segEndTime + (0.08 / speed);
+    }
+
     // Save temporary audio file to ephemeral disk
     const { filePath } = generateTempFilePath('wav');
     fs.writeFileSync(filePath, finalAudioBuffer);
@@ -611,6 +694,7 @@ export class TtsEngine {
       downloadUrl: `/api/download/${job.id}`,
       previewUrl: `/api/preview/${job.id}`,
       filename,
+      segments,
     };
   }
 }

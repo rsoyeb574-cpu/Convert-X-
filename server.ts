@@ -1271,6 +1271,7 @@ ${allRoutes
         voice: result.voice,
         language: result.language,
         provider: result.provider,
+        segments: result.segments,
       });
     } catch (err: any) {
       console.error('TTS synthesis handler error:', err);

@@ -176,6 +176,24 @@ export interface TtsLanguageOption {
   supportedVoices: string[];
 }
 
+export interface TtsWordTiming {
+  word: string;
+  startTime: number;
+  endTime: number;
+  startChar: number;
+  endChar: number;
+}
+
+export interface TtsSegmentTiming {
+  index: number;
+  text: string;
+  startChar: number;
+  endChar: number;
+  startTime: number;
+  endTime: number;
+  words: TtsWordTiming[];
+}
+
 export interface TtsResultData {
   jobId: string;
   downloadUrl: string;
@@ -190,6 +208,7 @@ export interface TtsResultData {
   voice: string;
   language: string;
   provider: string;
+  segments?: TtsSegmentTiming[];
 }
 
 export interface TextToPdfSettings {
