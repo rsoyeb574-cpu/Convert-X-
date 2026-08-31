@@ -182,6 +182,8 @@ export interface TtsWordTiming {
   endTime: number;
   startChar: number;
   endChar: number;
+  isPause?: boolean;
+  pauseDuration?: number;
 }
 
 export interface TtsSegmentTiming {
@@ -192,6 +194,8 @@ export interface TtsSegmentTiming {
   startTime: number;
   endTime: number;
   words: TtsWordTiming[];
+  isPause?: boolean;
+  pauseDuration?: number;
 }
 
 export interface TtsResultData {

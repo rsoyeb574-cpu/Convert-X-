@@ -31,6 +31,11 @@ import {
   Edit3,
   MousePointerClick,
   SlidersHorizontal,
+  Clock,
+  Timer,
+  Plus,
+  Hourglass,
+  HelpCircle,
 } from 'lucide-react';
 
 interface TextToVoicePageProps {
@@ -43,32 +48,39 @@ interface TextToVoicePageProps {
 
 const SAMPLE_PRESETS: { label: string; text: string; language: string; voice: string }[] = [
   {
-    label: 'English – Business & Product Overview',
+    label: 'English – Professional Narration with Intentional Pauses',
     language: 'en',
     voice: 'Charon',
-    text: 'Welcome to Convert-X. Our online suite allows you to transform, compress, and generate high-fidelity media across all major formats with zero retention and maximum security. Turn any written idea into clear speech with instant audio playback and export.',
+    text: 'Welcome to Convert-X. [pause 1s] Our online suite allows you to transform, compress, and generate high-fidelity media across all major formats with zero retention and maximum security. [pause 0.8s] Turn any written idea into clear speech with instant audio playback and export.',
   },
   {
-    label: 'हिन्दी – स्वागत और ऑडियो विवरण (Hindi)',
+    label: 'English – Expressive Dialogue & Dramatic Breaks',
+    language: 'en',
+    voice: 'Puck',
+    text: 'Listen closely. [pause 1.5s] The future of digital media processing is fast, secure, and completely private. [pause 0.5s] Every sentence flows naturally, with pauses precisely timed to your creative direction.',
+  },
+  {
+    label: 'हिन्दी – स्वागत और ऑडियो विवरण (Hindi with Pauses)',
     language: 'hi',
     voice: 'Kore',
-    text: 'कन्वर्ट-एक्स में आपका स्वागत है। अपने लिखे हुए पाठ को तुरंत सहज, स्पष्ट और स्वाभाविक आवाज़ में बदलें और उच्च गुणवत्ता वाला ऑडियो डाउनलोड करें। हर वाक्य और शब्द को लाइव हाईलाइट के साथ सुनें।',
+    text: 'कन्वर्ट-एक्स में आपका स्वागत है। [pause 1s] अपने लिखे हुए पाठ को तुरंत सहज, स्पष्ट और स्वाभाविक आवाज़ में बदलें। [pause 0.5s] हर वाक्य और शब्द को लाइव हाईलाइट के साथ सुनें।',
   },
   {
-    label: 'اردو – قدرتی اور واضح آواز (Urdu)',
+    label: 'اردو – قدرتی اور واضح آواز (Urdu with Pauses)',
     language: 'ur',
     voice: 'Fenrir',
-    text: 'کنورٹ ایکس میں خوش آمدید۔ اپنی تحریر کو جدید ترین آوازوں کے ذریعے قدرتی اور پرکشش آڈیو میں تبدیل کریں اور باآسانی ڈاؤن لوڈ کریں۔ ریئل ٹائم ہائی لائٹنگ کے ساتھ اپنے الفاظ کو سنیں۔',
+    text: 'کنورٹ ایکس میں خوش آمدید۔ [pause 1s] اپنی تحریر کو جدید ترین آوازوں کے ذریعے قدرتی اور پرکشش آڈیو میں تبدیل کریں۔ [pause 0.5s] ریئل ٹائم ہائی لائٹنگ کے ساتھ اپنے الفاظ کو سنیں۔',
   },
   {
-    label: 'Español – Narración Profesional (Spanish)',
+    label: 'Español – Locución con Pausas (Spanish)',
     language: 'es',
     voice: 'Zephyr',
-    text: 'Bienvenido a Convert-X. Transforma cualquier texto en una locución natural y descarga tu archivo de audio con la máxima claridad y rapidez. Escucha y sincroniza cada frase en tiempo real.',
+    text: 'Bienvenido a Convert-X. [pause 1s] Transforma cualquier texto en una locución natural. [pause 0.8s] Escucha y sincroniza cada frase en tiempo real con pausas personalizadas.',
   },
 ];
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+const PAUSE_TAG_REGEX = /\[(?:pause|break)(?::?\s*(\d+(?:\.\d+)?)\s*(s|sec|secs|seconds|ms|msec|milliseconds)?)?\s*\]/gi;
 
 export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
   onNavigate,
@@ -85,7 +97,7 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
 
   // Editor Form State
   const [text, setText] = useState<string>(
-    'Welcome to Convert-X. Turn your text into natural-sounding speech and download the audio. Experience real-time interactive word highlighting as your voice plays!'
+    'Welcome to Convert-X. [pause 1s] Turn your text into natural-sounding speech and download the audio. [pause 0.8s] Experience intentional pause breaks and real-time interactive word highlighting as your voice plays!'
   );
   const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
   const [selectedVoice, setSelectedVoice] = useState<string>('Kore');
@@ -93,6 +105,11 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
   const [pitch, setPitch] = useState<'low' | 'normal' | 'high'>('normal');
   const [volume, setVolume] = useState<number>(100);
   const [format, setFormat] = useState<'mp3' | 'wav'>('mp3');
+
+  // Pause Marker Customization State
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [showCustomPauseModal, setShowCustomPauseModal] = useState<boolean>(false);
+  const [customPauseDuration, setCustomPauseDuration] = useState<number>(1.0);
 
   // Real-time Highlighting & Editor View Modes
   const [editorMode, setEditorMode] = useState<'edit' | 'highlight'>('edit');
@@ -119,7 +136,7 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
 
-  // Derive Client-side Sentence Segments for live highlight if not yet generated by server
+  // Derive Client-side Sentence Segments and Pause Markers for live highlight if not yet generated by server
   const clientSegments = useMemo<TtsSegmentTiming[]>(() => {
     if (result?.segments && result.segments.length > 0) {
       return result.segments;
@@ -128,56 +145,148 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
     const trimmed = text.trim();
     if (!trimmed) return [];
 
-    // Split sentences respecting Unicode and terminators (. ! ? । ॥ ۔ ؟ \n)
-    const sentenceRegex = /[^.!?\n।॥۔؟]+[.!?\n।॥۔؟]+|\S[^\n.!?।॥۔؟]*$/g;
-    const rawMatches = trimmed.match(sentenceRegex) || [trimmed];
-    const estimatedTotalSec = Math.max(1, (trimmed.length / 14) / speed);
-
-    let charCursor = 0;
-    let timeAccum = 0;
     const segs: TtsSegmentTiming[] = [];
+    const regex = new RegExp(PAUSE_TAG_REGEX.source, 'gi');
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let timeAccum = 0;
+    let segIndex = 0;
 
-    for (let i = 0; i < rawMatches.length; i++) {
-      const matchText = rawMatches[i].trim();
-      if (!matchText) continue;
+    // Estimate total speech length excluding pause tags
+    const cleanSpeechOnly = trimmed.replace(new RegExp(PAUSE_TAG_REGEX.source, 'gi'), ' ').trim();
+    const speechCharLen = Math.max(1, cleanSpeechOnly.length);
+    const estimatedSpeechSec = Math.max(1, (speechCharLen / 14) / speed);
 
-      const foundIndex = text.indexOf(matchText, charCursor);
-      const startChar = foundIndex >= 0 ? foundIndex : charCursor;
-      const endChar = startChar + matchText.length;
-      charCursor = endChar;
+    const addSpeechSegment = (subText: string, startPos: number) => {
+      const sentenceRegex = /[^.!?\n।॥۔؟]+[.!?\n।॥۔؟]+|\S[^\n.!?।॥۔؟]*$/g;
+      const rawMatches = subText.match(sentenceRegex) || [subText];
+      let localCursor = startPos;
 
-      const segDuration = (matchText.length / trimmed.length) * estimatedTotalSec;
-      const segStartTime = timeAccum;
-      const segEndTime = timeAccum + segDuration;
-      timeAccum = segEndTime;
+      for (const m of rawMatches) {
+        const sentenceText = m.trim();
+        if (!sentenceText) continue;
 
-      // Word level segmentation
-      const words = matchText.split(/\s+/).filter(Boolean);
-      const wordTimings = words.map((w, wIdx) => {
-        const wStart = segStartTime + (wIdx / Math.max(1, words.length)) * segDuration;
-        const wEnd = segStartTime + ((wIdx + 1) / Math.max(1, words.length)) * segDuration;
-        return {
-          word: w,
-          startTime: Number(wStart.toFixed(3)),
-          endTime: Number(wEnd.toFixed(3)),
-          startChar: startChar,
-          endChar: endChar,
-        };
-      });
+        const foundIndex = text.indexOf(sentenceText, localCursor);
+        const startChar = foundIndex >= 0 ? foundIndex : localCursor;
+        const endChar = startChar + sentenceText.length;
+        localCursor = endChar;
+
+        const segDuration = (sentenceText.length / speechCharLen) * estimatedSpeechSec;
+        const segStartTime = timeAccum;
+        const segEndTime = timeAccum + segDuration;
+        timeAccum = segEndTime;
+
+        const words = sentenceText.split(/\s+/).filter(Boolean);
+        const wordTimings = words.map((w, wIdx) => {
+          const wStart = segStartTime + (wIdx / Math.max(1, words.length)) * segDuration;
+          const wEnd = segStartTime + ((wIdx + 1) / Math.max(1, words.length)) * segDuration;
+          return {
+            word: w,
+            startTime: Number(wStart.toFixed(3)),
+            endTime: Number(wEnd.toFixed(3)),
+            startChar,
+            endChar,
+            isPause: false,
+          };
+        });
+
+        segs.push({
+          index: segIndex++,
+          text: sentenceText,
+          startChar,
+          endChar,
+          startTime: Number(segStartTime.toFixed(3)),
+          endTime: Number(segEndTime.toFixed(3)),
+          words: wordTimings,
+          isPause: false,
+        });
+      }
+    };
+
+    while ((match = regex.exec(trimmed)) !== null) {
+      const matchIndex = match.index;
+      const matchLength = match[0].length;
+
+      // Text before pause
+      if (matchIndex > lastIndex) {
+        const beforeText = trimmed.slice(lastIndex, matchIndex);
+        if (beforeText.trim()) {
+          addSpeechSegment(beforeText, lastIndex);
+        }
+      }
+
+      // Parse pause duration
+      let durSec = 1.0;
+      if (match[1]) {
+        const val = parseFloat(match[1]);
+        if (!isNaN(val) && val > 0) {
+          const unit = (match[2] || '').toLowerCase();
+          if (unit.startsWith('ms') || unit.startsWith('msec')) {
+            durSec = val / 1000;
+          } else {
+            durSec = val;
+          }
+        }
+      }
+      durSec = Math.max(0.05, Math.min(10.0, Number(durSec.toFixed(3))));
+
+      const pauseStartTime = timeAccum;
+      const pauseEndTime = timeAccum + durSec;
+      timeAccum = pauseEndTime;
 
       segs.push({
-        index: i,
-        text: matchText,
-        startChar,
-        endChar,
-        startTime: Number(segStartTime.toFixed(3)),
-        endTime: Number(segEndTime.toFixed(3)),
-        words: wordTimings,
+        index: segIndex++,
+        text: match[0],
+        startChar: matchIndex,
+        endChar: matchIndex + matchLength,
+        startTime: Number(pauseStartTime.toFixed(3)),
+        endTime: Number(pauseEndTime.toFixed(3)),
+        words: [],
+        isPause: true,
+        pauseDuration: durSec,
       });
+
+      lastIndex = matchIndex + matchLength;
+    }
+
+    // Trailing text
+    if (lastIndex < trimmed.length) {
+      const afterText = trimmed.slice(lastIndex);
+      if (afterText.trim()) {
+        addSpeechSegment(afterText, lastIndex);
+      }
     }
 
     return segs;
   }, [text, result?.segments, speed]);
+
+  // Insert Pause Marker helper
+  const insertPauseMarker = (durationSec: number) => {
+    const marker = ` [pause ${durationSec}s] `;
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
+      const before = text.substring(0, start);
+      const after = text.substring(end);
+      const newText = (before + marker + after).slice(0, maxCharacters);
+      setText(newText);
+      if (errorMessage) setErrorMessage(null);
+
+      // Restore focus and cursor position after insertion
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const newPos = start + marker.length;
+          textareaRef.current.setSelectionRange(newPos, newPos);
+        }
+      }, 50);
+      showToast(`Inserted pause marker: [pause ${durationSec}s]`, undefined, 'info');
+    } else {
+      setText((prev) => (prev ? `${prev}${marker}` : marker).slice(0, maxCharacters));
+      showToast(`Inserted pause marker: [pause ${durationSec}s]`, undefined, 'info');
+    }
+  };
 
   // Determine Active Segment & Word Index based on currentTime
   const activeSegmentIndex = useMemo(() => {
@@ -304,10 +413,37 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
     };
   }, [result, isLooping]);
 
-  // Character and word stats
+  // Character, word, and pause stats
   const characterCount = text.length;
-  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
-  const estimatedSeconds = Math.max(1, Math.round((characterCount / 14) / speed));
+  const speechTextOnly = text.replace(new RegExp(PAUSE_TAG_REGEX.source, 'gi'), ' ').trim();
+  const wordCount = speechTextOnly ? speechTextOnly.split(/\s+/).filter(Boolean).length : 0;
+  
+  // Calculate total pause duration for accurate estimate
+  const pauseMatches = useMemo(() => {
+    const regex = new RegExp(PAUSE_TAG_REGEX.source, 'gi');
+    let m: RegExpExecArray | null;
+    let count = 0;
+    let totalSec = 0;
+    while ((m = regex.exec(text)) !== null) {
+      count++;
+      let durSec = 1.0;
+      if (m[1]) {
+        const val = parseFloat(m[1]);
+        if (!isNaN(val) && val > 0) {
+          const unit = (m[2] || '').toLowerCase();
+          if (unit.startsWith('ms') || unit.startsWith('msec')) {
+            durSec = val / 1000;
+          } else {
+            durSec = val;
+          }
+        }
+      }
+      totalSec += Math.max(0.05, Math.min(10.0, durSec));
+    }
+    return { count, totalSec };
+  }, [text]);
+
+  const estimatedSeconds = Math.max(1, Math.round(((speechTextOnly.length / 14) / speed) + pauseMatches.totalSec));
 
   const isRtl = selectedLanguage === 'ar' || selectedLanguage === 'ur';
 
@@ -675,22 +811,142 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
 
             {/* Editor Workspace: Switch between Raw Input and Real-Time Highlight View */}
             {editorMode === 'edit' ? (
-              /* Editable Text Area */
-              <div className="relative">
-                <textarea
-                  id="tts-text-input"
-                  rows={9}
-                  value={text}
-                  dir={isRtl ? 'rtl' : 'ltr'}
-                  onChange={(e) => {
-                    if (e.target.value.length <= maxCharacters) {
-                      setText(e.target.value);
-                      if (errorMessage) setErrorMessage(null);
-                    }
-                  }}
-                  placeholder="Type or paste your text here… (Supports English, हिन्दी, اردو, Español, Français, Deutsch, and more)"
-                  className="w-full p-4 rounded-2xl bg-slate-50/70 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] text-sm text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-y transition-all leading-relaxed"
-                />
+              /* Editable Text Area with Pause Insertion Toolbar */
+              <div className="space-y-3">
+                {/* Pause Marker Quick Action Toolbar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-50/90 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 px-1 mr-1">
+                      <Timer className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Insert Pause:</span>
+                    </span>
+
+                    <button
+                      type="button"
+                      id="insert-pause-05s-btn"
+                      onClick={() => insertPauseMarker(0.5)}
+                      className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                      title="Insert 0.5 second pause at cursor"
+                    >
+                      <Plus className="w-3 h-3 text-indigo-500" />
+                      <span>0.5s Pause</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="insert-pause-1s-btn"
+                      onClick={() => insertPauseMarker(1.0)}
+                      className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                      title="Insert 1.0 second pause at cursor"
+                    >
+                      <Plus className="w-3 h-3 text-indigo-500" />
+                      <span>1.0s Pause</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="insert-pause-2s-btn"
+                      onClick={() => insertPauseMarker(2.0)}
+                      className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                      title="Insert 2.0 second pause at cursor"
+                    >
+                      <Plus className="w-3 h-3 text-indigo-500" />
+                      <span>2.0s Pause</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="toggle-custom-pause-btn"
+                      onClick={() => setShowCustomPauseModal((prev) => !prev)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1 cursor-pointer ${
+                        showCustomPauseModal
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/80 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
+                      }`}
+                    >
+                      <SlidersHorizontal className="w-3 h-3" />
+                      <span>Custom Pause...</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center text-[11px] text-slate-400 dark:text-slate-500">
+                    <span className="hidden sm:inline">Tag: <code className="text-indigo-600 dark:text-indigo-400 font-mono">[pause 1s]</code></span>
+                  </div>
+                </div>
+
+                {/* Collapsible Custom Pause Duration Builder */}
+                {showCustomPauseModal && (
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 space-y-3 animate-in fade-in duration-150">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                        <Clock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>Select Pause Duration: {customPauseDuration.toFixed(1)}s ({Math.round(customPauseDuration * 1000)}ms)</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {[0.25, 0.5, 0.8, 1.0, 1.5, 2.0, 3.0, 5.0].map((dur) => (
+                          <button
+                            key={dur}
+                            type="button"
+                            onClick={() => setCustomPauseDuration(dur)}
+                            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                              customPauseDuration === dur
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                            }`}
+                          >
+                            {dur}s
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">0.1s</span>
+                      <input
+                        type="range"
+                        min={0.1}
+                        max={5.0}
+                        step={0.1}
+                        value={customPauseDuration}
+                        onChange={(e) => setCustomPauseDuration(parseFloat(e.target.value))}
+                        className="w-full accent-indigo-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                      />
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">5.0s</span>
+
+                      <button
+                        type="button"
+                        id="insert-custom-pause-confirm-btn"
+                        onClick={() => {
+                          insertPauseMarker(customPauseDuration);
+                          setShowCustomPauseModal(false);
+                        }}
+                        className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Insert [pause {customPauseDuration.toFixed(1)}s]</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <textarea
+                    ref={textareaRef}
+                    id="tts-text-input"
+                    rows={9}
+                    value={text}
+                    dir={isRtl ? 'rtl' : 'ltr'}
+                    onChange={(e) => {
+                      if (e.target.value.length <= maxCharacters) {
+                        setText(e.target.value);
+                        if (errorMessage) setErrorMessage(null);
+                      }
+                    }}
+                    placeholder="Type or paste your text here… Use [pause 1s] or [pause 500ms] to insert intentional speech breaks."
+                    className="w-full p-4 rounded-2xl bg-slate-50/70 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] text-sm text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 resize-y transition-all leading-relaxed font-normal"
+                  />
+                </div>
               </div>
             ) : (
               /* Synchronized Real-Time Highlight & Voice Reader View */
@@ -711,18 +967,18 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
                           <span className="w-1 h-2 bg-indigo-600 dark:bg-indigo-400 animate-pulse delay-150 rounded-full" />
                         </div>
                         <span>
-                          Playing Sentence {activeSegmentIndex >= 0 ? activeSegmentIndex + 1 : 1} of {Math.max(1, clientSegments.length)} ({formatTime(currentTime)})
+                          Playing Item {activeSegmentIndex >= 0 ? activeSegmentIndex + 1 : 1} of {Math.max(1, clientSegments.length)} ({formatTime(currentTime)})
                         </span>
                       </>
                     ) : result ? (
                       <>
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>Voice ready • Click any sentence or word below to play from there</span>
+                        <span>Voice ready • Click any sentence, word, or pause break below to play</span>
                       </>
                     ) : (
                       <>
                         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                        <span>Real-time sentence highlighting preview</span>
+                        <span>Real-time sentence highlighting and pause preview</span>
                       </>
                     )}
                   </div>
@@ -739,7 +995,7 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
                   </div>
                 </div>
 
-                {/* Highlight Container with Interactive Sentence Blocks */}
+                {/* Highlight Container with Interactive Sentence and Pause Blocks */}
                 <div
                   ref={highlightContainerRef}
                   dir={isRtl ? 'rtl' : 'ltr'}
@@ -756,6 +1012,64 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
                       const isPast = activeSegmentIndex >= 0 && sIdx < activeSegmentIndex;
                       const isConverting = isGenerating && sIdx === convertingChunkIndex;
 
+                      // Distinct rendering for Intentional Pause Marker segments
+                      if (seg.isPause) {
+                        const pauseDur = seg.pauseDuration || 1.0;
+                        return (
+                          <div
+                            key={seg.index}
+                            ref={isActive ? activeSegmentRef : null}
+                            onClick={() => handleSeekToSegment(seg)}
+                            className={`group relative p-2.5 rounded-2xl border transition-all duration-150 cursor-pointer ${
+                              isActive
+                                ? 'bg-indigo-100/90 dark:bg-indigo-950/90 border-indigo-400 dark:border-indigo-500 text-indigo-950 dark:text-indigo-100 shadow-sm ring-2 ring-indigo-500/30'
+                                : isConverting
+                                ? 'bg-amber-50/90 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-100 shadow-sm animate-pulse'
+                                : isPast
+                                ? 'bg-slate-100/80 dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
+                                : 'bg-slate-100/60 dark:bg-slate-900/40 border-dashed border-slate-300 dark:border-slate-700/80 text-slate-600 dark:text-slate-400 hover:border-indigo-300 dark:hover:border-indigo-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-xs font-semibold">
+                              <div className="flex items-center gap-2">
+                                <div className={`p-1 rounded-lg ${isActive && isPlaying ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+                                  <Timer className="w-3.5 h-3.5" />
+                                </div>
+                                <span className="font-bold text-slate-800 dark:text-slate-200">
+                                  Intentional Pause Break ({pauseDur}s)
+                                </span>
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                  {seg.text}
+                                </span>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                                  {formatTime(seg.startTime)} - {formatTime(seg.endTime)}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {isActive && isPlaying && (
+                                  <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 animate-pulse flex items-center gap-1">
+                                    <Hourglass className="w-3 h-3 animate-spin" />
+                                    <span>Holding pause...</span>
+                                  </span>
+                                )}
+                                {isPast && (
+                                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Pause completed</span>
+                                  </span>
+                                )}
+                                <span className="opacity-0 group-hover:opacity-100 transition-opacity text-indigo-600 dark:text-indigo-400 flex items-center gap-1 font-semibold text-[10px]">
+                                  <MousePointerClick className="w-3 h-3" />
+                                  <span>Seek here</span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Standard speech segment
                       return (
                         <div
                           key={seg.index}
@@ -827,12 +1141,21 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
 
             {/* Live Counter & Stats Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-[#64748B] dark:text-[#94A3B8] pt-1">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <span className="font-semibold text-slate-700 dark:text-slate-300">
                   Characters: <span className={characterCount > maxCharacters * 0.9 ? 'text-amber-600 font-bold' : ''}>{characterCount.toLocaleString()}</span> / {maxCharacters.toLocaleString()}
                 </span>
                 <span>•</span>
                 <span>{wordCount.toLocaleString()} words</span>
+                {pauseMatches.count > 0 && (
+                  <>
+                    <span>•</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-1">
+                      <Timer className="w-3 h-3" />
+                      <span>{pauseMatches.count} {pauseMatches.count === 1 ? 'pause' : 'pauses'} ({pauseMatches.totalSec.toFixed(1)}s)</span>
+                    </span>
+                  </>
+                )}
                 <span>•</span>
                 <span>Est. ~{estimatedSeconds}s audio</span>
               </div>

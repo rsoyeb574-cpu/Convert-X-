@@ -40,6 +40,8 @@ export interface TtsWordTiming {
   endTime: number;
   startChar: number;
   endChar: number;
+  isPause?: boolean;
+  pauseDuration?: number;
 }
 
 export interface TtsSegmentTiming {
@@ -50,6 +52,8 @@ export interface TtsSegmentTiming {
   startTime: number;
   endTime: number;
   words: TtsWordTiming[];
+  isPause?: boolean;
+  pauseDuration?: number;
 }
 
 export interface TtsSynthesisResult {
@@ -262,6 +266,104 @@ export function sanitizeTtsText(rawText: string): string {
     .replace(/[ \t]+/g, ' ') // collapse horizontal spaces
     .replace(/\n{3,}/g, '\n\n') // collapse multiple blank lines
     .trim();
+}
+
+export const PAUSE_TAG_REGEX = /\[(?:pause|break)(?::?\s*(\d+(?:\.\d+)?)\s*(s|sec|secs|seconds|ms|msec|milliseconds)?)?\s*\]/gi;
+
+export interface ParsedScriptChunk {
+  type: 'speech' | 'pause';
+  text: string;
+  duration?: number;
+  startChar: number;
+  endChar: number;
+}
+
+/**
+ * Parses raw text into an ordered sequence of speech chunks and intentional pause markers
+ */
+export function parseScriptWithPauses(rawText: string, maxChunkLength: number = 320): ParsedScriptChunk[] {
+  const sanitized = sanitizeTtsText(rawText);
+  if (!sanitized) return [];
+
+  const items: ParsedScriptChunk[] = [];
+  const regex = new RegExp(PAUSE_TAG_REGEX.source, 'gi');
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(sanitized)) !== null) {
+    const matchIndex = match.index;
+    const matchLength = match[0].length;
+
+    // Speech text preceding this pause marker
+    if (matchIndex > lastIndex) {
+      const textChunk = sanitized.slice(lastIndex, matchIndex).trim();
+      if (textChunk) {
+        const subChunks = splitTextIntoChunks(textChunk, maxChunkLength);
+        let subCursor = lastIndex;
+        for (const sc of subChunks) {
+          const found = sanitized.indexOf(sc, subCursor);
+          const scStart = found >= 0 ? found : subCursor;
+          const scEnd = scStart + sc.length;
+          subCursor = scEnd;
+          items.push({
+            type: 'speech',
+            text: sc,
+            startChar: scStart,
+            endChar: scEnd,
+          });
+        }
+      }
+    }
+
+    // Parse pause duration (default 1.0s)
+    let durSec = 1.0;
+    if (match[1]) {
+      const val = parseFloat(match[1]);
+      if (!isNaN(val) && val > 0) {
+        const unit = (match[2] || '').toLowerCase();
+        if (unit.startsWith('ms') || unit.startsWith('msec')) {
+          durSec = val / 1000;
+        } else {
+          durSec = val;
+        }
+      }
+    }
+    // Clamp pause between 0.05s and 10.0s
+    durSec = Math.max(0.05, Math.min(10.0, Number(durSec.toFixed(3))));
+
+    items.push({
+      type: 'pause',
+      text: match[0],
+      duration: durSec,
+      startChar: matchIndex,
+      endChar: matchIndex + matchLength,
+    });
+
+    lastIndex = matchIndex + matchLength;
+  }
+
+  // Trailing speech text
+  if (lastIndex < sanitized.length) {
+    const tail = sanitized.slice(lastIndex).trim();
+    if (tail) {
+      const subChunks = splitTextIntoChunks(tail, maxChunkLength);
+      let subCursor = lastIndex;
+      for (const sc of subChunks) {
+        const found = sanitized.indexOf(sc, subCursor);
+        const scStart = found >= 0 ? found : subCursor;
+        const scEnd = scStart + sc.length;
+        subCursor = scEnd;
+        items.push({
+          type: 'speech',
+          text: sc,
+          startChar: scStart,
+          endChar: scEnd,
+        });
+      }
+    }
+  }
+
+  return items;
 }
 
 /**
@@ -533,40 +635,61 @@ export class TtsEngine {
     const volume = typeof options.volume === 'number' ? Math.max(0, Math.min(100, options.volume)) : 100;
     const format = options.format === 'mp3' ? 'mp3' : 'wav';
 
-    // Step 1: Split into manageable chunks
+    // Step 1: Split into manageable chunks with intentional pause markers
     options.onProgress?.(10, 'Preparing and formatting text...');
-    const chunks = splitTextIntoChunks(cleanedText, 320);
+    const scriptItems = parseScriptWithPauses(cleanedText, 320);
+
+    if (scriptItems.length === 0) {
+      throw new Error('Please enter text to generate speech.');
+    }
 
     const pcmChunks: Buffer[] = [];
+    const itemPcmMap = new Map<number, Buffer>();
     const sampleRate = 24000;
     let usedProvider = 'gemini';
 
-    // 80ms silence buffer between chunks
-    const silenceSamples = Math.floor(sampleRate * 0.08);
-    const silenceBuffer = Buffer.alloc(silenceSamples * 2);
+    // 40ms micro silence buffer between adjacent speech chunks
+    const microSilenceSamples = Math.floor(sampleRate * 0.04);
+    const microSilenceBuffer = Buffer.alloc(microSilenceSamples * 2);
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const percent = Math.round(15 + ((i + 1) / chunks.length) * 70);
-      options.onProgress?.(percent, `Generating voice ${i + 1}/${chunks.length}...`);
+    const speechItems = scriptItems.filter((it) => it.type === 'speech');
+    let speechCounter = 0;
+
+    for (let i = 0; i < scriptItems.length; i++) {
+      const item = scriptItems[i];
+
+      if (item.type === 'pause') {
+        const pauseSec = item.duration || 1.0;
+        const pauseSamples = Math.max(2, Math.floor(sampleRate * pauseSec));
+        const pausePcm = Buffer.alloc(pauseSamples * 2); // 16-bit linear PCM silence
+        itemPcmMap.set(i, pausePcm);
+        pcmChunks.push(pausePcm);
+        continue;
+      }
+
+      speechCounter++;
+      const percent = Math.round(15 + (speechCounter / Math.max(1, speechItems.length)) * 70);
+      options.onProgress?.(percent, `Generating voice chunk ${speechCounter}/${speechItems.length}...`);
 
       let chunkPcm: Buffer | null = null;
 
       // Attempt with Gemini TTS
       if (this.aiClient) {
-        chunkPcm = await this.synthesizeChunkWithGemini(chunk, voiceObj.id, langObj.name);
+        chunkPcm = await this.synthesizeChunkWithGemini(item.text, voiceObj.id, langObj.name);
       }
 
       // If Gemini TTS is not configured or fails, use clean high-fidelity synthesis fallback
       if (!chunkPcm || chunkPcm.length === 0) {
         usedProvider = 'natural-synth';
         let pitchMod = pitch === 'low' ? 0.88 : pitch === 'high' ? 1.15 : 1.0;
-        chunkPcm = this.synthesizeFallbackWaveform(chunk, voiceObj.id, speed, pitchMod);
+        chunkPcm = this.synthesizeFallbackWaveform(item.text, voiceObj.id, speed, pitchMod);
       }
 
+      itemPcmMap.set(i, chunkPcm);
       pcmChunks.push(chunkPcm);
-      if (i < chunks.length - 1) {
-        pcmChunks.push(silenceBuffer);
+
+      if (i < scriptItems.length - 1 && scriptItems[i + 1].type === 'speech') {
+        pcmChunks.push(microSilenceBuffer);
       }
     }
 
@@ -583,36 +706,48 @@ export class TtsEngine {
     const finalAudioBuffer = Buffer.concat([wavHeader, processedPcm]);
 
     const totalSeconds = processedPcm.length / (sampleRate * 2);
-    const wordCount = cleanedText.split(/\s+/).filter(Boolean).length;
+    const wordCount = speechItems.reduce((acc, it) => acc + it.text.split(/\s+/).filter(Boolean).length, 0);
 
     // Compute fine-grained segment and word timing boundaries for real-time editor highlighting
     const segments: TtsSegmentTiming[] = [];
-    let charSearchCursor = 0;
     let timeCursor = 0;
-    const totalPcmLength = pcmChunks.reduce((acc, b) => acc + b.length, 0);
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const pcmChunk = pcmChunks[i * 2] || pcmChunks[i]; // accounts for silence interleaving
+    for (let i = 0; i < scriptItems.length; i++) {
+      const item = scriptItems[i];
+      const pcm = itemPcmMap.get(i);
 
-      // Determine character span in cleanedText
-      const foundIdx = cleanedText.indexOf(chunk, charSearchCursor);
-      const startChar = foundIdx >= 0 ? foundIdx : charSearchCursor;
-      const endChar = startChar + chunk.length;
-      charSearchCursor = endChar;
+      if (item.type === 'pause') {
+        const pauseSec = Number((item.duration || 1.0).toFixed(3));
+        const segStartTime = Number(timeCursor.toFixed(3));
+        const segEndTime = Number((timeCursor + pauseSec).toFixed(3));
 
-      // Determine duration of this chunk
-      const chunkFraction = totalPcmLength > 0 && pcmChunk ? pcmChunk.length / totalPcmLength : 1 / chunks.length;
-      const chunkDuration = chunkFraction * totalSeconds;
+        segments.push({
+          index: i,
+          text: item.text,
+          startChar: item.startChar,
+          endChar: item.endChar,
+          startTime: segStartTime,
+          endTime: segEndTime,
+          words: [],
+          isPause: true,
+          pauseDuration: pauseSec,
+        });
+
+        timeCursor = segEndTime;
+        continue;
+      }
+
+      // Speech segment
+      const itemDuration = pcm ? (pcm.length / (sampleRate * 2)) / speed : 1.0;
       const segStartTime = Number(timeCursor.toFixed(3));
-      const segEndTime = Number(Math.min(totalSeconds, timeCursor + chunkDuration).toFixed(3));
+      const segEndTime = Number((timeCursor + itemDuration).toFixed(3));
 
-      // Calculate word timings within the segment
+      // Calculate word timings within this speech segment
       const wordsInChunk: TtsWordTiming[] = [];
       const wordRegex = /\S+/g;
       let match: RegExpExecArray | null;
       const rawChunkWords: { word: string; start: number; end: number }[] = [];
-      while ((match = wordRegex.exec(chunk)) !== null) {
+      while ((match = wordRegex.exec(item.text)) !== null) {
         rawChunkWords.push({
           word: match[0],
           start: match.index,
@@ -620,7 +755,7 @@ export class TtsEngine {
         });
       }
 
-      const chunkCharLength = Math.max(1, chunk.length);
+      const chunkCharLength = Math.max(1, item.text.length);
       for (const rw of rawChunkWords) {
         const wStartRatio = rw.start / chunkCharLength;
         const wEndRatio = rw.end / chunkCharLength;
@@ -629,8 +764,8 @@ export class TtsEngine {
 
         wordsInChunk.push({
           word: rw.word,
-          startChar: startChar + rw.start,
-          endChar: startChar + rw.end,
+          startChar: item.startChar + rw.start,
+          endChar: item.startChar + rw.end,
           startTime: wStartTime,
           endTime: Math.max(wStartTime + 0.05, wEndTime),
         });
@@ -638,15 +773,16 @@ export class TtsEngine {
 
       segments.push({
         index: i,
-        text: chunk,
-        startChar,
-        endChar,
+        text: item.text,
+        startChar: item.startChar,
+        endChar: item.endChar,
         startTime: segStartTime,
         endTime: segEndTime,
         words: wordsInChunk,
+        isPause: false,
       });
 
-      timeCursor = segEndTime + (0.08 / speed);
+      timeCursor = segEndTime;
     }
 
     // Save temporary audio file to ephemeral disk
@@ -687,7 +823,7 @@ export class TtsEngine {
       durationSeconds: Number(totalSeconds.toFixed(2)),
       characterCount: cleanedText.length,
       wordCount,
-      chunksProcessed: chunks.length,
+      chunksProcessed: scriptItems.length,
       voice: voiceObj.name,
       language: langObj.name,
       provider: usedProvider,
