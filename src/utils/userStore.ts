@@ -7,7 +7,9 @@ const RETURNING_USER_KEY = 'convertx_user_visits_v1';
 export const DEFAULT_PREFERENCES: UserPreferences = {
   defaultTargetFormat: 'png',
   autoDownload: false,
+  autoConvert: false,
   autoConvertOnUpload: false,
+  autoDeleteAfterDownload: false,
   imageQuality: 92,
   preserveMetadata: true,
   theme: 'system',
@@ -27,13 +29,24 @@ export function getStoredUserPreferences(): UserPreferences {
     const raw = localStorage.getItem(PREFERENCES_KEY);
     if (!raw) return DEFAULT_PREFERENCES;
     const parsed = JSON.parse(raw);
+    const autoConvertVal =
+      typeof parsed.autoConvert === 'boolean'
+        ? parsed.autoConvert
+        : typeof parsed.autoConvertOnUpload === 'boolean'
+        ? parsed.autoConvertOnUpload
+        : DEFAULT_PREFERENCES.autoConvertOnUpload;
+
+    const autoDeleteVal =
+      typeof parsed.autoDeleteAfterDownload === 'boolean'
+        ? parsed.autoDeleteAfterDownload
+        : DEFAULT_PREFERENCES.autoDeleteAfterDownload;
+
     return {
       ...DEFAULT_PREFERENCES,
       ...parsed,
-      autoConvertOnUpload:
-        typeof parsed.autoConvertOnUpload === 'boolean'
-          ? parsed.autoConvertOnUpload
-          : DEFAULT_PREFERENCES.autoConvertOnUpload,
+      autoConvert: autoConvertVal,
+      autoConvertOnUpload: autoConvertVal,
+      autoDeleteAfterDownload: autoDeleteVal,
       favoriteTools: Array.isArray(parsed.favoriteTools) ? parsed.favoriteTools : DEFAULT_PREFERENCES.favoriteTools,
       recentTools: Array.isArray(parsed.recentTools) ? parsed.recentTools : DEFAULT_PREFERENCES.recentTools,
     };
@@ -49,7 +62,18 @@ export function saveUserPreferences(prefs: Partial<UserPreferences>): UserPrefer
   if (typeof window === 'undefined') return DEFAULT_PREFERENCES;
   try {
     const current = getStoredUserPreferences();
-    const updated: UserPreferences = { ...current, ...prefs };
+    const autoVal =
+      prefs.autoConvert !== undefined
+        ? prefs.autoConvert
+        : prefs.autoConvertOnUpload;
+
+    const normalizedPrefs = { ...prefs };
+    if (autoVal !== undefined) {
+      normalizedPrefs.autoConvert = autoVal;
+      normalizedPrefs.autoConvertOnUpload = autoVal;
+    }
+
+    const updated: UserPreferences = { ...current, ...normalizedPrefs };
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(updated));
     return updated;
   } catch {

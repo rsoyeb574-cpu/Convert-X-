@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { ReferralWidget } from './ReferralWidget.js';
 import { AdSlot } from './AdSlot.js';
-import { toggleFavoriteTool, getStoredUserPreferences } from '../utils/userStore.js';
+import { toggleFavoriteTool, getStoredUserPreferences, saveUserPreferences } from '../utils/userStore.js';
 
 interface DashboardHistoryProps {
   queue?: ConversionQueueItem[];
@@ -64,6 +64,7 @@ interface DashboardHistoryProps {
   isCombiningPdf?: boolean;
   isReturningUser?: boolean;
   onOpenAccountModal?: () => void;
+  onFileDownloaded?: (jobId?: string, queueItemId?: string) => void;
 }
 
 export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
@@ -93,6 +94,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   isCombiningPdf = false,
   isReturningUser = false,
   onOpenAccountModal,
+  onFileDownloaded,
 }) => {
   const addFileInputRef = useRef<HTMLInputElement>(null);
   const [isZipping, setIsZipping] = useState<boolean>(false);
@@ -407,6 +409,18 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         setZipStatusMessage(null);
         setZipProgress(0);
       }, 3000);
+
+      // Auto-delete after download cleanup if enabled
+      if (userPrefs.autoDeleteAfterDownload) {
+        completedItems.forEach((item) => {
+          if (onRemoveQueueItem && 'progress' in item) {
+            onRemoveQueueItem(item.id);
+          }
+        });
+        if (onFileDownloaded) {
+          onFileDownloaded();
+        }
+      }
     } catch (clientErr: any) {
       console.warn('Direct parallel client ZIP fallback to server endpoint:', clientErr);
       
@@ -432,6 +446,18 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         tempLink.click();
         tempLink.remove();
         window.URL.revokeObjectURL(blobUrl);
+
+        // Auto-delete after download cleanup if enabled
+        if (userPrefs.autoDeleteAfterDownload) {
+          completedItems.forEach((item) => {
+            if (onRemoveQueueItem && 'progress' in item) {
+              onRemoveQueueItem(item.id);
+            }
+          });
+          if (onFileDownloaded) {
+            onFileDownloaded();
+          }
+        }
       } catch (err: any) {
         setZipError(err.message || 'ZIP download failed. Please try downloading files individually.');
       }
@@ -805,6 +831,27 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             >
               <Zap className={`w-3.5 h-3.5 ${userPrefs.autoConvertOnUpload ? 'text-[#2563EB] fill-current' : 'text-slate-400'}`} />
               <span>Auto-convert: {userPrefs.autoConvertOnUpload ? 'ON' : 'OFF'}</span>
+            </button>
+
+            {/* Quick Auto-Delete after Download Toggle Button */}
+            <button
+              type="button"
+              id="quick-auto-delete-toggle-btn"
+              onClick={() => {
+                const nextVal = !userPrefs.autoDeleteAfterDownload;
+                const updated = saveUserPreferences({ autoDeleteAfterDownload: nextVal });
+                setUserPrefs(updated);
+                if (onPreferencesChange) onPreferencesChange(updated);
+              }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                userPrefs.autoDeleteAfterDownload
+                  ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-300 border-amber-300 dark:border-amber-800/80 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#1E293B]'
+              }`}
+              title="Toggle auto-delete after download: automatically clear files from queue & storage once downloaded"
+            >
+              <Trash2 className={`w-3.5 h-3.5 ${userPrefs.autoDeleteAfterDownload ? 'text-amber-500' : 'text-slate-400'}`} />
+              <span>Auto-delete: {userPrefs.autoDeleteAfterDownload ? 'ON' : 'OFF'}</span>
             </button>
 
             {/* Add More Files Button */}
@@ -1360,7 +1407,17 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                                 <a
                                   href={`/api/download/${item.result?.jobId || item.uploadedFile?.jobId}`}
                                   download
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors shadow-sm"
+                                  onClick={() => {
+                                    if (userPrefs.autoDeleteAfterDownload) {
+                                      const jobId = item.result?.jobId || item.uploadedFile?.jobId;
+                                      if (onFileDownloaded) {
+                                        onFileDownloaded(jobId, item.id);
+                                      } else if (onRemoveQueueItem) {
+                                        onRemoveQueueItem(item.id);
+                                      }
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors shadow-sm cursor-pointer"
                                 >
                                   <Download className="w-3.5 h-3.5" />
                                   <span>Download</span>

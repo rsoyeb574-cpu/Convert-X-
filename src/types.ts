@@ -62,6 +62,7 @@ export interface ConversionResultData {
   originalSize: number;
   outputSize: number;
   completedAt: string;
+  downloadUrl?: string;
   width?: number;
   height?: number;
   pdfPageSize?: string;
@@ -113,9 +114,32 @@ export interface ConversionHistoryItem {
   error?: string | null;
 }
 
+export type CompressionLevel = 'max' | 'balanced' | 'high';
+
+export interface CompressionResultData {
+  jobId: string;
+  originalName: string;
+  format: string;
+  originalSize: number;
+  compressedSize: number;
+  savedBytes: number;
+  reductionPercent: number;
+  compressionLevel: CompressionLevel;
+  targetSizeMB?: number;
+  targetReached?: boolean;
+  notice?: string | null;
+  isAlreadyOptimized?: boolean;
+  pageCount?: number;
+  width?: number;
+  height?: number;
+  pdfPageSize?: string;
+  downloadUrl: string;
+}
+
 export type PageView =
   | 'home'
   | 'converter'
+  | 'compress'
   | 'text-to-pdf'
   | 'formats'
   | 'tools'
@@ -155,7 +179,9 @@ export interface TextToPdfSettings {
 export interface UserPreferences {
   defaultTargetFormat: string;
   autoDownload: boolean;
+  autoConvert?: boolean;
   autoConvertOnUpload: boolean;
+  autoDeleteAfterDownload?: boolean;
   imageQuality: number;
   preserveMetadata: boolean;
   theme: 'dark' | 'light' | 'system';

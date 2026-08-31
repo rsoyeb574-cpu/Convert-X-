@@ -35,6 +35,8 @@ interface ConversionResultProps {
   onReconvert?: (targetFormat: string) => Promise<void> | void;
   availableFormats?: string[];
   isReconverting?: boolean;
+  onDownload?: (jobId: string) => void;
+  autoDeleteAfterDownload?: boolean;
 }
 
 export const ConversionResult: React.FC<ConversionResultProps> = ({
@@ -44,6 +46,8 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
   onReconvert,
   availableFormats = ['png', 'jpg', 'webp', 'pdf', 'svg'],
   isReconverting = false,
+  onDownload,
+  autoDeleteAfterDownload = false,
 }) => {
   const [selectedAltFormat, setSelectedAltFormat] = useState<string>(result.outputFormat);
   const [isProcessingAlt, setIsProcessingAlt] = useState(false);
@@ -629,19 +633,25 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
       )}
 
       {/* Primary Action Buttons */}
-      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-        {/* Download File Button */}
-        <a
-          href={downloadUrl}
-          download={convertedFilename}
-          id="download-converted-file-btn"
-          className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
-        >
-          <Download className="w-4 h-4" />
-          <span>Download .{result.outputFormat.toUpperCase()}</span>
-        </a>
+      <div className="space-y-3 pt-2">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {/* Download File Button */}
+          <a
+            href={downloadUrl}
+            download={convertedFilename}
+            onClick={() => {
+              if (onDownload) {
+                onDownload(result.jobId);
+              }
+            }}
+            id="download-converted-file-btn"
+            className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download .{result.outputFormat.toUpperCase()}</span>
+          </a>
 
-        {/* Copy Link to Clipboard Button alongside Download */}
+          {/* Copy Link to Clipboard Button alongside Download */}
         <button
           type="button"
           onClick={handleCopyLink}
@@ -720,6 +730,14 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
           <RefreshCw className="w-4 h-4 text-[#2563EB]" />
           <span>Convert Another</span>
         </button>
+        </div>
+
+        {autoDeleteAfterDownload && (
+          <div className="flex items-center justify-center gap-2 text-[11px] text-[#64748B] dark:text-[#94A3B8] text-center">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span>Auto-delete on download is active: this file will be cleared from queue and storage once downloaded.</span>
+          </div>
+        )}
       </div>
 
       {/* QR Code Quick Mobile Access Card */}

@@ -13,6 +13,7 @@ import JSZip from 'jszip';
 import { createServer as createViteServer } from 'vite';
 import { registry } from './server/converters/registry.js';
 import { generateTextToPdf } from './server/converters/textToPdfConverter.js';
+import { compressorEngine } from './server/converters/compressorEngine.js';
 import { jobStorage } from './server/queue/jobStorage.js';
 import { jobQueue } from './server/queue/jobQueue.js';
 import { runCrashRecovery } from './server/queue/crashRecovery.js';
@@ -135,6 +136,7 @@ async function startServer() {
 
     const coreRoutes = [
       { loc: '', changefreq: 'daily', priority: '1.0' },
+      { loc: 'compress', changefreq: 'daily', priority: '0.9' },
       { loc: 'tools', changefreq: 'daily', priority: '0.9' },
       { loc: 'converter', changefreq: 'weekly', priority: '0.9' },
       { loc: 'formats', changefreq: 'weekly', priority: '0.8' },
@@ -992,6 +994,182 @@ ${allRoutes
     }
   });
 
+  // 5c. Dedicated Professional File Compression Endpoint (/api/compress)
+  app.post(
+    '/api/compress',
+    uploadRateLimiter,
+    queueLimitGuard,
+    (req, res, next) => {
+      upload.single('file')(req, res, (err) => {
+        if (err) {
+          if (err instanceof multer.MulterError) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+              return res.status(400).json({
+                success: false,
+                code: 'LIMIT_FILE_SIZE',
+                error: `The uploaded file exceeds the limit of ${FREE_MAX_FILE_SIZE_MB}MB. Please upgrade to Pro.`,
+              });
+            }
+            return res.status(400).json({ success: false, code: err.code, error: `Upload error: ${err.message}` });
+          }
+          return res.status(400).json({ success: false, code: 'UPLOAD_ERROR', error: err.message || 'File upload failed.' });
+        }
+        next();
+      });
+    },
+    async (req, res) => {
+      try {
+        let fileBuffer: Buffer | null = null;
+        let originalName = 'compressed_file';
+
+        const { jobId, compressionLevel = 'balanced', quality, targetSizeMB } = req.body;
+
+        if (req.file) {
+          fileBuffer = req.file.buffer;
+          originalName = req.file.originalname;
+        } else if (jobId) {
+          const existingJob = jobStorage.getJob(jobId);
+          if (!existingJob) {
+            return res.status(404).json({
+              success: false,
+              code: 'JOB_NOT_FOUND',
+              error: 'File session expired or not found. Please re-upload your file.',
+            });
+          }
+          const srcPath = existingJob.inputPath;
+          if (!srcPath || !fs.existsSync(srcPath)) {
+            return res.status(404).json({
+              success: false,
+              code: 'FILE_NOT_FOUND',
+              error: 'Input file not found on server. Please re-upload.',
+            });
+          }
+          fileBuffer = fs.readFileSync(srcPath);
+          originalName = existingJob.originalName;
+        } else {
+          return res.status(400).json({
+            success: false,
+            code: 'NO_FILE',
+            error: 'No file provided for compression.',
+          });
+        }
+
+        if (!fileBuffer || fileBuffer.length === 0) {
+          return res.status(400).json({
+            success: false,
+            code: 'EMPTY_FILE',
+            error: 'The uploaded file is empty.',
+          });
+        }
+
+        const userPlan = getUserPlan(req);
+        const maxAllowedMB = userPlan === 'pro' || userPlan === 'business' ? PRO_MAX_FILE_MB : FREE_MAX_FILE_MB;
+        const maxAllowedBytes = maxAllowedMB * 1024 * 1024;
+
+        if (fileBuffer.length > maxAllowedBytes) {
+          return res.status(400).json({
+            success: false,
+            code: 'FILE_TOO_LARGE',
+            error: `The file (${(fileBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds your plan limit of ${maxAllowedMB}MB.`,
+          });
+        }
+
+        const cleanName = sanitizeFilename(originalName);
+        const detection = detectFileFormat(fileBuffer, cleanName);
+
+        if (!detection.valid || !compressorEngine.isSupported(detection.format)) {
+          return res.status(400).json({
+            success: false,
+            code: 'UNSUPPORTED_FORMAT',
+            error: 'This file type is not currently supported for compression.',
+          });
+        }
+
+        // Check quota if creating new compression
+        const quotaCheck = canCreateConversion(req, 1);
+        if (!quotaCheck.allowed) {
+          return res.status(403).json({
+            success: false,
+            code: quotaCheck.code || 'FREE_LIMIT_REACHED',
+            error: quotaCheck.error || "You have reached today's free conversion limit.",
+            upgrade: quotaCheck.upgrade || { available: true, plan: 'Pro' },
+          });
+        }
+
+        const level = ['max', 'balanced', 'high'].includes(compressionLevel) ? compressionLevel : 'balanced';
+        const numQuality = quality ? Number(quality) : undefined;
+        const numTargetMB = targetSizeMB ? Number(targetSizeMB) : undefined;
+
+        const result = await compressorEngine.compress({
+          inputBuffer: fileBuffer,
+          inputFormat: detection.format,
+          originalName: cleanName,
+          compressionLevel: level as any,
+          quality: numQuality,
+          targetSizeMB: numTargetMB,
+        });
+
+        // Save output to temporary storage
+        const { filePath: outFilePath } = generateTempFilePath(result.outputFormat);
+        fs.writeFileSync(outFilePath, result.buffer);
+
+        const sessionId = (req.headers['x-session-id'] as string) || req.ip || 'compress_session';
+        const job = jobStorage.createJob({
+          originalName: cleanName,
+          inputFormat: detection.format,
+          inputPath: outFilePath,
+          fileSize: result.originalSize,
+          sessionId,
+        });
+
+        jobStorage.updateJob(job.id, {
+          outputPath: outFilePath,
+          outputFormat: result.outputFormat,
+          outputSize: result.compressedSize,
+          outputMimeType: result.mimeType,
+          status: 'completed',
+          progress: 100,
+          progressStage: 'File compressed successfully',
+          completedAt: new Date().toISOString(),
+          width: result.width,
+          height: result.height,
+          pdfPageSize: result.pdfPageSize,
+        });
+
+        recordSuccessfulConversion(req, job.id, 1);
+        metricsTracker.recordConversion(detection.format, result.outputFormat, false);
+
+        res.json({
+          success: true,
+          jobId: job.id,
+          originalName: cleanName,
+          format: result.outputFormat,
+          originalSize: result.originalSize,
+          compressedSize: result.compressedSize,
+          savedBytes: result.savedBytes,
+          reductionPercent: result.reductionPercent,
+          compressionLevel: level,
+          targetSizeMB: numTargetMB,
+          targetReached: result.targetReached,
+          notice: result.notice,
+          isAlreadyOptimized: result.isAlreadyOptimized,
+          pageCount: result.pageCount,
+          width: result.width,
+          height: result.height,
+          pdfPageSize: result.pdfPageSize,
+          downloadUrl: `/api/download/${job.id}`,
+        });
+      } catch (err: any) {
+        console.error('Compression endpoint error:', err);
+        res.status(500).json({
+          success: false,
+          code: 'COMPRESSION_FAILED',
+          error: err.message || 'Compression failed. Please try again with a valid file.',
+        });
+      }
+    }
+  );
+
   // 6. Get Conversion Status & Progress (Single Source of Truth)
   app.get('/api/status/:jobId', (req, res) => {
     const job = jobStorage.getJob(req.params.jobId);
@@ -1191,6 +1369,11 @@ ${allRoutes
           title = cfg.title;
           description = cfg.metaDescription;
           canonicalUrl = `${origin}/${cfg.slug}`;
+        } else if (reqPath === 'compress') {
+          title = 'Compress Files Online – Reduce File Size | Convert-X';
+          description =
+            'Compress PDF, JPG, PNG and WebP files online. Reduce file size while maintaining good quality with Convert-X.';
+          canonicalUrl = `${origin}/compress`;
         } else if (reqPath === 'tools') {
           title = 'All Free Online Conversion Tools | Convert-X Directory';
           description =

@@ -31,6 +31,7 @@ import { SeoMetaManager } from './components/SeoMetaManager.js';
 import { PricingPage } from './components/PricingPage.js';
 import { ToolsDirectory } from './components/ToolsDirectory.js';
 import { TextToPdfStudio } from './components/TextToPdfStudio.js';
+import { CompressPage } from './components/CompressPage.js';
 import { AboutPage } from './components/AboutPage.js';
 import { NotFoundPage } from './components/NotFoundPage.js';
 import { UsageWidget } from './components/UsageWidget.js';
@@ -281,6 +282,7 @@ export default function App() {
       } else if (
         [
           'converter',
+          'compress',
           'text-to-pdf',
           'formats',
           'tools',
@@ -293,6 +295,7 @@ export default function App() {
           'dashboard',
           'pricing',
           'affiliates',
+          'referral',
         ].includes(pathname)
       ) {
         setCurrentView(pathname as PageView);
@@ -456,242 +459,6 @@ export default function App() {
     return serverErrorMsg;
   };
 
-  // Handle Multi-File Upload into Queue
-  const handleFilesSelected = async (files: File[]) => {
-    if (!files || files.length === 0) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    // If multiple files are selected from home/converter, transition to dashboard
-    if (files.length > 1 && currentView !== 'dashboard') {
-      setCurrentView('dashboard');
-    }
-
-    // Create initial queue items
-    const newItems: ConversionQueueItem[] = files.map((file) => {
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'unknown';
-      return {
-        id: 'queue-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
-        fileName: file.name,
-        file: file,
-        inputFormat: ext,
-        outputFormat: ext === 'pdf' ? 'png' : 'pdf',
-        fileSize: file.size,
-        status: 'uploading',
-        progress: 30,
-        options: { ...options },
-        createdAt: new Date().toISOString(),
-      };
-    });
-
-    setQueue((prev) => [...newItems, ...prev]);
-
-    // Concurrently upload each file to /api/upload with retry resilience
-    await Promise.all(
-      files.map(async (file, index) => {
-        const item = newItems[index];
-        try {
-          let response: Response | null = null;
-          let lastFetchError: any = null;
-          let retries = 2;
-
-          while (retries >= 0) {
-            try {
-              const formData = new FormData();
-              formData.append('file', file);
-
-              response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData,
-              });
-
-              if (response.ok || response.status < 500) {
-                break;
-              }
-            } catch (fetchErr: any) {
-              lastFetchError = fetchErr;
-              if (retries === 0) break;
-              await new Promise((resolve) => setTimeout(resolve, 500));
-            }
-            retries--;
-          }
-
-          if (!response) {
-            throw new Error(
-              lastFetchError?.message
-                ? `Connection error: ${lastFetchError.message}. Please check your connection and try again.`
-                : 'Unable to connect to the file conversion server. Please try again.'
-            );
-          }
-
-          if (!response.ok) {
-            const parsedError = await parseBackendError(response, item.inputFormat, item.outputFormat);
-            throw new Error(parsedError || 'Upload failed');
-          }
-
-          const fileData: UploadedFile = await safeParseJson(response);
-
-          // Set default target output format
-          const defaultOutput =
-            fileData.supportedOutputs && fileData.supportedOutputs.length > 0
-              ? fileData.supportedOutputs[0]
-              : 'png';
-
-          setQueue((prev) =>
-            prev.map((q) =>
-              q.id === item.id
-                ? {
-                    ...q,
-                    file: file,
-                    uploadedFile: fileData,
-                    inputFormat: fileData.detectedFormat,
-                    outputFormat: defaultOutput,
-                    fileSize: fileData.fileSize,
-                    status: 'pending',
-                    progress: 0,
-                    error: null,
-                  }
-                : q
-            )
-          );
-
-          // If only 1 file was selected from a non-dashboard view and no single file active yet, sync single file workspace
-          if (files.length === 1 && currentView !== 'dashboard') {
-            setUploadedFile(fileData);
-            setSelectedOutputFormat(defaultOutput);
-            setCurrentView('converter');
-          }
-        } catch (err: any) {
-          console.error(`Upload error for ${file.name}:`, err);
-          const errorMsg = formatCatchError(err, 'Failed to upload file');
-          setQueue((prev) =>
-            prev.map((q) =>
-              q.id === item.id
-                ? {
-                    ...q,
-                    file: file,
-                    status: 'failed',
-                    error: errorMsg,
-                    progress: 0,
-                  }
-                : q
-            )
-          );
-          if (files.length === 1 && currentView !== 'dashboard') {
-            setError(errorMsg);
-          }
-        }
-      })
-    );
-
-    setIsLoading(false);
-  };
-
-  // Handle Single File Selection (forward to multi-file queue handler)
-  const handleFileSelected = async (file: File) => {
-    await handleFilesSelected([file]);
-  };
-
-  // Handle Sample File Load
-  const handleSampleSelected = async (sampleKey: string) => {
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
-    setStage('idle');
-
-    try {
-      const response = await fetch(`/api/sample/${sampleKey}`);
-      if (!response.ok) {
-        const parsedError = await parseBackendError(response);
-        throw new Error(parsedError || 'Failed to load sample design file');
-      }
-
-      const fileData: UploadedFile = await safeParseJson(response);
-      setUploadedFile(fileData);
-
-      const defaultOutput =
-        fileData.supportedOutputs && fileData.supportedOutputs.length > 0
-          ? fileData.supportedOutputs[0]
-          : 'png';
-
-      setSelectedOutputFormat(defaultOutput);
-
-      // Also register in queue for batch conversion access
-      const queueItem: ConversionQueueItem = {
-        id: 'queue-sample-' + Date.now(),
-        fileName: fileData.fileName,
-        inputFormat: fileData.detectedFormat,
-        outputFormat: defaultOutput,
-        fileSize: fileData.fileSize,
-        uploadedFile: fileData,
-        status: 'pending',
-        progress: 0,
-        options: { ...options },
-        createdAt: new Date().toISOString(),
-      };
-
-      setQueue((prev) => [queueItem, ...prev]);
-      setCurrentView('converter');
-    } catch (err: any) {
-      console.error('Sample Load Error:', err);
-      setError(err.message || 'Error loading sample file');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle Options Change with Auto Sync across Queue when 'Apply to All' is enabled
-  const handleOptionsChange = (newOptions: ConversionOptions) => {
-    setOptions(newOptions);
-    if (applyToAllQueued) {
-      setQueue((prev) =>
-        prev.map((q) =>
-          q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
-            ? {
-                ...q,
-                options: { ...q.options, ...newOptions },
-              }
-            : q
-        )
-      );
-    }
-  };
-
-  // Explicitly apply options to all queued items with immediate feedback
-  const handleApplyOptionsToAllQueue = (optsToApply?: ConversionOptions) => {
-    const targetOpts = optsToApply || options;
-    const targetItems = queue.filter(
-      (q) => q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
-    );
-    const count = targetItems.length > 0 ? targetItems.length : queue.length;
-
-    setQueue((prev) =>
-      prev.map((q) =>
-        q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
-          ? {
-              ...q,
-              options: { ...q.options, ...targetOpts },
-            }
-          : q
-      )
-    );
-
-    if (count > 0) {
-      showToast(
-        'Settings Applied to All',
-        `Applied ${targetOpts.dpi || 300} DPI and ${targetOpts.quality || 90}% quality across ${count} queued item(s).`,
-        'success'
-      );
-    } else {
-      showToast(
-        'Apply to All Enabled',
-        'Conversion parameters will automatically apply to items added to the queue.',
-        'info'
-      );
-    }
-  };
-
   // App Limits & Monetization Safe Defaults
   const safeDailyLimit = limits?.dailyConversions ?? DEFAULT_LIMITS.dailyConversions;
   const safeMaxFileSizeMB = limits?.maxFileSizeMB ?? DEFAULT_LIMITS.maxFileSizeMB;
@@ -765,8 +532,8 @@ export default function App() {
   };
 
   // Convert an Individual Item in Queue with Real Worker Queue Polling
-  const handleConvertQueueItem = async (id: string) => {
-    const item = queue.find((q) => q.id === id);
+  const handleConvertQueueItem = async (id: string, overrideItem?: ConversionQueueItem) => {
+    const item = overrideItem || queue.find((q) => q.id === id);
     if (!item || !item.uploadedFile || item.status === 'converting') return;
 
     // Check daily limit
@@ -968,11 +735,12 @@ export default function App() {
   };
 
   // Convert All Pending / Failed Items in the Queue with Strict Semaphore Concurrency (Max 2 simultaneous jobs)
-  const handleConvertAllPending = async () => {
+  const handleConvertAllPending = async (customQueueItems?: ConversionQueueItem[]) => {
     if (isConvertingAll) return;
 
     // Snapshot of eligible items (pending or failed, not currently converting)
-    const pendingItems = queue.filter(
+    const itemsPool = customQueueItems || queue;
+    const pendingItems = itemsPool.filter(
       (item) =>
         (item.status === 'pending' || item.status === 'failed') &&
         (item.uploadedFile || item.file) &&
@@ -996,7 +764,7 @@ export default function App() {
 
           try {
             if (targetItem.uploadedFile) {
-              await handleConvertQueueItem(targetItem.id);
+              await handleConvertQueueItem(targetItem.id, targetItem);
             } else if (targetItem.file) {
               await handleRetryQueueItem(targetItem.id);
             }
@@ -1035,11 +803,52 @@ export default function App() {
   // Clear all items in queue
   const handleClearQueue = () => {
     setQueue([]);
+    try {
+      localStorage.removeItem('convertx_queue');
+    } catch (e) {
+      console.error('Error clearing queue from localStorage:', e);
+    }
+  };
+
+  // Cleanup routine: automatically clear file from conversion queue & localStorage after download
+  const handleFileDownloaded = (jobId?: string, queueItemId?: string) => {
+    const isAutoDelete = Boolean(userPreferences?.autoDeleteAfterDownload);
+    if (!isAutoDelete) return;
+
+    setQueue((prevQueue) => {
+      const updated = prevQueue.filter((item) => {
+        if (queueItemId && item.id === queueItemId) return false;
+        if (jobId && (item.uploadedFile?.jobId === jobId || item.result?.jobId === jobId)) return false;
+        return true;
+      });
+
+      try {
+        const serializable = updated.map(({ file, ...rest }) => rest);
+        localStorage.setItem('convertx_queue', JSON.stringify(serializable));
+      } catch (e) {
+        console.error('Error saving updated queue to localStorage after auto-delete:', e);
+      }
+      return updated;
+    });
+
+    showToast(
+      'Auto-Deleted from Queue',
+      'File was automatically cleared from queue and local storage after download.',
+      'info'
+    );
   };
 
   // Execute Single Conversion (from Single Workspace)
-  const handleStartConversion = async () => {
-    if (!uploadedFile) return;
+  const handleStartConversion = async (
+    overrideFile?: UploadedFile,
+    overrideOutputFormat?: string,
+    overrideOptions?: ConversionOptions
+  ) => {
+    const targetFile = overrideFile || uploadedFile;
+    const targetFormat = overrideOutputFormat || selectedOutputFormat;
+    const targetOptions = overrideOptions || options;
+
+    if (!targetFile) return;
 
     // Check daily limit
     if (isDailyLimitReached(safeDailyLimit)) {
@@ -1054,7 +863,7 @@ export default function App() {
     setStage('converting');
     setProgress(10);
     setStatusText(
-      `Queuing .${uploadedFile.detectedFormat.toUpperCase()} → .${selectedOutputFormat.toUpperCase()}...`
+      `Queuing .${targetFile.detectedFormat.toUpperCase()} → .${targetFormat.toUpperCase()}...`
     );
 
     try {
@@ -1062,17 +871,17 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          jobId: uploadedFile.jobId,
-          outputFormat: selectedOutputFormat,
-          options,
+          jobId: targetFile.jobId,
+          outputFormat: targetFormat,
+          options: targetOptions,
         }),
       });
 
       if (!response.ok) {
         const serverErrorMsg = await parseBackendError(
           response,
-          uploadedFile.detectedFormat,
-          selectedOutputFormat
+          targetFile.detectedFormat,
+          targetFormat
         );
         throw new Error(serverErrorMsg);
       }
@@ -1084,7 +893,7 @@ export default function App() {
 
       // Poll until finished
       const resData = await pollJobStatus(
-        uploadedFile.jobId,
+        targetFile.jobId,
         (p, stage) => {
           setProgress(p);
           setStatusText(stage);
@@ -1118,11 +927,26 @@ export default function App() {
       // Also update any matching queue item
       setQueue((prev) =>
         prev.map((q) =>
-          q.uploadedFile?.jobId === uploadedFile.jobId
+          q.uploadedFile?.jobId === targetFile.jobId
             ? { ...q, status: 'completed', progress: 100, result: resData, error: null }
             : q
         )
       );
+
+      // Handle Auto-Download preference if enabled
+      if (userPreferences?.autoDownload && (resData.downloadUrl || resData.jobId)) {
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.href = resData.downloadUrl || `/api/download/${resData.jobId}`;
+        const convertedFilename = `${resData.originalName.replace(/\.[^/.]+$/, '')}_converted.${resData.outputFormat}`;
+        downloadAnchor.setAttribute('download', convertedFilename);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+
+        if (userPreferences?.autoDeleteAfterDownload) {
+          handleFileDownloaded(resData.jobId);
+        }
+      }
     } catch (err: any) {
       console.error('Conversion Error:', err);
       const displayError = formatCatchError(err, 'Conversion failed');
@@ -1133,13 +957,278 @@ export default function App() {
       // Also update queue item to failed state
       setQueue((prev) =>
         prev.map((q) =>
-          q.uploadedFile?.jobId === uploadedFile.jobId
+          q.uploadedFile?.jobId === targetFile.jobId
             ? { ...q, status: 'failed', error: displayError, progress: 0 }
             : q
         )
       );
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle Multi-File Upload into Queue with Auto-Convert Support
+  const handleFilesSelected = async (files: File[]) => {
+    if (!files || files.length === 0) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    // If multiple files are selected from home/converter, transition to dashboard
+    if (files.length > 1 && currentView !== 'dashboard') {
+      setCurrentView('dashboard');
+    }
+
+    // Create initial queue items
+    const newItems: ConversionQueueItem[] = files.map((file) => {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'unknown';
+      return {
+        id: 'queue-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
+        fileName: file.name,
+        file: file,
+        inputFormat: ext,
+        outputFormat: ext === 'pdf' ? 'png' : 'pdf',
+        fileSize: file.size,
+        status: 'uploading',
+        progress: 30,
+        options: { ...options },
+        createdAt: new Date().toISOString(),
+      };
+    });
+
+    setQueue((prev) => [...newItems, ...prev]);
+
+    const uploadedSuccessItems: { item: ConversionQueueItem; fileData: UploadedFile; defaultOutput: string }[] = [];
+
+    // Concurrently upload each file to /api/upload with retry resilience
+    await Promise.all(
+      files.map(async (file, index) => {
+        const item = newItems[index];
+        try {
+          let response: Response | null = null;
+          let lastFetchError: any = null;
+          let retries = 2;
+
+          while (retries >= 0) {
+            try {
+              const formData = new FormData();
+              formData.append('file', file);
+
+              response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData,
+              });
+
+              if (response.ok || response.status < 500) {
+                break;
+              }
+            } catch (fetchErr: any) {
+              lastFetchError = fetchErr;
+              if (retries === 0) break;
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            retries--;
+          }
+
+          if (!response) {
+            throw new Error(
+              lastFetchError?.message
+                ? `Connection error: ${lastFetchError.message}. Please check your connection and try again.`
+                : 'Unable to connect to the file conversion server. Please try again.'
+            );
+          }
+
+          if (!response.ok) {
+            const parsedError = await parseBackendError(response, item.inputFormat, item.outputFormat);
+            throw new Error(parsedError || 'Upload failed');
+          }
+
+          const fileData: UploadedFile = await safeParseJson(response);
+
+          // Set default target output format
+          const defaultOutput =
+            fileData.supportedOutputs && fileData.supportedOutputs.length > 0
+              ? fileData.supportedOutputs[0]
+              : 'png';
+
+          const readyQueueItem: ConversionQueueItem = {
+            ...item,
+            file: file,
+            uploadedFile: fileData,
+            inputFormat: fileData.detectedFormat,
+            outputFormat: defaultOutput,
+            fileSize: fileData.fileSize,
+            status: 'pending',
+            progress: 0,
+            error: null,
+          };
+
+          uploadedSuccessItems.push({ item: readyQueueItem, fileData, defaultOutput });
+
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === item.id ? readyQueueItem : q
+            )
+          );
+
+          // If only 1 file was selected from a non-dashboard view and no single file active yet, sync single file workspace
+          if (files.length === 1 && currentView !== 'dashboard') {
+            setUploadedFile(fileData);
+            setSelectedOutputFormat(defaultOutput);
+            setCurrentView('converter');
+          }
+        } catch (err: any) {
+          console.error(`Upload error for ${file.name}:`, err);
+          const errorMsg = formatCatchError(err, 'Failed to upload file');
+          setQueue((prev) =>
+            prev.map((q) =>
+              q.id === item.id
+                ? {
+                    ...q,
+                    file: file,
+                    status: 'failed',
+                    error: errorMsg,
+                    progress: 0,
+                  }
+                : q
+            )
+          );
+          if (files.length === 1 && currentView !== 'dashboard') {
+            setError(errorMsg);
+          }
+        }
+      })
+    );
+
+    setIsLoading(false);
+
+    // Check userPreferences.autoConvert flag (or autoConvertOnUpload)
+    const isAutoConvertEnabled = Boolean(
+      userPreferences?.autoConvert ?? userPreferences?.autoConvertOnUpload
+    );
+
+    if (isAutoConvertEnabled && uploadedSuccessItems.length > 0) {
+      if (files.length === 1 && currentView !== 'dashboard') {
+        const single = uploadedSuccessItems[0];
+        if (single?.fileData) {
+          await handleStartConversion(single.fileData, single.defaultOutput, options);
+        }
+      } else {
+        const itemsToBatchConvert = uploadedSuccessItems.map((r) => r.item);
+        await handleConvertAllPending(itemsToBatchConvert);
+      }
+    }
+  };
+
+  // Handle Single File Selection (forward to multi-file queue handler)
+  const handleFileSelected = async (file: File) => {
+    await handleFilesSelected([file]);
+  };
+
+  // Handle Sample File Load
+  const handleSampleSelected = async (sampleKey: string) => {
+    setIsLoading(true);
+    setError(null);
+    setResult(null);
+    setStage('idle');
+
+    try {
+      const response = await fetch(`/api/sample/${sampleKey}`);
+      if (!response.ok) {
+        const parsedError = await parseBackendError(response);
+        throw new Error(parsedError || 'Failed to load sample design file');
+      }
+
+      const fileData: UploadedFile = await safeParseJson(response);
+      setUploadedFile(fileData);
+
+      const defaultOutput =
+        fileData.supportedOutputs && fileData.supportedOutputs.length > 0
+          ? fileData.supportedOutputs[0]
+          : 'png';
+
+      setSelectedOutputFormat(defaultOutput);
+
+      // Also register in queue for batch conversion access
+      const queueItem: ConversionQueueItem = {
+        id: 'queue-sample-' + Date.now(),
+        fileName: fileData.fileName,
+        inputFormat: fileData.detectedFormat,
+        outputFormat: defaultOutput,
+        fileSize: fileData.fileSize,
+        uploadedFile: fileData,
+        status: 'pending',
+        progress: 0,
+        options: { ...options },
+        createdAt: new Date().toISOString(),
+      };
+
+      setQueue((prev) => [queueItem, ...prev]);
+      setCurrentView('converter');
+
+      // Check auto-convert preference for sample file as well
+      const isAutoConvertEnabled = Boolean(
+        userPreferences?.autoConvert ?? userPreferences?.autoConvertOnUpload
+      );
+      if (isAutoConvertEnabled) {
+        await handleStartConversion(fileData, defaultOutput, options);
+      }
+    } catch (err: any) {
+      console.error('Sample Load Error:', err);
+      setError(err.message || 'Error loading sample file');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Options Change with Auto Sync across Queue when 'Apply to All' is enabled
+  const handleOptionsChange = (newOptions: ConversionOptions) => {
+    setOptions(newOptions);
+    if (applyToAllQueued) {
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
+            ? {
+                ...q,
+                options: { ...q.options, ...newOptions },
+              }
+            : q
+        )
+      );
+    }
+  };
+
+  // Explicitly apply options to all queued items with immediate feedback
+  const handleApplyOptionsToAllQueue = (optsToApply?: ConversionOptions) => {
+    const targetOpts = optsToApply || options;
+    const targetItems = queue.filter(
+      (q) => q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
+    );
+    const count = targetItems.length > 0 ? targetItems.length : queue.length;
+
+    setQueue((prev) =>
+      prev.map((q) =>
+        q.status === 'pending' || q.status === 'uploading' || q.status === 'failed'
+          ? {
+              ...q,
+              options: { ...q.options, ...targetOpts },
+            }
+          : q
+      )
+    );
+
+    if (count > 0) {
+      showToast(
+        'Settings Applied to All',
+        `Applied ${targetOpts.dpi || 300} DPI and ${targetOpts.quality || 90}% quality across ${count} queued item(s).`,
+        'success'
+      );
+    } else {
+      showToast(
+        'Apply to All Enabled',
+        'Conversion parameters will automatically apply to items added to the queue.',
+        'info'
+      );
     }
   };
 
@@ -1696,6 +1785,8 @@ export default function App() {
                       availableFormats={
                         uploadedFile?.supportedOutputs || ['png', 'jpg', 'webp', 'pdf', 'svg']
                       }
+                      onDownload={handleFileDownloaded}
+                      autoDeleteAfterDownload={userPreferences?.autoDeleteAfterDownload}
                     />
                   )}
 
@@ -1733,6 +1824,27 @@ export default function App() {
                 });
               }}
               darkMode={darkMode}
+            />
+          )}
+
+          {/* 3c. Dedicated Compress File Online Page */}
+          {currentView === 'compress' && (
+            <CompressPage
+              onNavigate={handleNavigate}
+              showToast={showToast}
+              darkMode={darkMode}
+              onRecordHistory={(histItem) => {
+                setHistory((prev) => {
+                  const updated = [histItem, ...prev];
+                  try {
+                    localStorage.setItem('convertx_history', JSON.stringify(updated));
+                  } catch (e) {
+                    console.warn('Failed to persist history item', e);
+                  }
+                  return updated;
+                });
+              }}
+              onFileDownloaded={handleFileDownloaded}
             />
           )}
 
@@ -1789,6 +1901,11 @@ export default function App() {
               usedToday={usedToday}
               limits={limits || DEFAULT_LIMITS}
               isPro={limits?.isPro}
+              userPreferences={userPreferences}
+              onPreferencesChange={(updatedPrefs) => {
+                setUserPreferences(updatedPrefs);
+                saveUserPreferences(updatedPrefs);
+              }}
               onClearHistory={() => setHistory([])}
               onRemoveItem={(id) => setHistory(history.filter((item) => item.id !== id))}
               onConvertNew={() => setCurrentView('converter')}
@@ -1815,6 +1932,7 @@ export default function App() {
               isConvertingAll={isConvertingAll}
               isCombiningPdf={isCombiningPdf}
               onOpenAccountModal={() => setShowAccountModal(true)}
+              onFileDownloaded={handleFileDownloaded}
             />
           )}
 

@@ -115,6 +115,19 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenMetrics }) => 
               </li>
               <li>
                 <a
+                  href="/compress"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('compress');
+                  }}
+                  className="hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1"
+                >
+                  <span>Compress Files Online</span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold">New</span>
+                </a>
+              </li>
+              <li>
+                <a
                   href="/converter"
                   onClick={(e) => {
                     e.preventDefault();

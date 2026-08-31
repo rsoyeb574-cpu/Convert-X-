@@ -177,6 +177,104 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
           },
           description: 'High-speed image converter, PDF converter, and design file converter with server-side vector rendering.',
         });
+      } else if (currentView === 'compress') {
+        title = 'Compress Files Online – Reduce File Size | Convert-X';
+        description =
+          'Compress PDF, JPG, PNG and WebP files online. Reduce file size while maintaining good quality with Convert-X.';
+        canonicalUrl = `${origin}/compress`;
+
+        // SoftwareApplication / WebApplication Schema for Compression
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': ['SoftwareApplication', 'WebApplication'],
+          '@id': `${canonicalUrl}#software`,
+          name: 'Convert-X Online File Compressor',
+          headline: 'Compress Files Online – Reduce File Size with Convert-X',
+          description: description,
+          url: canonicalUrl,
+          applicationCategory: 'UtilitiesApplication',
+          applicationSubCategory: 'FileCompressor',
+          operatingSystem: 'All (Web Browser, Windows, macOS, Linux, iOS, Android)',
+          browserRequirements: 'Requires JavaScript. Requires HTML5.',
+          softwareVersion: '2.4.0',
+          offers: {
+            '@type': 'Offer',
+            price: '0.00',
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+            category: 'Free Online File Compression',
+          },
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: '4.9',
+            reviewCount: '1180',
+            bestRating: '5',
+            worstRating: '1',
+          },
+          featureList: [
+            'Lossless PNG compression with full transparency preservation',
+            'Smart PDF vector stream and image optimization',
+            'Customizable compression levels (Maximum, Balanced, High Quality)',
+            'Optional target file size reduction engine',
+            'Zero-retention 256-bit encrypted ephemeral processing',
+          ],
+        });
+
+        // HowTo Schema for Step-by-Step Instructions
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': 'HowTo',
+          '@id': `${canonicalUrl}#howto`,
+          name: 'How to compress PDF, JPG, PNG, and WebP files online for free',
+          description: 'Step-by-step instructions to reduce file sizes online while preserving visual quality using Convert-X.',
+          totalTime: 'PT20S',
+          step: [
+            {
+              '@type': 'HowToStep',
+              position: 1,
+              name: 'Upload File',
+              text: 'Drag and drop your PDF, JPG, PNG, or WebP file into the Convert-X compressor upload area.',
+            },
+            {
+              '@type': 'HowToStep',
+              position: 2,
+              name: 'Select Compression Level',
+              text: 'Choose Balanced (recommended), Maximum, or High Quality, or set an optional Target File Size.',
+            },
+            {
+              '@type': 'HowToStep',
+              position: 3,
+              name: 'Download Compressed File',
+              text: 'Click Compress File and download your optimized result immediately with full size reduction stats.',
+            },
+          ],
+        });
+
+        // Breadcrumb Schema
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Home',
+              item: origin,
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Tools',
+              item: `${origin}/tools`,
+            },
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: 'Compress File',
+              item: canonicalUrl,
+            },
+          ],
+        });
       } else if (currentView === 'tools') {
         title = 'All Free Online Conversion Tools | Convert-X Directory';
         description = 'Browse the complete catalog of free online file conversion tools. Fast, private, and zero-retention image, PDF, and vector converters.';

@@ -127,6 +127,21 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </a>
           <a
+            id="nav-compress-btn"
+            href="/compress"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('compress');
+            }}
+            className={`px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              currentView === 'compress'
+                ? 'bg-blue-50 dark:bg-slate-800 text-[#2563EB] dark:text-white font-bold'
+                : 'hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>Compress File</span>
+          </a>
+          <a
             id="nav-tools-btn"
             href="/tools"
             onClick={(e) => {
@@ -344,6 +359,22 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <div className="flex items-center gap-1.5">
               <span>Text to PDF Studio</span>
+              <span className="px-1 py-0.2 rounded bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 text-[9px] font-extrabold">
+                New
+              </span>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+          <button
+            onClick={() => handleMobileNav('compress')}
+            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-between ${
+              currentView === 'compress'
+                ? 'bg-blue-50 dark:bg-slate-800 text-[#2563EB] dark:text-white'
+                : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <span>Compress Files Online</span>
               <span className="px-1 py-0.2 rounded bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 text-[9px] font-extrabold">
                 New
               </span>

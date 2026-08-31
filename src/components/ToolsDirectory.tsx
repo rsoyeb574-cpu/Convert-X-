@@ -27,9 +27,9 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
 
   const categories = [
     { id: 'all', label: 'All Tools' },
+    { id: 'compression', label: 'Compression' },
     { id: 'images', label: 'Image Converters' },
     { id: 'pdf', label: 'PDF & Document Tools' },
-    { id: 'compression', label: 'Compression' },
     { id: 'vector', label: 'Vector & CAD' },
   ];
 
@@ -44,13 +44,22 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
 
     if (selectedCategory === 'all') return true;
     if (selectedCategory === 'compression') {
-      return tool.slug.includes('compressor');
+      return tool.slug.includes('compress') || tool.category === 'images';
     }
     if (selectedCategory === 'vector') {
       return tool.category === 'vector' || tool.category === 'cad';
     }
     return tool.category === selectedCategory;
   });
+
+  const showCompressCard =
+    (selectedCategory === 'all' || selectedCategory === 'compression' || selectedCategory === 'pdf' || selectedCategory === 'images') &&
+    ('compress files online'.includes(searchQuery.toLowerCase()) ||
+      'reduce file size'.includes(searchQuery.toLowerCase()) ||
+      'compress'.includes(searchQuery.toLowerCase()) ||
+      'pdf'.includes(searchQuery.toLowerCase()) ||
+      'image'.includes(searchQuery.toLowerCase()) ||
+      searchQuery === '');
 
   return (
     <div className="max-w-6xl mx-auto space-y-10" id="tools-directory-container">
@@ -64,7 +73,7 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
           All Free Online Conversion Tools
         </h1>
         <p className="text-sm sm:text-base text-[#64748B] dark:text-[#94A3B8] leading-relaxed">
-          Browse our complete catalog of fast, private, and free online file converters. No registration required.
+          Browse our complete catalog of fast, private, and free online file converters and compression utilities.
         </p>
       </div>
 
@@ -77,7 +86,7 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
             id="tools-search-input"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search tools (e.g., PNG to JPG, PDF to Image, Compressor)..."
+            placeholder="Search tools (e.g., Compress, PNG to JPG, PDF to Image)..."
             className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] text-sm text-[#0F172A] dark:text-[#F8FAFC] placeholder-[#94A3B8] focus:outline-none focus:border-[#2563EB] shadow-xs"
           />
         </div>
@@ -102,6 +111,49 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
 
       {/* Grid of Tools */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        {/* Featured Compress Tool Card */}
+        {showCompressCard && (
+          <a
+            href="/compress"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('compress');
+            }}
+            className="p-6 rounded-3xl bg-gradient-to-b from-blue-50/50 to-white dark:from-blue-950/20 dark:to-[#111827] border-2 border-blue-200 dark:border-blue-800/60 hover:border-[#2563EB] dark:hover:border-blue-500 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between space-y-4"
+          >
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#2563EB] text-white shadow-xs">
+                  PDF / JPG / PNG / WEBP
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  New Feature
+                </span>
+              </div>
+
+              <h2 className="text-base font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB] dark:group-hover:text-blue-400 transition-colors flex items-center justify-between">
+                <span>Compress Files Online</span>
+                <ArrowUpRight className="w-4 h-4 text-[#94A3B8] group-hover:text-[#2563EB] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </h2>
+
+              <p className="text-xs text-[#64748B] dark:text-[#94A3B8] line-clamp-2 leading-relaxed">
+                Reduce file sizes for PDF documents and JPG, PNG, WebP images while maintaining crisp quality with customizable compression levels.
+              </p>
+            </div>
+
+            <div className="pt-3 border-t border-blue-100 dark:border-blue-900/50 flex items-center justify-between text-xs text-[#64748B] dark:text-[#94A3B8]">
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Zero-Retention</span>
+              </span>
+              <span className="font-bold text-[#2563EB] dark:text-blue-400 group-hover:underline flex items-center gap-1">
+                <span>Open Compressor</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+            </div>
+          </a>
+        )}
+
         {filteredTools.map((tool) => (
           <a
             key={tool.slug}
