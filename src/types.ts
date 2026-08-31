@@ -140,6 +140,7 @@ export type PageView =
   | 'home'
   | 'converter'
   | 'compress'
+  | 'text-to-voice'
   | 'text-to-pdf'
   | 'formats'
   | 'tools'
@@ -155,6 +156,41 @@ export type PageView =
   | 'affiliates'
   | 'seo'
   | '404';
+
+export interface TtsVoiceOption {
+  id: string;
+  name: string;
+  gender: 'male' | 'female';
+  style: string;
+  languages: string[];
+  provider: 'gemini' | 'standard';
+  description: string;
+}
+
+export interface TtsLanguageOption {
+  code: string;
+  name: string;
+  nativeName: string;
+  flag: string;
+  sampleText: string;
+  supportedVoices: string[];
+}
+
+export interface TtsResultData {
+  jobId: string;
+  downloadUrl: string;
+  previewUrl: string;
+  filename: string;
+  format: 'mp3' | 'wav';
+  fileSize: number;
+  durationSeconds: number;
+  characterCount: number;
+  wordCount: number;
+  chunksProcessed: number;
+  voice: string;
+  language: string;
+  provider: string;
+}
 
 export interface TextToPdfSettings {
   text: string;

@@ -31,6 +31,7 @@ import { SeoMetaManager } from './components/SeoMetaManager.js';
 import { PricingPage } from './components/PricingPage.js';
 import { ToolsDirectory } from './components/ToolsDirectory.js';
 import { TextToPdfStudio } from './components/TextToPdfStudio.js';
+import { TextToVoicePage } from './components/TextToVoicePage.js';
 import { CompressPage } from './components/CompressPage.js';
 import { AboutPage } from './components/AboutPage.js';
 import { NotFoundPage } from './components/NotFoundPage.js';
@@ -283,6 +284,7 @@ export default function App() {
         [
           'converter',
           'compress',
+          'text-to-voice',
           'text-to-pdf',
           'formats',
           'tools',
@@ -1830,6 +1832,27 @@ export default function App() {
           {/* 3c. Dedicated Compress File Online Page */}
           {currentView === 'compress' && (
             <CompressPage
+              onNavigate={handleNavigate}
+              showToast={showToast}
+              darkMode={darkMode}
+              onRecordHistory={(histItem) => {
+                setHistory((prev) => {
+                  const updated = [histItem, ...prev];
+                  try {
+                    localStorage.setItem('convertx_history', JSON.stringify(updated));
+                  } catch (e) {
+                    console.warn('Failed to persist history item', e);
+                  }
+                  return updated;
+                });
+              }}
+              onFileDownloaded={handleFileDownloaded}
+            />
+          )}
+
+          {/* 3d. Dedicated Text to Voice Online Page */}
+          {currentView === 'text-to-voice' && (
+            <TextToVoicePage
               onNavigate={handleNavigate}
               showToast={showToast}
               darkMode={darkMode}

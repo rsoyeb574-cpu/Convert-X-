@@ -27,6 +27,7 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
 
   const categories = [
     { id: 'all', label: 'All Tools' },
+    { id: 'tts', label: 'Text & Voice' },
     { id: 'compression', label: 'Compression' },
     { id: 'images', label: 'Image Converters' },
     { id: 'pdf', label: 'PDF & Document Tools' },
@@ -43,6 +44,9 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
     if (!matchesSearch) return false;
 
     if (selectedCategory === 'all') return true;
+    if (selectedCategory === 'tts') {
+      return tool.slug.includes('text') || tool.slug.includes('pdf');
+    }
     if (selectedCategory === 'compression') {
       return tool.slug.includes('compress') || tool.category === 'images';
     }
@@ -51,6 +55,16 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
     }
     return tool.category === selectedCategory;
   });
+
+  const showTtsCard =
+    (selectedCategory === 'all' || selectedCategory === 'tts' || selectedCategory === 'pdf') &&
+    ('text to voice'.includes(searchQuery.toLowerCase()) ||
+      'tts'.includes(searchQuery.toLowerCase()) ||
+      'speech'.includes(searchQuery.toLowerCase()) ||
+      'audio'.includes(searchQuery.toLowerCase()) ||
+      'voice'.includes(searchQuery.toLowerCase()) ||
+      'text'.includes(searchQuery.toLowerCase()) ||
+      searchQuery === '');
 
   const showCompressCard =
     (selectedCategory === 'all' || selectedCategory === 'compression' || selectedCategory === 'pdf' || selectedCategory === 'images') &&
@@ -111,6 +125,49 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
 
       {/* Grid of Tools */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        {/* Featured Text to Voice Tool Card */}
+        {showTtsCard && (
+          <a
+            href="/text-to-voice"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('text-to-voice');
+            }}
+            className="p-6 rounded-3xl bg-gradient-to-b from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-[#111827] border-2 border-indigo-200 dark:border-indigo-800/60 hover:border-indigo-500 dark:hover:border-indigo-400 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between space-y-4"
+          >
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-xs">
+                  TEXT → MP3 / WAV
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                  AI Speech
+                </span>
+              </div>
+
+              <h2 className="text-base font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center justify-between">
+                <span>Text to Voice Online</span>
+                <ArrowUpRight className="w-4 h-4 text-[#94A3B8] group-hover:text-indigo-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </h2>
+
+              <p className="text-xs text-[#64748B] dark:text-[#94A3B8] line-clamp-2 leading-relaxed">
+                Turn your text into natural-sounding speech across English, Hindi, Urdu, and more. Customize speed, pitch, and voice style with instant audio playback.
+              </p>
+            </div>
+
+            <div className="pt-3 border-t border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between text-xs text-[#64748B] dark:text-[#94A3B8]">
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Zero-Retention</span>
+              </span>
+              <span className="font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline flex items-center gap-1">
+                <span>Open Voice Studio</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+            </div>
+          </a>
+        )}
+
         {/* Featured Compress Tool Card */}
         {showCompressCard && (
           <a

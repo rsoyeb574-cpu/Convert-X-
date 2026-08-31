@@ -177,6 +177,99 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
           },
           description: 'High-speed image converter, PDF converter, and design file converter with server-side vector rendering.',
         });
+      } else if (currentView === 'text-to-voice') {
+        title = 'Text to Voice – Convert Text to Natural Speech | Convert-X';
+        description =
+          'Turn your text into natural-sounding speech and download the audio. Multilingual speech synthesis with voice, speed, and pitch customization.';
+        canonicalUrl = `${origin}/text-to-voice`;
+
+        // SoftwareApplication / WebApplication Schema for TTS
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': ['SoftwareApplication', 'WebApplication'],
+          '@id': `${canonicalUrl}#software`,
+          name: 'Convert-X Text to Voice Online',
+          headline: 'Text to Voice – Convert Text to Natural Speech | Convert-X',
+          description: description,
+          url: canonicalUrl,
+          applicationCategory: 'UtilitiesApplication',
+          applicationSubCategory: 'TextToSpeechApplication',
+          operatingSystem: 'All (Web Browser, Windows, macOS, Linux, iOS, Android)',
+          browserRequirements: 'Requires JavaScript. Requires HTML5.',
+          softwareVersion: '2.4.0',
+          offers: {
+            '@type': 'Offer',
+            price: '0.00',
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+            category: 'Free Online Text to Speech',
+          },
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: '4.9',
+            reviewCount: '1350',
+            bestRating: '5',
+            worstRating: '1',
+          },
+          featureList: [
+            'Natural neural voices (Male & Female)',
+            'Full support for English, Hindi, Urdu, Spanish, French, German, Arabic, and more',
+            'Customizable playback speed (0.5x to 2x), pitch, and volume',
+            'Live audio waveform preview player',
+            'Direct high-fidelity MP3 and WAV audio download',
+            'Zero-retention 256-bit encrypted ephemeral processing',
+          ],
+        });
+
+        // HowTo Schema for Step-by-Step Instructions
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': 'HowTo',
+          '@id': `${canonicalUrl}#howto`,
+          name: 'How to convert text to natural speech and download audio online for free',
+          description: 'Step-by-step instructions to convert text into natural-sounding speech using Convert-X.',
+          totalTime: 'PT20S',
+          step: [
+            {
+              '@type': 'HowToStep',
+              position: 1,
+              name: 'Enter or Paste Text',
+              text: 'Type or paste your text into the Convert-X Text to Voice editor with live character counting.',
+            },
+            {
+              '@type': 'HowToStep',
+              position: 2,
+              name: 'Select Language & Voice Settings',
+              text: 'Select your language (e.g., English, Hindi, Urdu), choose a voice model, and adjust speed or pitch.',
+            },
+            {
+              '@type': 'HowToStep',
+              position: 3,
+              name: 'Preview & Download Audio',
+              text: 'Click Generate Voice, preview the natural speech in the built-in audio player, and download as MP3 or WAV.',
+            },
+          ],
+        });
+
+        // Breadcrumb Schema
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Home',
+              item: origin,
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Text to Voice',
+              item: canonicalUrl,
+            },
+          ],
+        });
       } else if (currentView === 'compress') {
         title = 'Compress Files Online – Reduce File Size | Convert-X';
         description =

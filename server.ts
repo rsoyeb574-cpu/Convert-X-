@@ -14,6 +14,7 @@ import { createServer as createViteServer } from 'vite';
 import { registry } from './server/converters/registry.js';
 import { generateTextToPdf } from './server/converters/textToPdfConverter.js';
 import { compressorEngine } from './server/converters/compressorEngine.js';
+import { ttsEngine, AVAILABLE_VOICES, SUPPORTED_LANGUAGES } from './server/converters/ttsEngine.js';
 import { jobStorage } from './server/queue/jobStorage.js';
 import { jobQueue } from './server/queue/jobQueue.js';
 import { runCrashRecovery } from './server/queue/crashRecovery.js';
@@ -136,6 +137,7 @@ async function startServer() {
 
     const coreRoutes = [
       { loc: '', changefreq: 'daily', priority: '1.0' },
+      { loc: 'text-to-voice', changefreq: 'daily', priority: '0.9' },
       { loc: 'compress', changefreq: 'daily', priority: '0.9' },
       { loc: 'tools', changefreq: 'daily', priority: '0.9' },
       { loc: 'converter', changefreq: 'weekly', priority: '0.9' },
@@ -1170,6 +1172,116 @@ ${allRoutes
     }
   );
 
+  // 5d. Dedicated Text to Voice Endpoints (/api/tts/*)
+  app.get('/api/tts/config', (req, res) => {
+    try {
+      const languages = ttsEngine.getSupportedLanguages();
+      const voices = ttsEngine.getAvailableVoices();
+      res.json({
+        success: true,
+        languages,
+        voices,
+        supportedFormats: ['mp3', 'wav'],
+        provider: 'gemini',
+        maxCharacters: {
+          free: 10000,
+          pro: 50000,
+        },
+      });
+    } catch (err: any) {
+      console.error('TTS config error:', err);
+      res.status(500).json({
+        success: false,
+        code: 'TTS_CONFIG_ERROR',
+        error: 'Failed to retrieve Text to Voice configurations.',
+      });
+    }
+  });
+
+  app.post('/api/tts/generate', convertRateLimiter, async (req, res) => {
+    try {
+      const {
+        text,
+        language = 'en',
+        voice = 'Kore',
+        speed = 1.0,
+        pitch = 'normal',
+        volume = 100,
+        format = 'mp3',
+      } = req.body;
+
+      if (!text || typeof text !== 'string' || text.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'EMPTY_TEXT',
+          error: 'Please enter or paste your text to generate speech.',
+        });
+      }
+
+      const userPlan = getUserPlan(req);
+      const maxChars = userPlan === 'pro' || userPlan === 'business' ? 50000 : 10000;
+
+      if (text.length > maxChars) {
+        return res.status(400).json({
+          success: false,
+          code: 'TEXT_TOO_LONG',
+          error: `Text exceeds the maximum limit of ${maxChars.toLocaleString()} characters for your ${userPlan === 'pro' ? 'Pro' : 'Free'} plan.`,
+          upgrade: userPlan === 'free' ? { available: true, plan: 'Pro' } : undefined,
+        });
+      }
+
+      // Check quota
+      const quotaCheck = canCreateConversion(req, 1);
+      if (!quotaCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: 'FREE_LIMIT_REACHED',
+          error: 'Your free Text to Voice limit has been reached. Please try again later or upgrade your plan.',
+          upgrade: quotaCheck.upgrade || { available: true, plan: 'Pro' },
+        });
+      }
+
+      // Synthesize audio
+      const result = await ttsEngine.synthesize({
+        text,
+        language: String(language),
+        voice: String(voice),
+        speed: Number(speed) || 1.0,
+        pitch: ['low', 'normal', 'high'].includes(pitch) ? pitch : 'normal',
+        volume: typeof volume === 'number' ? volume : 100,
+        format: format === 'wav' ? 'wav' : 'mp3',
+      });
+
+      // Record successful conversion against quota
+      recordSuccessfulConversion(req, result.jobId, 1);
+      metricsTracker.recordConversion('text', result.format, false);
+
+      res.json({
+        success: true,
+        jobId: result.jobId,
+        downloadUrl: result.downloadUrl,
+        previewUrl: result.previewUrl,
+        filename: result.filename,
+        format: result.format,
+        fileSize: result.fileSize,
+        durationSeconds: result.durationSeconds,
+        characterCount: result.characterCount,
+        wordCount: result.wordCount,
+        chunksProcessed: result.chunksProcessed,
+        voice: result.voice,
+        language: result.language,
+        provider: result.provider,
+      });
+    } catch (err: any) {
+      console.error('TTS synthesis handler error:', err);
+      res.status(500).json({
+        success: false,
+        code: 'TTS_GENERATION_FAILED',
+        error: err.message || 'Failed to generate voice audio. Please verify your text and try again.',
+      });
+    }
+  });
+
   // 6. Get Conversion Status & Progress (Single Source of Truth)
   app.get('/api/status/:jobId', (req, res) => {
     const job = jobStorage.getJob(req.params.jobId);
@@ -1369,6 +1481,11 @@ ${allRoutes
           title = cfg.title;
           description = cfg.metaDescription;
           canonicalUrl = `${origin}/${cfg.slug}`;
+        } else if (reqPath === 'text-to-voice') {
+          title = 'Text to Voice – Convert Text to Speech Online | Convert-X';
+          description =
+            'Convert text to natural-sounding speech online. Choose a supported language and voice, listen to the result and download your audio with Convert-X.';
+          canonicalUrl = `${origin}/text-to-voice`;
         } else if (reqPath === 'compress') {
           title = 'Compress Files Online – Reduce File Size | Convert-X';
           description =
