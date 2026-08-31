@@ -12,6 +12,9 @@ export interface TierLimits {
   allowPriorityQueue: boolean;
   allowAdRemoval: boolean;
   dailyConversionLimit: number | 'unlimited';
+  dailyCompressionLimit: number | 'unlimited';
+  dailyTtsLimit: number | 'unlimited';
+  maxTtsCharacters: number;
   maxPdfPages: number | 'unlimited';
   allowApiAccess: boolean;
 }
@@ -23,40 +26,56 @@ export function parseEnvNumber(val: string | undefined, fallback: number): numbe
 }
 
 export const FREE_DAILY_LIMIT = 5;
+export const FREE_DAILY_CONVERSIONS = 5;
+export const FREE_DAILY_COMPRESSIONS = 5;
+export const FREE_DAILY_TTS = 3;
+export const FREE_TTS_MAX_CHARACTERS = 5000;
+export const PRO_TTS_MAX_CHARACTERS = 50000;
+
 export const FREE_MAX_FILE_MB = 25;
 export const PRO_MAX_FILE_MB = 100;
 export const BUSINESS_MAX_FILE_MB = 250;
 export const FREE_BATCH_LIMIT = 5;
 export const PRO_BATCH_LIMIT = 20;
+export const BUSINESS_BATCH_LIMIT = 50;
 
 export const PLAN_LIMITS: Record<UserPlan, TierLimits> = {
   free: {
     maxFileSizeMB: FREE_MAX_FILE_MB,
     maxFileSizeBytes: FREE_MAX_FILE_MB * 1024 * 1024,
-    maxBatchSize: 5,
+    maxBatchSize: FREE_BATCH_LIMIT,
     allowPriorityQueue: false,
     allowAdRemoval: false,
-    dailyConversionLimit: FREE_DAILY_LIMIT,
+    dailyConversionLimit: FREE_DAILY_CONVERSIONS,
+    dailyCompressionLimit: FREE_DAILY_COMPRESSIONS,
+    dailyTtsLimit: FREE_DAILY_TTS,
+    maxTtsCharacters: FREE_TTS_MAX_CHARACTERS,
     maxPdfPages: 10,
     allowApiAccess: false,
   },
   pro: {
     maxFileSizeMB: PRO_MAX_FILE_MB,
     maxFileSizeBytes: PRO_MAX_FILE_MB * 1024 * 1024,
-    maxBatchSize: 20,
+    maxBatchSize: PRO_BATCH_LIMIT,
     allowPriorityQueue: true,
     allowAdRemoval: true,
     dailyConversionLimit: 'unlimited',
+    dailyCompressionLimit: 'unlimited',
+    dailyTtsLimit: 'unlimited',
+    maxTtsCharacters: PRO_TTS_MAX_CHARACTERS,
     maxPdfPages: 'unlimited',
     allowApiAccess: false,
   },
   business: {
     maxFileSizeMB: BUSINESS_MAX_FILE_MB,
     maxFileSizeBytes: BUSINESS_MAX_FILE_MB * 1024 * 1024,
-    maxBatchSize: 50,
+    maxBatchSize: BUSINESS_BATCH_LIMIT,
     allowPriorityQueue: true,
     allowAdRemoval: true,
     dailyConversionLimit: 'unlimited',
+    dailyCompressionLimit: 'unlimited',
+    dailyTtsLimit: 'unlimited',
+    maxTtsCharacters: PRO_TTS_MAX_CHARACTERS,
     maxPdfPages: 'unlimited',
     allowApiAccess: true,
   },

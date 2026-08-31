@@ -25,7 +25,6 @@ import {
   MAX_FILE_SIZE_BYTES,
   FREE_MAX_FILE_SIZE_MB,
   FREE_MAX_FILE_SIZE_BYTES,
-  FREE_DAILY_CONVERSIONS,
   FREE_MAX_PDF_PAGES,
   sanitizeFilename,
 } from './server/utils/fileSecurity.js';
@@ -35,6 +34,11 @@ import { metricsTracker } from './server/utils/metricsTracker.js';
 import { paymentService } from './server/utils/paymentService.js';
 import {
   FREE_DAILY_LIMIT,
+  FREE_DAILY_CONVERSIONS,
+  FREE_DAILY_COMPRESSIONS,
+  FREE_DAILY_TTS,
+  FREE_TTS_MAX_CHARACTERS,
+  PRO_TTS_MAX_CHARACTERS,
   FREE_MAX_FILE_MB,
   PRO_MAX_FILE_MB,
   BUSINESS_MAX_FILE_MB,
@@ -45,10 +49,18 @@ import {
   isProUser,
   canShowAds,
   getDailyUsage,
+  getDailyCompressionUsage,
+  getDailyTtsUsage,
   getRemainingDailyQuota,
+  getRemainingCompressionQuota,
+  getRemainingTtsQuota,
   canCreateConversion,
+  canCreateCompression,
+  canCreateTts,
   canUseBatchConversion,
   recordSuccessfulConversion,
+  recordSuccessfulCompression,
+  recordSuccessfulTts,
   refundConversionOnFailure,
   isJobAlreadyAccounted,
   APP_TIMEZONE,
@@ -320,15 +332,21 @@ ${allRoutes
     const isPro = isProUser(req);
     const used = getDailyUsage(req);
     const remaining = getRemainingDailyQuota(req);
+    const compUsed = getDailyCompressionUsage(req);
+    const compRemaining = getRemainingCompressionQuota(req);
+    const ttsUsed = getDailyTtsUsage(req);
+    const ttsRemaining = getRemainingTtsQuota(req);
     const userId = getClientIdentifier(req);
     const referralStats = referralStore.getReferralStats(userId);
+
+    const conversionLimit = isPro ? 'unlimited' : FREE_DAILY_CONVERSIONS + referralStats.bonusConversionsAvailable;
 
     res.json({
       success: true,
       usage: {
         dailyConversions: used,
-        dailyLimit: isPro ? 'unlimited' : FREE_DAILY_LIMIT + referralStats.bonusConversionsAvailable,
-        baseDailyLimit: FREE_DAILY_LIMIT,
+        dailyLimit: conversionLimit,
+        baseDailyLimit: FREE_DAILY_CONVERSIONS,
         bonusConversions: referralStats.bonusConversionsAvailable,
         maxFileSizeMB: isPro ? PRO_MAX_FILE_MB : FREE_MAX_FILE_MB,
         batchLimit: isPro ? PRO_BATCH_LIMIT : FREE_BATCH_LIMIT,
@@ -337,6 +355,23 @@ ${allRoutes
         timezone: APP_TIMEZONE,
         canShowAds: canShowAds(req),
         referralCode: referralStats.referralCode,
+        // Specific feature breakdowns
+        conversions: {
+          used,
+          limit: conversionLimit,
+          remaining,
+        },
+        compressions: {
+          used: compUsed,
+          limit: isPro ? 'unlimited' : FREE_DAILY_COMPRESSIONS,
+          remaining: compRemaining,
+        },
+        tts: {
+          used: ttsUsed,
+          limit: isPro ? 'unlimited' : FREE_DAILY_TTS,
+          remaining: ttsRemaining,
+          maxCharacters: isPro ? PRO_TTS_MAX_CHARACTERS : FREE_TTS_MAX_CHARACTERS,
+        },
       },
     });
   });
@@ -1088,12 +1123,12 @@ ${allRoutes
         }
 
         // Check quota if creating new compression
-        const quotaCheck = canCreateConversion(req, 1);
+        const quotaCheck = canCreateCompression(req, 1);
         if (!quotaCheck.allowed) {
           return res.status(403).json({
             success: false,
-            code: quotaCheck.code || 'FREE_LIMIT_REACHED',
-            error: quotaCheck.error || "You have reached today's free conversion limit.",
+            code: quotaCheck.code || 'COMPRESSION_LIMIT_REACHED',
+            error: quotaCheck.error || "You have reached today's free compression limit of 5 jobs.",
             upgrade: quotaCheck.upgrade || { available: true, plan: 'Pro' },
           });
         }
@@ -1138,7 +1173,7 @@ ${allRoutes
           pdfPageSize: result.pdfPageSize,
         });
 
-        recordSuccessfulConversion(req, job.id, 1);
+        recordSuccessfulCompression(req, job.id, 1);
         metricsTracker.recordConversion(detection.format, result.outputFormat, false);
 
         res.json({
@@ -1184,8 +1219,12 @@ ${allRoutes
         supportedFormats: ['mp3', 'wav'],
         provider: 'gemini',
         maxCharacters: {
-          free: 10000,
-          pro: 50000,
+          free: FREE_TTS_MAX_CHARACTERS,
+          pro: PRO_TTS_MAX_CHARACTERS,
+        },
+        dailyLimit: {
+          free: FREE_DAILY_TTS,
+          pro: 'unlimited',
         },
       });
     } catch (err: any) {
@@ -1218,25 +1257,13 @@ ${allRoutes
         });
       }
 
-      const userPlan = getUserPlan(req);
-      const maxChars = userPlan === 'pro' || userPlan === 'business' ? 50000 : 10000;
-
-      if (text.length > maxChars) {
-        return res.status(400).json({
-          success: false,
-          code: 'TEXT_TOO_LONG',
-          error: `Text exceeds the maximum limit of ${maxChars.toLocaleString()} characters for your ${userPlan === 'pro' ? 'Pro' : 'Free'} plan.`,
-          upgrade: userPlan === 'free' ? { available: true, plan: 'Pro' } : undefined,
-        });
-      }
-
-      // Check quota
-      const quotaCheck = canCreateConversion(req, 1);
+      // Check character limits & daily quota
+      const quotaCheck = canCreateTts(req, text.length);
       if (!quotaCheck.allowed) {
         return res.status(403).json({
           success: false,
-          code: 'FREE_LIMIT_REACHED',
-          error: 'Your free Text to Voice limit has been reached. Please try again later or upgrade your plan.',
+          code: quotaCheck.code || 'TTS_LIMIT_REACHED',
+          error: quotaCheck.error || 'Your free Text to Voice limit has been reached. Please upgrade to Pro for unlimited voice generations.',
           upgrade: quotaCheck.upgrade || { available: true, plan: 'Pro' },
         });
       }
@@ -1252,8 +1279,8 @@ ${allRoutes
         format: format === 'wav' ? 'wav' : 'mp3',
       });
 
-      // Record successful conversion against quota
-      recordSuccessfulConversion(req, result.jobId, 1);
+      // Record successful TTS generation against quota
+      recordSuccessfulTts(req, result.jobId, 1);
       metricsTracker.recordConversion('text', result.format, false);
 
       res.json({

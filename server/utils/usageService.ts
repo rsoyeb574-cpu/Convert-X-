@@ -5,6 +5,11 @@ import express from 'express';
 import {
   UserPlan,
   FREE_DAILY_LIMIT,
+  FREE_DAILY_CONVERSIONS,
+  FREE_DAILY_COMPRESSIONS,
+  FREE_DAILY_TTS,
+  FREE_TTS_MAX_CHARACTERS,
+  PRO_TTS_MAX_CHARACTERS,
   FREE_MAX_FILE_MB,
   PRO_MAX_FILE_MB,
   PLAN_LIMITS,
@@ -20,7 +25,10 @@ export const PRO_BATCH_LIMIT = 20;
 export interface UserDailyUsage {
   userId: string;
   date: string;
-  count: number;
+  count: number; // general / conversion count
+  conversionsCount?: number;
+  compressionsCount?: number;
+  ttsCount?: number;
   processedJobIds: string[];
   updatedAt: string;
 }
@@ -196,7 +204,35 @@ export function getDailyUsage(req: express.Request): number {
     return 0;
   }
 
-  return record.count;
+  return record.conversionsCount ?? record.count;
+}
+
+/**
+ * Retrieves today's compression jobs usage
+ */
+export function getDailyCompressionUsage(req: express.Request): number {
+  if (isProUser(req)) {
+    return 0;
+  }
+  const userId = getClientIdentifier(req);
+  const today = getTodayDateString();
+  const record = usageStore.get(userId);
+  if (!record || record.date !== today) return 0;
+  return record.compressionsCount ?? 0;
+}
+
+/**
+ * Retrieves today's Text-to-Voice generations usage
+ */
+export function getDailyTtsUsage(req: express.Request): number {
+  if (isProUser(req)) {
+    return 0;
+  }
+  const userId = getClientIdentifier(req);
+  const today = getTodayDateString();
+  const record = usageStore.get(userId);
+  if (!record || record.date !== today) return 0;
+  return record.ttsCount ?? 0;
 }
 
 /**
@@ -209,9 +245,27 @@ export function getRemainingDailyQuota(req: express.Request): number | 'unlimite
 
   const userId = getClientIdentifier(req);
   const bonus = referralStore.getBonusQuotaForUser(userId);
-  const effectiveLimit = FREE_DAILY_LIMIT + bonus;
+  const effectiveLimit = FREE_DAILY_CONVERSIONS + bonus;
   const used = getDailyUsage(req);
   return Math.max(0, effectiveLimit - used);
+}
+
+/**
+ * Retrieves remaining compression quota for today
+ */
+export function getRemainingCompressionQuota(req: express.Request): number | 'unlimited' {
+  if (isProUser(req)) return 'unlimited';
+  const used = getDailyCompressionUsage(req);
+  return Math.max(0, FREE_DAILY_COMPRESSIONS - used);
+}
+
+/**
+ * Retrieves remaining TTS generations quota for today
+ */
+export function getRemainingTtsQuota(req: express.Request): number | 'unlimited' {
+  if (isProUser(req)) return 'unlimited';
+  const used = getDailyTtsUsage(req);
+  return Math.max(0, FREE_DAILY_TTS - used);
 }
 
 /**
@@ -241,7 +295,7 @@ export function canCreateConversion(
 
   const userId = getClientIdentifier(req);
   const bonus = referralStore.getBonusQuotaForUser(userId);
-  const effectiveLimit = FREE_DAILY_LIMIT + bonus;
+  const effectiveLimit = FREE_DAILY_CONVERSIONS + bonus;
   const used = getDailyUsage(req);
   const remaining = Math.max(0, effectiveLimit - used);
 
@@ -276,6 +330,99 @@ export function canCreateConversion(
   return {
     allowed: true,
     remaining: remaining - requestedCount,
+    plan: 'free',
+  };
+}
+
+/**
+ * Checks if user is permitted to create compression job(s)
+ */
+export function canCreateCompression(
+  req: express.Request,
+  requestedCount: number = 1
+): {
+  allowed: boolean;
+  remaining: number | 'unlimited';
+  plan: UserPlan;
+  code?: string;
+  error?: string;
+  upgrade?: { available: boolean; plan: string };
+} {
+  const plan = getUserPlan(req);
+  if (plan === 'pro' || plan === 'business') {
+    return { allowed: true, remaining: 'unlimited', plan };
+  }
+
+  const used = getDailyCompressionUsage(req);
+  const remaining = Math.max(0, FREE_DAILY_COMPRESSIONS - used);
+
+  if (remaining <= 0 || used >= FREE_DAILY_COMPRESSIONS) {
+    return {
+      allowed: false,
+      remaining: 0,
+      plan: 'free',
+      code: 'COMPRESSION_LIMIT_REACHED',
+      error: "You have reached today's free limit of 5 compression jobs. Upgrade to Pro for unlimited compressions.",
+      upgrade: { available: true, plan: 'Pro' },
+    };
+  }
+
+  return {
+    allowed: true,
+    remaining: remaining - requestedCount,
+    plan: 'free',
+  };
+}
+
+/**
+ * Checks if user is permitted to create Text-to-Voice speech generation
+ */
+export function canCreateTts(
+  req: express.Request,
+  charCount: number
+): {
+  allowed: boolean;
+  remaining: number | 'unlimited';
+  plan: UserPlan;
+  code?: string;
+  error?: string;
+  upgrade?: { available: boolean; plan: string };
+} {
+  const plan = getUserPlan(req);
+  const maxChars = plan === 'pro' || plan === 'business' ? PRO_TTS_MAX_CHARACTERS : FREE_TTS_MAX_CHARACTERS;
+
+  if (charCount > maxChars) {
+    return {
+      allowed: false,
+      remaining: plan === 'free' ? getRemainingTtsQuota(req) : 'unlimited',
+      plan,
+      code: 'TEXT_TOO_LONG',
+      error: `Text length (${charCount.toLocaleString()} chars) exceeds your ${plan === 'pro' ? 'Pro' : 'Free'} plan limit of ${maxChars.toLocaleString()} characters per generation.`,
+      upgrade: plan === 'free' ? { available: true, plan: 'Pro' } : undefined,
+    };
+  }
+
+  if (plan === 'pro' || plan === 'business') {
+    return { allowed: true, remaining: 'unlimited', plan };
+  }
+
+  const used = getDailyTtsUsage(req);
+  const remaining = Math.max(0, FREE_DAILY_TTS - used);
+
+  if (remaining <= 0 || used >= FREE_DAILY_TTS) {
+    return {
+      allowed: false,
+      remaining: 0,
+      plan: 'free',
+      code: 'TTS_LIMIT_REACHED',
+      error: "You have reached today's free limit of 3 Text-to-Voice generations. Upgrade to Pro for unlimited voice generations.",
+      upgrade: { available: true, plan: 'Pro' },
+    };
+  }
+
+  return {
+    allowed: true,
+    remaining: remaining - 1,
     plan: 'free',
   };
 }
@@ -362,7 +509,7 @@ export function recordSuccessfulConversion(
 
   const userId = getClientIdentifier(req);
   const bonus = referralStore.getBonusQuotaForUser(userId);
-  const effectiveLimit = FREE_DAILY_LIMIT + bonus;
+  const effectiveLimit = FREE_DAILY_CONVERSIONS + bonus;
   const today = getTodayDateString();
   let record = usageStore.get(userId);
 
@@ -371,6 +518,9 @@ export function recordSuccessfulConversion(
       userId,
       date: today,
       count: 0,
+      conversionsCount: 0,
+      compressionsCount: 0,
+      ttsCount: 0,
       processedJobIds: [],
       updatedAt: new Date().toISOString(),
     };
@@ -378,13 +528,18 @@ export function recordSuccessfulConversion(
 
   if (jobId && record.processedJobIds.includes(jobId)) {
     // Already counted for this job, do not double-increment
+    const cur = record.conversionsCount ?? record.count;
     return {
-      count: record.count,
-      remaining: Math.max(0, effectiveLimit - record.count),
+      count: cur,
+      remaining: Math.max(0, effectiveLimit - cur),
     };
   }
 
-  record.count = Math.min(effectiveLimit, record.count + count);
+  const currentCount = record.conversionsCount ?? record.count;
+  const newCount = Math.min(effectiveLimit, currentCount + count);
+  record.conversionsCount = newCount;
+  record.count = newCount;
+
   if (jobId) {
     record.processedJobIds.push(jobId);
   }
@@ -396,8 +551,106 @@ export function recordSuccessfulConversion(
   referralStore.qualifyReferralAction(userId);
 
   return {
-    count: record.count,
-    remaining: Math.max(0, effectiveLimit - record.count),
+    count: record.conversionsCount,
+    remaining: Math.max(0, effectiveLimit - record.conversionsCount),
+  };
+}
+
+/**
+ * Records an accepted compression job against the user's daily quota
+ */
+export function recordSuccessfulCompression(
+  req: express.Request,
+  jobId: string,
+  count: number = 1
+): { count: number; remaining: number | 'unlimited' } {
+  const plan = getUserPlan(req);
+  if (plan === 'pro' || plan === 'business') {
+    return { count: 0, remaining: 'unlimited' };
+  }
+
+  const userId = getClientIdentifier(req);
+  const today = getTodayDateString();
+  let record = usageStore.get(userId);
+
+  if (!record || record.date !== today) {
+    record = {
+      userId,
+      date: today,
+      count: 0,
+      conversionsCount: 0,
+      compressionsCount: 0,
+      ttsCount: 0,
+      processedJobIds: [],
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (jobId && record.processedJobIds.includes(jobId)) {
+    const cur = record.compressionsCount ?? 0;
+    return { count: cur, remaining: Math.max(0, FREE_DAILY_COMPRESSIONS - cur) };
+  }
+
+  const cur = record.compressionsCount ?? 0;
+  record.compressionsCount = Math.min(FREE_DAILY_COMPRESSIONS, cur + count);
+  if (jobId) {
+    record.processedJobIds.push(jobId);
+  }
+  record.updatedAt = new Date().toISOString();
+  usageStore.set(userId, record);
+
+  return {
+    count: record.compressionsCount,
+    remaining: Math.max(0, FREE_DAILY_COMPRESSIONS - record.compressionsCount),
+  };
+}
+
+/**
+ * Records an accepted TTS generation job against the user's daily quota
+ */
+export function recordSuccessfulTts(
+  req: express.Request,
+  jobId: string,
+  count: number = 1
+): { count: number; remaining: number | 'unlimited' } {
+  const plan = getUserPlan(req);
+  if (plan === 'pro' || plan === 'business') {
+    return { count: 0, remaining: 'unlimited' };
+  }
+
+  const userId = getClientIdentifier(req);
+  const today = getTodayDateString();
+  let record = usageStore.get(userId);
+
+  if (!record || record.date !== today) {
+    record = {
+      userId,
+      date: today,
+      count: 0,
+      conversionsCount: 0,
+      compressionsCount: 0,
+      ttsCount: 0,
+      processedJobIds: [],
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  if (jobId && record.processedJobIds.includes(jobId)) {
+    const cur = record.ttsCount ?? 0;
+    return { count: cur, remaining: Math.max(0, FREE_DAILY_TTS - cur) };
+  }
+
+  const cur = record.ttsCount ?? 0;
+  record.ttsCount = Math.min(FREE_DAILY_TTS, cur + count);
+  if (jobId) {
+    record.processedJobIds.push(jobId);
+  }
+  record.updatedAt = new Date().toISOString();
+  usageStore.set(userId, record);
+
+  return {
+    count: record.ttsCount,
+    remaining: Math.max(0, FREE_DAILY_TTS - record.ttsCount),
   };
 }
 
@@ -414,6 +667,15 @@ export function refundConversionOnFailure(req: express.Request, jobId: string) {
 
   if (record && record.date === today && record.processedJobIds.includes(jobId)) {
     record.count = Math.max(0, record.count - 1);
+    if (record.conversionsCount !== undefined) {
+      record.conversionsCount = Math.max(0, record.conversionsCount - 1);
+    }
+    if (record.compressionsCount !== undefined) {
+      record.compressionsCount = Math.max(0, record.compressionsCount - 1);
+    }
+    if (record.ttsCount !== undefined) {
+      record.ttsCount = Math.max(0, record.ttsCount - 1);
+    }
     record.processedJobIds = record.processedJobIds.filter((id) => id !== jobId);
     record.updatedAt = new Date().toISOString();
     usageStore.set(userId, record);

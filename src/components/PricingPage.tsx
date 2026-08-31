@@ -174,15 +174,19 @@ export const PricingPage: React.FC<PricingPageProps> = ({
               </li>
               <li className="flex items-start gap-2.5">
                 <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                <span>Standard formats: PNG, JPG, WEBP, PDF, SVG, DXF</span>
+                <span>
+                  <strong>5 compressions / day</strong> (PDF, JPG, PNG)
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong>3 Text-to-Voice / day</strong> (up to 5,000 chars)
+                </span>
               </li>
               <li className="flex items-start gap-2.5">
                 <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>Multi-page PDF extraction up to {freeLimits.pdfPages} pages</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                <span>Standard queue processing</span>
               </li>
               <li className="flex items-start gap-2.5">
                 <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
@@ -247,7 +251,13 @@ export const PricingPage: React.FC<PricingPageProps> = ({
               <li className="flex items-start gap-2.5">
                 <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Unlimited daily conversions</strong>
+                  <strong>Unlimited daily conversions & compressions</strong>
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Text to Voice:</strong> 50,000 characters & unlimited generations
                 </span>
               </li>
               <li className="flex items-start gap-2.5">
@@ -392,6 +402,18 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                 <td className="p-4 text-center text-[#64748B] dark:text-[#94A3B8]">{freeLimits.daily}</td>
                 <td className="p-4 text-center font-bold text-emerald-600 dark:text-emerald-400">Unlimited</td>
                 <td className="p-4 text-center font-bold text-violet-600 dark:text-violet-400">Unlimited</td>
+              </tr>
+              <tr>
+                <td className="p-4 font-semibold">Daily File Compression</td>
+                <td className="p-4 text-center text-[#64748B] dark:text-[#94A3B8]">5 compressions / day</td>
+                <td className="p-4 text-center font-bold text-emerald-600 dark:text-emerald-400">Unlimited</td>
+                <td className="p-4 text-center font-bold text-violet-600 dark:text-violet-400">Unlimited</td>
+              </tr>
+              <tr>
+                <td className="p-4 font-semibold">Text to Voice AI Generation</td>
+                <td className="p-4 text-center text-[#64748B] dark:text-[#94A3B8]">3 / day (5,000 chars)</td>
+                <td className="p-4 text-center font-bold text-emerald-600 dark:text-emerald-400">Unlimited (50,000 chars)</td>
+                <td className="p-4 text-center font-bold text-violet-600 dark:text-violet-400">Unlimited (50,000 chars)</td>
               </tr>
               <tr>
                 <td className="p-4 font-semibold">Supported Format Engines</td>

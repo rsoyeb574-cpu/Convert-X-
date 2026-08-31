@@ -112,6 +112,24 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
     { slug: string; from: string; to: string; count: number; name: string }[]
   >([]);
 
+  const [detailedUsage, setDetailedUsage] = useState<{
+    conversions?: { used: number; limit: number | string; remaining: number | string };
+    compressions?: { used: number; limit: number | string; remaining: number | string };
+    tts?: { used: number; limit: number | string; remaining: number | string; maxCharacters: number };
+    plan?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/usage')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.usage) {
+          setDetailedUsage(data.usage);
+        }
+      })
+      .catch(() => {});
+  }, [usedToday]);
+
   // Queue sorting state
   type QueueSortField = 'createdAt' | 'fileName' | 'fileSize' | 'status';
   type HistorySortField = 'date' | 'fileName' | 'size' | 'status';
@@ -545,53 +563,142 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         </div>
 
         {/* Quota & Usage Overview Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {/* Today's Usage Card */}
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs">
-            <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
-              Today's Usage
-            </span>
-            <div className="text-2xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
-              {isPro ? `${usedToday} conversions` : `${usedToday} / ${dailyLimit}`}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* Conversions Usage Card */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
+                Conversions
+              </span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-[#2563EB] dark:text-blue-300">
+                {isPro ? 'Unlimited' : '5 / day'}
+              </span>
+            </div>
+            <div className="text-xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
+              {isPro
+                ? `${detailedUsage?.conversions?.used ?? usedToday} used`
+                : `${detailedUsage?.conversions?.used ?? usedToday} / ${detailedUsage?.conversions?.limit ?? dailyLimit}`}
             </div>
             <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
               <div
                 className={`h-1.5 rounded-full transition-all duration-300 ${
                   isPro
                     ? 'bg-emerald-500 w-full'
-                    : usedToday >= dailyLimit
+                    : (detailedUsage?.conversions?.used ?? usedToday) >= Number(detailedUsage?.conversions?.limit ?? dailyLimit)
                     ? 'bg-rose-500'
                     : 'bg-[#2563EB]'
                 }`}
-                style={{ width: isPro ? '100%' : `${Math.min(100, (usedToday / dailyLimit) * 100)}%` }}
+                style={{
+                  width: isPro
+                    ? '100%'
+                    : `${Math.min(
+                        100,
+                        ((detailedUsage?.conversions?.used ?? usedToday) /
+                          Number(detailedUsage?.conversions?.limit ?? (dailyLimit || 1))) *
+                          100
+                      )}%`,
+                }}
               />
             </div>
-          </div>
-
-          {/* Remaining Conversions Card */}
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs">
-            <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
-              Remaining
-            </span>
-            <div className="text-2xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
-              {isPro ? 'Unlimited' : `${remainingConversions} conversions`}
-            </div>
-            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
-              {isPro ? 'Priority queue active' : 'Resets daily at 00:00 UTC'}
+            <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8]">
+              {isPro ? 'Unlimited conversions active' : `${detailedUsage?.conversions?.remaining ?? remainingConversions} remaining today`}
             </p>
           </div>
 
-          {/* Security & Retention Card */}
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs sm:col-span-2 md:col-span-1">
-            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" /> Retention Policy
-            </span>
-            <div className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
-              Zero-Retention Storage
+          {/* Compression Usage Card */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
+                Compression
+              </span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
+                {isPro ? 'Unlimited' : '5 / day'}
+              </span>
             </div>
-            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] leading-tight">
-              Files are automatically purged from server memory after 30 minutes.
+            <div className="text-xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
+              {isPro
+                ? `${detailedUsage?.compressions?.used ?? 0} jobs`
+                : `${detailedUsage?.compressions?.used ?? 0} / ${detailedUsage?.compressions?.limit ?? 5}`}
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  isPro
+                    ? 'bg-emerald-500 w-full'
+                    : (detailedUsage?.compressions?.used ?? 0) >= 5
+                    ? 'bg-rose-500'
+                    : 'bg-violet-600'
+                }`}
+                style={{
+                  width: isPro
+                    ? '100%'
+                    : `${Math.min(100, ((detailedUsage?.compressions?.used ?? 0) / 5) * 100)}%`,
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8]">
+              {isPro ? 'Unlimited compression active' : `${detailedUsage?.compressions?.remaining ?? 5} remaining today`}
             </p>
+          </div>
+
+          {/* Text-to-Voice Usage Card */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] space-y-1.5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider block">
+                Text to Voice
+              </span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
+                {isPro ? 'Unlimited' : '3 / day'}
+              </span>
+            </div>
+            <div className="text-xl font-black text-[#0F172A] dark:text-[#F8FAFC]">
+              {isPro
+                ? `${detailedUsage?.tts?.used ?? 0} voices`
+                : `${detailedUsage?.tts?.used ?? 0} / ${detailedUsage?.tts?.limit ?? 3}`}
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  isPro
+                    ? 'bg-emerald-500 w-full'
+                    : (detailedUsage?.tts?.used ?? 0) >= 3
+                    ? 'bg-rose-500'
+                    : 'bg-emerald-600'
+                }`}
+                style={{
+                  width: isPro ? '100%' : `${Math.min(100, ((detailedUsage?.tts?.used ?? 0) / 3) * 100)}%`,
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8]">
+              {isPro ? 'Up to 50k chars/gen' : `${detailedUsage?.tts?.remaining ?? 3} remaining (5k chars/gen)`}
+            </p>
+          </div>
+
+          {/* Plan & Upgrade CTA Card */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-900/50 space-y-2 shadow-xs flex flex-col justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-[#2563EB] dark:text-blue-400 uppercase tracking-wider block flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" /> {isPro ? 'Pro Member' : 'Upgrade Plan'}
+              </span>
+              <div className="text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5">
+                {isPro ? 'Zero File Retaining' : 'Unlock Pro at ₹99/mo'}
+              </div>
+              <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8] leading-tight mt-0.5">
+                {isPro
+                  ? 'Priority queue, 100MB files, and no ads.'
+                  : 'Get unlimited conversions, 100MB uploads, batch mode & no ads.'}
+              </p>
+            </div>
+            {onNavigate && !isPro && (
+              <button
+                onClick={() => onNavigate('pricing')}
+                className="w-full mt-1 py-1.5 px-2.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <span>Upgrade to Pro</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
 
