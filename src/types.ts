@@ -165,6 +165,14 @@ export interface TtsVoiceOption {
   languages: string[];
   provider: 'gemini' | 'standard';
   description: string;
+  tags?: string[];
+  useCases?: string[];
+  tone?: string;
+  pitch?: string;
+  pace?: string;
+  samplePhrase?: string;
+  accent?: string;
+  previewUrl?: string;
 }
 
 export interface TtsLanguageOption {
@@ -245,6 +253,7 @@ export interface UserPreferences {
   preserveMetadata: boolean;
   theme: 'dark' | 'light' | 'system';
   favoriteTools: string[]; // e.g. ['png-to-jpg', 'pdf-to-png']
+  favoriteVoices?: string[]; // e.g. ['Kore', 'Puck']
   recentTools: { slug: string; name: string; timestamp: string }[];
 }
 

@@ -14,6 +14,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   preserveMetadata: true,
   theme: 'system',
   favoriteTools: ['png-to-jpg', 'pdf-to-png', 'image-to-pdf'],
+  favoriteVoices: ['Kore'],
   recentTools: [
     { slug: 'png-to-pdf', name: 'PNG to PDF', timestamp: new Date().toISOString() },
     { slug: 'jpg-to-png', name: 'JPG to PNG', timestamp: new Date().toISOString() },
@@ -48,6 +49,7 @@ export function getStoredUserPreferences(): UserPreferences {
       autoConvertOnUpload: autoConvertVal,
       autoDeleteAfterDownload: autoDeleteVal,
       favoriteTools: Array.isArray(parsed.favoriteTools) ? parsed.favoriteTools : DEFAULT_PREFERENCES.favoriteTools,
+      favoriteVoices: Array.isArray(parsed.favoriteVoices) ? parsed.favoriteVoices : (DEFAULT_PREFERENCES.favoriteVoices || []),
       recentTools: Array.isArray(parsed.recentTools) ? parsed.recentTools : DEFAULT_PREFERENCES.recentTools,
     };
   } catch {
@@ -75,6 +77,12 @@ export function saveUserPreferences(prefs: Partial<UserPreferences>): UserPrefer
 
     const updated: UserPreferences = { ...current, ...normalizedPrefs };
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(updated));
+
+    // Notify listeners across components
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('convertx_preferences_updated', { detail: updated }));
+    }
+
     return updated;
   } catch {
     return DEFAULT_PREFERENCES;
@@ -93,6 +101,37 @@ export function toggleFavoriteTool(slug: string): string[] {
 
   saveUserPreferences({ favoriteTools: updatedFavorites });
   return updatedFavorites;
+}
+
+/**
+ * Toggles a voice ID in user's favorite voices list
+ */
+export function toggleFavoriteVoice(voiceId: string): string[] {
+  const current = getStoredUserPreferences();
+  const currentFavs = Array.isArray(current.favoriteVoices) ? current.favoriteVoices : [];
+  const exists = currentFavs.includes(voiceId);
+  const updatedFavorites = exists
+    ? currentFavs.filter((id) => id !== voiceId)
+    : [...currentFavs, voiceId];
+
+  saveUserPreferences({ favoriteVoices: updatedFavorites });
+  return updatedFavorites;
+}
+
+/**
+ * Returns whether a voice ID is in user's favorites
+ */
+export function isVoiceFavorite(voiceId: string): boolean {
+  const current = getStoredUserPreferences();
+  return Array.isArray(current.favoriteVoices) && current.favoriteVoices.includes(voiceId);
+}
+
+/**
+ * Returns current list of favorite voice IDs
+ */
+export function getFavoriteVoiceIds(): string[] {
+  const current = getStoredUserPreferences();
+  return Array.isArray(current.favoriteVoices) ? current.favoriteVoices : [];
 }
 
 /**

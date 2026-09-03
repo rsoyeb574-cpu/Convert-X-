@@ -36,7 +36,11 @@ import {
   Plus,
   Hourglass,
   HelpCircle,
+  Tag,
+  Filter,
+  Columns,
 } from 'lucide-react';
+import { VoiceGallery } from './VoiceGallery.js';
 
 interface TextToVoicePageProps {
   onNavigate: (view: PageView, seoSlug?: string) => void;
@@ -45,6 +49,111 @@ interface TextToVoicePageProps {
   darkMode?: boolean;
   onFileDownloaded?: () => void;
 }
+
+const FALLBACK_VOICES: TtsVoiceOption[] = [
+  {
+    id: 'Kore',
+    name: 'Kore',
+    gender: 'female',
+    style: 'Natural & Warm',
+    languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
+    provider: 'gemini',
+    description: 'Balanced, clear, natural female voice with warm resonance and articulate delivery.',
+    tags: ['Professional', 'Narration', 'Warm', 'E-Learning', 'Commercial'],
+    useCases: ['E-Learning Modules', 'Corporate Videos', 'Audio Guides', 'Customer Explainers'],
+    tone: 'Warm, balanced, and reassuring',
+    pitch: 'Balanced / Mid-tone',
+    pace: 'Moderate & clear',
+    samplePhrase: 'Welcome to Convert-X. My balanced, warm resonance brings clarity, natural trust, and steady flow to your scripts.',
+    accent: 'Neutral Global',
+    previewUrl: '/api/tts/voice-sample/Kore',
+  },
+  {
+    id: 'Puck',
+    name: 'Puck',
+    gender: 'male',
+    style: 'Energetic & Expressive',
+    languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
+    provider: 'gemini',
+    description: 'Dynamic, clear male voice with infectious enthusiasm, ideal for tutorials and product promos.',
+    tags: ['Casual', 'Energetic', 'Commercial', 'Podcast', 'Social Media'],
+    useCases: ['Podcasts & Streams', 'YouTube & Social Videos', 'Product Demos', 'Engaging Commercials'],
+    tone: 'Upbeat, animated, and friendly',
+    pitch: 'Dynamic / Mid-High',
+    pace: 'Brisk & engaging',
+    samplePhrase: 'Hey there! My dynamic tempo and expressive tone keep your listeners engaged from the very first word.',
+    accent: 'Modern Global English',
+    previewUrl: '/api/tts/voice-sample/Puck',
+  },
+  {
+    id: 'Charon',
+    name: 'Charon',
+    gender: 'male',
+    style: 'Professional & Deep',
+    languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
+    provider: 'gemini',
+    description: 'Deep, authoritative male voice for business executive summaries and documentary narrations.',
+    tags: ['Professional', 'Narration', 'Documentary', 'Authoritative', 'Corporate'],
+    useCases: ['Historical Documentaries', 'Executive Briefings', 'Audiobook Chapters', 'Technical Keynotes'],
+    tone: 'Deep, resonant, and commanding',
+    pitch: 'Deep Bass',
+    pace: 'Deliberate & steady',
+    samplePhrase: 'Greetings. With deep resonance and measured articulation, I deliver authority and gravitas to formal presentations.',
+    accent: 'Deep Studio Baritone',
+    previewUrl: '/api/tts/voice-sample/Charon',
+  },
+  {
+    id: 'Fenrir',
+    name: 'Fenrir',
+    gender: 'male',
+    style: 'Authoritative & Studio',
+    languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
+    provider: 'gemini',
+    description: 'Crisp, confident male voice with studio-grade articulation across technical topics.',
+    tags: ['Professional', 'Narration', 'Studio', 'Broadcast', 'Education'],
+    useCases: ['Technical Tutorials', 'Interactive Tech Guides', 'Broadcast Announcements', 'Instructional Courses'],
+    tone: 'Crisp, articulate, and confident',
+    pitch: 'Mid-Low Studio Baritone',
+    pace: 'Precise & articulate',
+    samplePhrase: 'Hello! Crisp diction and studio clarity guarantee that complex concepts are communicated with razor-sharp precision.',
+    accent: 'Clear Studio Articulation',
+    previewUrl: '/api/tts/voice-sample/Fenrir',
+  },
+  {
+    id: 'Zephyr',
+    name: 'Zephyr',
+    gender: 'female',
+    style: 'Calm & Soft',
+    languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
+    provider: 'gemini',
+    description: 'Gentle, soothing female voice crafted for audiobooks, guided meditations, and mindful stories.',
+    tags: ['Calm', 'Casual', 'Narration', 'Audiobooks', 'Meditation'],
+    useCases: ['Meditation & Mindfulness', 'Bedtime Stories', 'Poetry & Literature', 'Gentle Product Walkthroughs'],
+    tone: 'Soothing, gentle, and velvety',
+    pitch: 'Soft & Gentle',
+    pace: 'Relaxed & peaceful',
+    samplePhrase: 'Take a slow, deep breath. My soothing, gentle tone creates a peaceful space for relaxing narratives.',
+    accent: 'Gentle Neutral',
+    previewUrl: '/api/tts/voice-sample/Zephyr',
+  },
+  {
+    id: 'Aoede',
+    name: 'Aoede',
+    gender: 'female',
+    style: 'Breezy & Conversational',
+    languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
+    provider: 'gemini',
+    description: 'Bright, conversational female voice that feels friendly, relatable, and effortlessly natural.',
+    tags: ['Casual', 'Conversational', 'Podcast', 'Commercial', 'Narration'],
+    useCases: ['Conversational Podcasts', 'Lifestyle & Travel', 'Brand Stories', 'Friendly Onboarding'],
+    tone: 'Bright, friendly, and relatable',
+    pitch: 'Bright & Melodic',
+    pace: 'Natural & conversational',
+    samplePhrase: 'Hi everyone! My bright, conversational style makes any message feel authentic, warm, and instantly approachable.',
+    accent: 'Friendly Conversational',
+    previewUrl: '/api/tts/voice-sample/Aoede',
+  },
+];
 
 const SAMPLE_PRESETS: { label: string; text: string; language: string; voice: string }[] = [
   {
@@ -91,9 +200,13 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
 }) => {
   // Config & Metadata State
   const [languages, setLanguages] = useState<TtsLanguageOption[]>([]);
-  const [allVoices, setAllVoices] = useState<TtsVoiceOption[]>([]);
+  const [allVoices, setAllVoices] = useState<TtsVoiceOption[]>(FALLBACK_VOICES);
   const [maxCharacters, setMaxCharacters] = useState<number>(10000);
   const [isConfigLoaded, setIsConfigLoaded] = useState<boolean>(false);
+
+  // Main Tab Navigation: 'studio' (Text to Speech workspace) vs 'gallery' (Voice Gallery & Comparison)
+  const [activeMainTab, setActiveMainTab] = useState<'studio' | 'gallery'>('studio');
+  const [showGalleryModal, setShowGalleryModal] = useState<boolean>(false);
 
   // Editor Form State
   const [text, setText] = useState<string>(
@@ -725,8 +838,55 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
         </p>
       </div>
 
-      {/* Main Workspace Layout (Two Columns on Desktop) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {/* 2. Top Navigation Tabs: Voice Studio vs Voice Gallery */}
+      <div className="flex items-center justify-center pt-1">
+        <div className="inline-flex p-1.5 rounded-2xl bg-slate-100 dark:bg-[#0B1120] border border-slate-200 dark:border-slate-800 shadow-xs">
+          <button
+            type="button"
+            id="tab-voice-studio-btn"
+            onClick={() => setActiveMainTab('studio')}
+            className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeMainTab === 'studio'
+                ? 'bg-white dark:bg-[#111827] text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200/80 dark:ring-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Sliders className="w-4 h-4" />
+            <span>Voice Studio</span>
+          </button>
+
+          <button
+            type="button"
+            id="tab-voice-gallery-btn"
+            onClick={() => setActiveMainTab('gallery')}
+            className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeMainTab === 'gallery'
+                ? 'bg-white dark:bg-[#111827] text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-slate-200/80 dark:ring-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Radio className="w-4 h-4 text-indigo-500" />
+            <span>Voice Gallery & Profiles</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-extrabold">
+              {allVoices.length} Voices
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Render Voice Gallery Tab if selected */}
+      {activeMainTab === 'gallery' ? (
+        <VoiceGallery
+          voices={allVoices}
+          selectedVoiceId={selectedVoice}
+          onSelectVoice={(vId) => setSelectedVoice(vId)}
+          onSwitchToStudio={() => setActiveMainTab('studio')}
+          showToast={showToast}
+        />
+      ) : (
+        <>
+          {/* Main Workspace Layout (Two Columns on Desktop) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Large Text Editor (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
           <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
@@ -1231,13 +1391,46 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
 
             {/* 2. Voice Model Selection */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
-                <Mic className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Select Voice:</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
+                  <Mic className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Select Voice:</span>
+                </label>
+                <button
+                  type="button"
+                  id="open-voice-gallery-sidebar-btn"
+                  onClick={() => setActiveMainTab('gallery')}
+                  className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Radio className="w-3 h-3 text-indigo-500" />
+                  <span>Browse Gallery ({allVoices.length})</span>
+                </button>
+              </div>
+
+              {/* Quick Gallery Banner Card */}
+              <button
+                type="button"
+                id="voice-gallery-quick-banner-btn"
+                onClick={() => setActiveMainTab('gallery')}
+                className="w-full p-2.5 rounded-xl bg-gradient-to-r from-indigo-50/80 to-violet-50/80 dark:from-indigo-950/40 dark:to-violet-950/40 border border-indigo-200/80 dark:border-indigo-800/60 hover:border-indigo-400 text-indigo-800 dark:text-indigo-200 text-left transition-all flex items-center justify-between group cursor-pointer shadow-xs"
+              >
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Voice Gallery & Comparison</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Filter by 'Professional', 'Casual', 'Narration' tags
+                  </p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-indigo-500 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+
               <div className="grid grid-cols-1 gap-2">
                 {availableVoicesForLanguage.map((v) => {
                   const isSelected = selectedVoice === v.id;
+                  const primaryTag = v.tags && v.tags.length > 0 ? v.tags[0] : null;
+
                   return (
                     <button
                       key={v.id}
@@ -1249,7 +1442,7 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
                           : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 hover:border-indigo-400 text-slate-700 dark:text-slate-300'
                       }`}
                     >
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-black">{v.name}</span>
                           <span
@@ -1261,6 +1454,11 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
                           >
                             {v.gender}
                           </span>
+                          {primaryTag && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                              #{primaryTag}
+                            </span>
+                          )}
                         </div>
                         <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] line-clamp-1">{v.style}</p>
                       </div>
@@ -1586,6 +1784,8 @@ export const TextToVoicePage: React.FC<TextToVoicePageProps> = ({
           </div>
         </div>
       )}
+    </>
+  )}
 
       {/* 3. Features & Privacy Trust Guarantee */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">

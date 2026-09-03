@@ -1237,6 +1237,23 @@ ${allRoutes
     }
   });
 
+  // Dedicated Voice Sample Audio Endpoint (Free instant preview without deducting user quota)
+  app.get('/api/tts/voice-sample/:voiceId', async (req, res) => {
+    try {
+      const { voiceId } = req.params;
+      const sample = await ttsEngine.getVoiceSampleAudio(voiceId);
+      res.setHeader('Content-Type', sample.mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(sample.buffer);
+    } catch (err: any) {
+      console.error('Voice sample error:', err);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve voice sample.',
+      });
+    }
+  });
+
   app.post('/api/tts/generate', convertRateLimiter, async (req, res) => {
     try {
       const {

@@ -12,6 +12,14 @@ export interface VoiceOption {
   languages: string[];
   provider: 'gemini' | 'standard';
   description: string;
+  tags?: string[];
+  useCases?: string[];
+  tone?: string;
+  pitch?: string;
+  pace?: string;
+  samplePhrase?: string;
+  accent?: string;
+  previewUrl?: string;
 }
 
 export interface LanguageOption {
@@ -84,7 +92,15 @@ export const AVAILABLE_VOICES: VoiceOption[] = [
     style: 'Natural & Warm',
     languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
     provider: 'gemini',
-    description: 'Balanced, clear, natural female voice with warm resonance.',
+    description: 'Balanced, clear, natural female voice with warm resonance and articulate delivery.',
+    tags: ['Professional', 'Narration', 'Warm', 'E-Learning', 'Commercial'],
+    useCases: ['E-Learning Modules', 'Corporate Videos', 'Audio Guides', 'Customer Explainers'],
+    tone: 'Warm, balanced, and reassuring',
+    pitch: 'Balanced / Mid-tone',
+    pace: 'Moderate & clear',
+    samplePhrase: 'Welcome to Convert-X. My balanced, warm resonance brings clarity, natural trust, and steady flow to your scripts.',
+    accent: 'Neutral Global',
+    previewUrl: '/api/tts/voice-sample/Kore',
   },
   {
     id: 'Puck',
@@ -93,7 +109,15 @@ export const AVAILABLE_VOICES: VoiceOption[] = [
     style: 'Energetic & Expressive',
     languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
     provider: 'gemini',
-    description: 'Dynamic, clear male voice ideal for presentations and tutorials.',
+    description: 'Dynamic, clear male voice with infectious enthusiasm, ideal for tutorials and product promos.',
+    tags: ['Casual', 'Energetic', 'Commercial', 'Podcast', 'Social Media'],
+    useCases: ['Podcasts & Streams', 'YouTube & Social Videos', 'Product Demos', 'Engaging Commercials'],
+    tone: 'Upbeat, animated, and friendly',
+    pitch: 'Dynamic / Mid-High',
+    pace: 'Brisk & engaging',
+    samplePhrase: 'Hey there! My dynamic tempo and expressive tone keep your listeners engaged from the very first word.',
+    accent: 'Modern Global English',
+    previewUrl: '/api/tts/voice-sample/Puck',
   },
   {
     id: 'Charon',
@@ -102,7 +126,15 @@ export const AVAILABLE_VOICES: VoiceOption[] = [
     style: 'Professional & Deep',
     languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
     provider: 'gemini',
-    description: 'Deep, authoritative male voice for business and documentary narrations.',
+    description: 'Deep, authoritative male voice for business executive summaries and documentary narrations.',
+    tags: ['Professional', 'Narration', 'Documentary', 'Authoritative', 'Corporate'],
+    useCases: ['Historical Documentaries', 'Executive Briefings', 'Audiobook Chapters', 'Technical Keynotes'],
+    tone: 'Deep, resonant, and commanding',
+    pitch: 'Deep Bass',
+    pace: 'Deliberate & steady',
+    samplePhrase: 'Greetings. With deep resonance and measured articulation, I deliver authority and gravitas to formal presentations.',
+    accent: 'Deep Studio Baritone',
+    previewUrl: '/api/tts/voice-sample/Charon',
   },
   {
     id: 'Fenrir',
@@ -111,7 +143,15 @@ export const AVAILABLE_VOICES: VoiceOption[] = [
     style: 'Authoritative & Studio',
     languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
     provider: 'gemini',
-    description: 'Crisp, confident male voice with excellent articulation across languages.',
+    description: 'Crisp, confident male voice with studio-grade articulation across technical topics.',
+    tags: ['Professional', 'Narration', 'Studio', 'Broadcast', 'Education'],
+    useCases: ['Technical Tutorials', 'Interactive Tech Guides', 'Broadcast Announcements', 'Instructional Courses'],
+    tone: 'Crisp, articulate, and confident',
+    pitch: 'Mid-Low Studio Baritone',
+    pace: 'Precise & articulate',
+    samplePhrase: 'Hello! Crisp diction and studio clarity guarantee that complex concepts are communicated with razor-sharp precision.',
+    accent: 'Clear Studio Articulation',
+    previewUrl: '/api/tts/voice-sample/Fenrir',
   },
   {
     id: 'Zephyr',
@@ -120,7 +160,32 @@ export const AVAILABLE_VOICES: VoiceOption[] = [
     style: 'Calm & Soft',
     languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
     provider: 'gemini',
-    description: 'Gentle, soothing female voice for audiobooks, guidance, and meditation.',
+    description: 'Gentle, soothing female voice crafted for audiobooks, guided meditations, and mindful stories.',
+    tags: ['Calm', 'Casual', 'Narration', 'Audiobooks', 'Meditation'],
+    useCases: ['Meditation & Mindfulness', 'Bedtime Stories', 'Poetry & Literature', 'Gentle Product Walkthroughs'],
+    tone: 'Soothing, gentle, and velvety',
+    pitch: 'Soft & Gentle',
+    pace: 'Relaxed & peaceful',
+    samplePhrase: 'Take a slow, deep breath. My soothing, gentle tone creates a peaceful space for relaxing narratives.',
+    accent: 'Gentle Neutral',
+    previewUrl: '/api/tts/voice-sample/Zephyr',
+  },
+  {
+    id: 'Aoede',
+    name: 'Aoede',
+    gender: 'female',
+    style: 'Breezy & Conversational',
+    languages: ['en', 'hi', 'ur', 'es', 'fr', 'de', 'ja', 'zh', 'ar', 'pt', 'ru', 'bn', 'it', 'id', 'tr', 'nl', 'ko', 'pl', 'mr', 'ta', 'te', 'gu'],
+    provider: 'gemini',
+    description: 'Bright, conversational female voice that feels friendly, relatable, and effortlessly natural.',
+    tags: ['Casual', 'Conversational', 'Podcast', 'Commercial', 'Narration'],
+    useCases: ['Conversational Podcasts', 'Lifestyle & Travel', 'Brand Stories', 'Friendly Onboarding'],
+    tone: 'Bright, friendly, and relatable',
+    pitch: 'Bright & Melodic',
+    pace: 'Natural & conversational',
+    samplePhrase: 'Hi everyone! My bright, conversational style makes any message feel authentic, warm, and instantly approachable.',
+    accent: 'Friendly Conversational',
+    previewUrl: '/api/tts/voice-sample/Aoede',
   },
 ];
 
@@ -456,6 +521,8 @@ export class TtsEngine {
     }
   }
 
+  private voiceSampleCache: Map<string, { buffer: Buffer; mimeType: string }> = new Map();
+
   public getAvailableVoices(languageCode?: string): VoiceOption[] {
     if (!languageCode || languageCode === 'all') {
       return AVAILABLE_VOICES;
@@ -465,6 +532,39 @@ export class TtsEngine {
 
   public getSupportedLanguages(): LanguageOption[] {
     return SUPPORTED_LANGUAGES;
+  }
+
+  /**
+   * Retrieves or generates a short audio preview sample for a voice
+   */
+  public async getVoiceSampleAudio(voiceId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    const normId = (voiceId || '').toLowerCase();
+    if (this.voiceSampleCache.has(normId)) {
+      return this.voiceSampleCache.get(normId)!;
+    }
+
+    const voice = AVAILABLE_VOICES.find((v) => v.id.toLowerCase() === normId) || AVAILABLE_VOICES[0];
+    const sampleText = voice.samplePhrase || `Hello! I am ${voice.name}. Experience high-fidelity natural speech with Convert-X.`;
+
+    let audioBuffer: Buffer | null = null;
+    try {
+      audioBuffer = await this.synthesizeChunkWithGemini(sampleText, voice.id, 'English');
+    } catch {
+      audioBuffer = null;
+    }
+
+    if (!audioBuffer) {
+      const rawPcm = this.synthesizeFallbackWaveform(sampleText, voice.id, 1.0, 1.0);
+      const wav = Buffer.concat([createWavHeader(rawPcm.length, 24000, 1, 16), rawPcm]);
+      const res = { buffer: wav, mimeType: 'audio/wav' };
+      this.voiceSampleCache.set(normId, res);
+      return res;
+    }
+
+    const fullWav = Buffer.concat([createWavHeader(audioBuffer.length, 24000, 1, 16), audioBuffer]);
+    const res = { buffer: fullWav, mimeType: 'audio/wav' };
+    this.voiceSampleCache.set(normId, res);
+    return res;
   }
 
   /**
@@ -517,8 +617,16 @@ export class TtsEngine {
    */
   private synthesizeFallbackWaveform(text: string, voiceName: string, speed: number = 1.0, pitchMod: number = 1.0): Buffer {
     const sampleRate = 24000;
-    const isFemale = voiceName === 'Kore' || voiceName === 'Zephyr';
-    const baseFreq = (isFemale ? 220 : 130) * pitchMod;
+    const isFemale = voiceName === 'Kore' || voiceName === 'Zephyr' || voiceName === 'Aoede';
+    const voiceFreqs: Record<string, number> = {
+      Kore: 220,
+      Aoede: 245,
+      Zephyr: 195,
+      Puck: 145,
+      Fenrir: 125,
+      Charon: 105,
+    };
+    const baseFreq = (voiceFreqs[voiceName] || (isFemale ? 220 : 130)) * pitchMod;
 
     // Approximate duration: ~12 characters per second of speech
     const durationSec = Math.max(0.6, (text.length / 14) / speed);
