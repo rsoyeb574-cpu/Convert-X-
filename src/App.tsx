@@ -143,6 +143,16 @@ export default function App() {
     }
   });
   const [isConvertingAll, setIsConvertingAll] = useState<boolean>(false);
+  const [isBatchPaused, setIsBatchPaused] = useState<boolean>(false);
+  const isBatchPausedRef = useRef<boolean>(false);
+  const isBatchCancelledRef = useRef<boolean>(false);
+  const resumeListenersRef = useRef<Array<() => void>>([]);
+  const queueRef = useRef<ConversionQueueItem[]>(queue);
+
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+
   const [isCombiningPdf, setIsCombiningPdf] = useState<boolean>(false);
   const [isReconverting, setIsReconverting] = useState<boolean>(false);
 
@@ -736,33 +746,116 @@ export default function App() {
     }
   };
 
-  // Convert All Pending / Failed Items in the Queue with Strict Semaphore Concurrency (Max 2 simultaneous jobs)
-  const handleConvertAllPending = async (customQueueItems?: ConversionQueueItem[]) => {
-    if (isConvertingAll) return;
+  // Pause batch conversion worker loop to conserve CPU, memory, and network resources
+  const handlePauseBatch = () => {
+    if (!isConvertingAll || isBatchPausedRef.current) return;
+    isBatchPausedRef.current = true;
+    setIsBatchPaused(true);
+    showToast(
+      'Batch Queue Paused',
+      'Worker loop temporarily halted. Active jobs are completing, and remaining jobs are paused to conserve resources.',
+      'info'
+    );
+  };
 
-    // Snapshot of eligible items (pending or failed, not currently converting)
-    const itemsPool = customQueueItems || queue;
-    const pendingItems = itemsPool.filter(
+  // Resume paused batch conversion worker loop
+  const handleResumeBatch = () => {
+    if (!isBatchPausedRef.current) return;
+    isBatchPausedRef.current = false;
+    setIsBatchPaused(false);
+    const listeners = [...resumeListenersRef.current];
+    resumeListenersRef.current = [];
+    listeners.forEach((fn) => fn());
+    showToast(
+      'Batch Queue Resumed',
+      'Worker loop resumed. Processing remaining pending files.',
+      'success'
+    );
+  };
+
+  // Stop batch conversion worker loop
+  const handleStopBatch = () => {
+    isBatchCancelledRef.current = true;
+    isBatchPausedRef.current = false;
+    setIsBatchPaused(false);
+    const listeners = [...resumeListenersRef.current];
+    resumeListenersRef.current = [];
+    listeners.forEach((fn) => fn());
+    setIsConvertingAll(false);
+    showToast(
+      'Batch Queue Stopped',
+      'Batch conversion stopped. Remaining files remain pending in your queue.',
+      'info'
+    );
+  };
+
+  // Convert All Pending / Failed Items in the Queue with Strict Semaphore Concurrency (Max 2 simultaneous jobs)
+  // Supports dynamic queue pulling, pause, resume, and cancellation for fine-grained resource control
+  const handleConvertAllPending = async (customQueueItems?: ConversionQueueItem[]) => {
+    if (isConvertingAll) {
+      if (isBatchPausedRef.current) {
+        handleResumeBatch();
+      }
+      return;
+    }
+
+    // Filter eligible items from custom selection or live queue
+    const customIds = customQueueItems ? new Set(customQueueItems.map((i) => i.id)) : null;
+    const initialEligible = (customQueueItems || queueRef.current).filter(
       (item) =>
         (item.status === 'pending' || item.status === 'failed') &&
         (item.uploadedFile || item.file) &&
         item.status !== 'converting'
     );
 
-    if (pendingItems.length === 0) return;
+    if (initialEligible.length === 0) return;
 
     setIsConvertingAll(true);
+    isBatchPausedRef.current = false;
+    setIsBatchPaused(false);
+    isBatchCancelledRef.current = false;
+    resumeListenersRef.current = [];
+
+    const inProgressIds = new Set<string>();
+
+    const waitForResume = () => {
+      if (!isBatchPausedRef.current) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        resumeListenersRef.current.push(resolve);
+      });
+    };
 
     try {
       const MAX_CONCURRENT = 2;
-      let currentIndex = 0;
 
-      // Worker function pulling the next job index atomically
+      // Worker function: pulls next eligible job dynamically from queueRef, obeying pause and cancellation
       const runWorker = async () => {
-        while (currentIndex < pendingItems.length) {
-          const itemIndex = currentIndex++;
-          const targetItem = pendingItems[itemIndex];
-          if (!targetItem) break;
+        while (true) {
+          // If batch was cancelled/stopped, exit worker loop
+          if (isBatchCancelledRef.current) break;
+
+          // Check if paused before claiming next job (conserves CPU/network)
+          if (isBatchPausedRef.current) {
+            await waitForResume();
+            if (isBatchCancelledRef.current) break;
+          }
+
+          // Atomically find next available item from live queue
+          const targetItem = queueRef.current.find(
+            (item) =>
+              (!customIds || customIds.has(item.id)) &&
+              (item.status === 'pending' || item.status === 'failed') &&
+              (item.uploadedFile || item.file) &&
+              item.status !== 'converting' &&
+              !inProgressIds.has(item.id)
+          );
+
+          if (!targetItem) {
+            // No more eligible items available
+            break;
+          }
+
+          inProgressIds.add(targetItem.id);
 
           try {
             if (targetItem.uploadedFile) {
@@ -773,12 +866,20 @@ export default function App() {
           } catch (itemErr) {
             // Independent error isolation ensures one failure never aborts other jobs (avoiding all-fail)
             console.error(`Error processing queue item ${targetItem.fileName}:`, itemErr);
+          } finally {
+            inProgressIds.delete(targetItem.id);
+          }
+
+          // Check pause state again after job finishes before pulling next item
+          if (isBatchPausedRef.current) {
+            await waitForResume();
+            if (isBatchCancelledRef.current) break;
           }
         }
       };
 
       // Launch up to MAX_CONCURRENT workers
-      const activeWorkerCount = Math.min(MAX_CONCURRENT, pendingItems.length);
+      const activeWorkerCount = Math.min(MAX_CONCURRENT, initialEligible.length);
       const workers = Array.from({ length: activeWorkerCount }, () => runWorker());
 
       // Wait for all workers to settle independently
@@ -787,6 +888,10 @@ export default function App() {
       console.error('Unexpected error in batch conversion scheduler:', err);
     } finally {
       setIsConvertingAll(false);
+      isBatchPausedRef.current = false;
+      setIsBatchPaused(false);
+      isBatchCancelledRef.current = false;
+      resumeListenersRef.current = [];
     }
   };
 
@@ -804,6 +909,9 @@ export default function App() {
 
   // Clear all items in queue
   const handleClearQueue = () => {
+    if (isConvertingAll) {
+      handleStopBatch();
+    }
     setQueue([]);
     try {
       localStorage.removeItem('convertx_queue');
@@ -1439,6 +1547,7 @@ export default function App() {
     currentView,
     queue,
     isConvertingAll,
+    isBatchPaused,
   });
 
   useEffect(() => {
@@ -1449,12 +1558,13 @@ export default function App() {
       currentView,
       queue,
       isConvertingAll,
+      isBatchPaused,
     };
   });
 
   // Global Keyboard Shortcuts Listener:
   // - Ctrl+O / Cmd+O: Trigger file picker dialog
-  // - Ctrl+Enter / Cmd+Enter: Initiate active conversion in workspace
+  // - Ctrl+Enter / Cmd+Enter: Initiate active conversion in workspace (or resume paused batch)
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.ctrlKey || e.metaKey;
@@ -1475,12 +1585,20 @@ export default function App() {
           currentView: view,
           queue: q,
           isConvertingAll: batching,
+          isBatchPaused: paused,
         } = shortcutStateRef.current;
 
         // In Single File Converter Workspace: initiate single conversion if file is ready
         if (file && file.status === 'supported' && !loading && stg === 'idle') {
           e.preventDefault();
           handleStartConversion();
+          return;
+        }
+
+        // In Dashboard / Batch Workspace: if paused, resume batch
+        if ((view === 'dashboard' || view === 'converter') && batching && paused) {
+          e.preventDefault();
+          handleResumeBatch();
           return;
         }
 
@@ -1939,6 +2057,10 @@ export default function App() {
               }}
               onAddFiles={handleFilesSelected}
               onConvertAllPending={handleConvertAllPending}
+              onPauseBatch={handlePauseBatch}
+              onResumeBatch={handleResumeBatch}
+              onStopBatch={handleStopBatch}
+              isBatchPaused={isBatchPaused}
               onConvertQueueItem={handleConvertQueueItem}
               onRetryQueueItem={handleRetryQueueItem}
               onUpdateQueueItemFormat={handleUpdateQueueItemFormat}
