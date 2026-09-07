@@ -161,6 +161,7 @@ export type PageView =
 export interface PdfToTextPage {
   pageNumber: number;
   text: string;
+  html?: string;
   width: number;
   height: number;
   isScanned: boolean;

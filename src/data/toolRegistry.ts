@@ -25,6 +25,8 @@ export interface ToolItem {
   popular?: boolean;
   badge?: string;
   keywords: string[];
+  addedDate?: string;
+  popularityScore?: number;
 }
 
 export const CATEGORY_DEFINITIONS: { id: ToolCategory; label: string; description: string }[] = [
@@ -587,9 +589,125 @@ export const getPopularTools = (): ToolItem[] => {
   return TOOL_REGISTRY.filter((t) => t.popular);
 };
 
-export const getToolsByCategory = (category: ToolCategory): ToolItem[] => {
-  if (category === 'all') return TOOL_REGISTRY;
-  return TOOL_REGISTRY.filter((t) => t.category === category);
+export type SortOption = 'popularity' | 'az' | 'recent';
+
+const TOOL_ADDED_DATES: Record<string, string> = {
+  'pdf-to-text': '2026-09-06',
+  'text-to-pdf': '2026-09-05',
+  'text-to-voice': '2026-09-04',
+  'epub-to-pdf': '2026-09-02',
+  'pdf-merge-split': '2026-09-01',
+  'video-converter': '2026-08-30',
+  'audio-converter': '2026-08-29',
+  'dxf-to-pdf': '2026-08-28',
+  'psd-to-png': '2026-08-26',
+  'psd-to-pdf': '2026-08-26',
+  'ai-to-pdf': '2026-08-25',
+  'ai-to-png': '2026-08-25',
+  'obj-stl-3d': '2026-08-22',
+  'batch-converter': '2026-08-21',
+  'pdf-compressor': '2026-08-20',
+  'docx-converter': '2026-08-19',
+  'xlsx-converter': '2026-08-19',
+  'pptx-converter': '2026-08-19',
+  'svg-to-png': '2026-08-18',
+  'svg-to-jpg': '2026-08-18',
+  'image-compressor': '2026-08-16',
+  'file-compressor': '2026-08-15',
+  'webp-to-png': '2026-08-15',
+  'webp-to-jpg': '2026-08-15',
+  'png-to-webp': '2026-08-14',
+  'jpg-to-webp': '2026-08-14',
+  'svg-to-pdf': '2026-08-12',
+  'universal-export': '2026-08-11',
+  'converter-workspace': '2026-08-10',
+  'image-to-pdf': '2026-08-08',
+  'pdf-to-jpg': '2026-08-06',
+  'pdf-to-png': '2026-08-05',
+  'png-to-pdf': '2026-08-04',
+  'jpg-to-pdf': '2026-08-03',
+  'jpg-to-png': '2026-08-02',
+  'png-to-jpg': '2026-08-01',
+};
+
+export const getToolAddedDate = (tool: ToolItem): string => {
+  return tool.addedDate || TOOL_ADDED_DATES[tool.id] || '2026-08-01';
+};
+
+const TOOL_POPULARITY_RANK: Record<string, number> = {
+  'pdf-to-text': 99,
+  'text-to-pdf': 98,
+  'file-compressor': 97,
+  'text-to-voice': 96,
+  'converter-workspace': 95,
+  'pdf-compressor': 94,
+  'png-to-jpg': 93,
+  'jpg-to-png': 92,
+  'image-to-pdf': 91,
+  'pdf-to-png': 90,
+  'pdf-to-jpg': 89,
+  'dxf-to-pdf': 88,
+  'psd-to-png': 87,
+  'ai-to-pdf': 86,
+  'batch-converter': 85,
+  'docx-converter': 84,
+  'svg-to-png': 83,
+  'image-compressor': 82,
+  'obj-stl-3d': 81,
+  'xlsx-converter': 80,
+  'png-to-pdf': 79,
+  'jpg-to-pdf': 78,
+  'svg-to-pdf': 77,
+  'pptx-converter': 76,
+  'png-to-webp': 75,
+  'jpg-to-webp': 74,
+  'webp-to-png': 73,
+  'webp-to-jpg': 72,
+  'universal-export': 71,
+  'psd-to-pdf': 70,
+  'ai-to-png': 69,
+  'svg-to-jpg': 68,
+  'video-converter': 60,
+  'pdf-merge-split': 59,
+  'audio-converter': 58,
+  'epub-to-pdf': 57,
+};
+
+export const getToolPopularityScore = (tool: ToolItem): number => {
+  if (tool.popularityScore !== undefined) return tool.popularityScore;
+  if (TOOL_POPULARITY_RANK[tool.id] !== undefined) return TOOL_POPULARITY_RANK[tool.id];
+  let score = 50;
+  if (tool.popular) score += 30;
+  if (tool.status === 'available') score += 15;
+  if (tool.badge) score += 5;
+  return score;
+};
+
+export const sortTools = (tools: ToolItem[], sortBy: SortOption): ToolItem[] => {
+  const list = [...tools];
+  if (sortBy === 'az') {
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  if (sortBy === 'recent') {
+    return list.sort((a, b) => {
+      const dateA = new Date(getToolAddedDate(a)).getTime();
+      const dateB = new Date(getToolAddedDate(b)).getTime();
+      if (dateB !== dateA) return dateB - dateA;
+      return a.name.localeCompare(b.name);
+    });
+  }
+  // Default: 'popularity'
+  return list.sort((a, b) => {
+    // 1. Available tools first
+    if (a.status !== b.status) {
+      return a.status === 'available' ? -1 : 1;
+    }
+    // 2. Popularity score
+    const scoreA = getToolPopularityScore(a);
+    const scoreB = getToolPopularityScore(b);
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return a.name.localeCompare(b.name);
+  });
 };
 
 export const getAllFormatsList = (): string[] => {

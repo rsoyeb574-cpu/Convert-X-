@@ -7,6 +7,7 @@ import path from 'path';
 export interface EditedPageInput {
   pageNumber: number;
   text: string;
+  html?: string;
   width?: number;
   height?: number;
 }
@@ -345,7 +346,26 @@ export async function generateEditedPdf(options: SaveEditedPdfOptions): Promise<
     let { page, startY } = addDocPage();
     let currentY = startY;
 
-    const rawLines = (pageData.text || '').split(/\r\n|\r|\n/);
+    let rawLines: string[] = [];
+    if (pageData.html && pageData.html.includes('<')) {
+      const formattedHtml = pageData.html
+        .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n# $1\n')
+        .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n## $1\n')
+        .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n### $1\n')
+        .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '\n• $1\n')
+        .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '\n$1\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+      rawLines = formattedHtml.split(/\r\n|\r|\n/);
+    } else {
+      rawLines = (pageData.text || '').split(/\r\n|\r|\n/);
+    }
 
     for (const rawLine of rawLines) {
       const trimmed = rawLine.trim();

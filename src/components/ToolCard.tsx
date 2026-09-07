@@ -105,19 +105,83 @@ export const ToolCard: React.FC<ToolCardProps> = ({ tool, onOpenTool, isRecent }
 
   const styles = getCategoryStyles();
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpenTool(tool);
+      return;
+    }
+
+    // Grid arrow key navigation across visible catalog cards
+    const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tool-catalog-card'));
+    const currentIndex = allCards.indexOf(e.currentTarget);
+    if (currentIndex === -1 || allCards.length <= 1) return;
+
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const next = allCards[(currentIndex + 1) % allCards.length];
+      next?.focus();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const prev = allCards[(currentIndex - 1 + allCards.length) % allCards.length];
+      prev?.focus();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const currentRect = e.currentTarget.getBoundingClientRect();
+      const belowCard = allCards.find(
+        (c, i) => i > currentIndex && c.getBoundingClientRect().top > currentRect.bottom - 10
+      );
+      if (belowCard) {
+        belowCard.focus();
+      } else {
+        const next = allCards[Math.min(currentIndex + 1, allCards.length - 1)];
+        next?.focus();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const currentRect = e.currentTarget.getBoundingClientRect();
+      const aboveCard = [...allCards]
+        .reverse()
+        .find((c, i) => {
+          const originalIndex = allCards.length - 1 - i;
+          return originalIndex < currentIndex && c.getBoundingClientRect().bottom < currentRect.top + 10;
+        });
+      if (aboveCard) {
+        aboveCard.focus();
+      } else {
+        // Shift focus back to active category tab or search input when at top row
+        const activeTab = document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+        if (activeTab) {
+          activeTab.focus();
+        } else {
+          document.getElementById('tools-search-input')?.focus();
+        }
+      }
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      allCards[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      allCards[allCards.length - 1]?.focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      document.getElementById('tools-search-input')?.focus();
+    }
+  };
+
   return (
     <div
       id={`tool-card-${tool.id}`}
       onClick={handleClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpenTool(tool);
-        }
-      }}
-      className={`group relative flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2 dark:focus:ring-offset-[#0B0F17] ${
+      onKeyDown={handleKeyDown}
+      aria-label={`${tool.name}. ${tool.description}. Status: ${
+        isAvailable ? 'Available' : 'Coming Soon'
+      }. Input formats: ${tool.inputFormats.join(', ') || 'Any'}. Output formats: ${
+        tool.outputFormats.join(', ') || 'Any'
+      }.`}
+      className={`tool-catalog-card group relative flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#2563EB] focus:ring-offset-2 focus-visible:ring-offset-2 dark:focus:ring-offset-[#0B0F17] dark:focus-visible:ring-offset-[#0B0F17] ${
         styles.accent
       } ${!isAvailable ? 'opacity-85 hover:opacity-100 bg-slate-50/50 dark:bg-slate-900/40' : ''}`}
     >
@@ -168,35 +232,71 @@ export const ToolCard: React.FC<ToolCardProps> = ({ tool, onOpenTool, isRecent }
           </p>
         </div>
 
-        {/* Supported Formats Pill Row */}
+        {/* Visual Format Compatibility Badge */}
         {(tool.inputFormats.length > 0 || tool.outputFormats.length > 0) && (
-          <div className="flex items-center gap-1.5 text-[11px] text-[#64748B] dark:text-[#94A3B8] flex-wrap pt-0.5">
-            <span className="font-semibold text-slate-400 dark:text-slate-500 text-[10px] uppercase">
-              Formats:
-            </span>
-            <div className="flex items-center gap-1 flex-wrap">
-              {tool.inputFormats.slice(0, 2).map((fmt) => (
-                <span
-                  key={`in-${fmt}`}
-                  className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-bold text-[#0F172A] dark:text-[#F8FAFC]"
-                >
-                  {fmt}
+          <div
+            id={`format-badge-${tool.id}`}
+            title={`Format Compatibility: Input [${tool.inputFormats.join(', ')}] → Output [${tool.outputFormats.join(', ')}]`}
+            className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#0d131f] border border-slate-200/80 dark:border-slate-800/90 flex flex-col gap-1.5 transition-colors group-hover:border-blue-200 dark:group-hover:border-blue-900/60 shadow-2xs"
+          >
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              <span className="flex items-center gap-1 text-[10px] font-extrabold text-slate-500 dark:text-slate-400">
+                Compatibility
+              </span>
+              <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 lowercase">
+                {tool.inputFormats.length} in · {tool.outputFormats.length} out
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-1.5 overflow-hidden">
+              {/* Input Formats Badge */}
+              <div className="flex items-center gap-1 flex-wrap min-w-0">
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  IN
                 </span>
-              ))}
-              <span className="text-slate-300 dark:text-slate-600 text-xs">→</span>
-              {tool.outputFormats.slice(0, 2).map((fmt) => (
-                <span
-                  key={`out-${fmt}`}
-                  className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/60 text-[10px] font-mono font-bold"
-                >
-                  {fmt}
+                {tool.inputFormats.slice(0, 2).map((fmt) => (
+                  <span
+                    key={`in-${fmt}`}
+                    className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 text-[10px] font-mono font-bold text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs truncate"
+                  >
+                    {fmt}
+                  </span>
+                ))}
+                {tool.inputFormats.length > 2 && (
+                  <span
+                    title={tool.inputFormats.slice(2).join(', ')}
+                    className="px-1 py-0.5 text-[9px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 rounded border border-slate-200/60 dark:border-slate-700/60 cursor-help"
+                  >
+                    +{tool.inputFormats.length - 2}
+                  </span>
+                )}
+              </div>
+
+              {/* Direction Indicator */}
+              <ArrowRight className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 shrink-0 mx-0.5" />
+
+              {/* Output Formats Badge */}
+              <div className="flex items-center gap-1 flex-wrap justify-end min-w-0">
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                  OUT
                 </span>
-              ))}
-              {tool.outputFormats.length > 2 && (
-                <span className="text-[10px] text-slate-400 font-medium">
-                  +{tool.outputFormats.length - 2}
-                </span>
-              )}
+                {tool.outputFormats.slice(0, 2).map((fmt) => (
+                  <span
+                    key={`out-${fmt}`}
+                    className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80 text-[10px] font-mono font-bold shadow-2xs truncate"
+                  >
+                    {fmt}
+                  </span>
+                ))}
+                {tool.outputFormats.length > 2 && (
+                  <span
+                    title={tool.outputFormats.slice(2).join(', ')}
+                    className="px-1 py-0.5 text-[9px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-950/50 rounded border border-blue-200/60 dark:border-blue-900/60 cursor-help"
+                  >
+                    +{tool.outputFormats.length - 2}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         )}

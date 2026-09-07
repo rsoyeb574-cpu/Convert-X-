@@ -1192,6 +1192,7 @@ ${allRoutes
           pages: extraction.pages.map((p) => ({
             pageNumber: p.pageNumber,
             text: p.text,
+            html: p.html,
             width: p.width,
             height: p.height,
             isScanned: p.isScanned,
@@ -1256,8 +1257,22 @@ ${allRoutes
       // Option 2: DOCX format
       if (format === 'docx') {
         const docxBuffer = await generateDocxFromPages(
-          pages.map((p: any) => ({ pageNumber: p.pageNumber, text: p.text || '' })),
-          { title: baseName, filename: `${baseName}.docx` }
+          pages.map((p: any) => ({
+            pageNumber: p.pageNumber,
+            text: p.text || '',
+            html: p.html || '',
+            width: p.width,
+            height: p.height,
+          })),
+          {
+            title: baseName,
+            filename: `${baseName}.docx`,
+            pageSize: options.pageSize || 'a4',
+            orientation: options.orientation || 'portrait',
+            margin: options.margin || 'normal',
+            fontFamily: options.fontFamily === 'serif' ? 'Times New Roman' : options.fontFamily === 'mono' ? 'Courier New' : 'Calibri',
+            fontSize: options.fontSize || 11,
+          }
         );
 
         const outName = `${baseName}.docx`;
@@ -1283,6 +1298,7 @@ ${allRoutes
         pages: pages.map((p: any) => ({
           pageNumber: p.pageNumber,
           text: p.text || '',
+          html: p.html || '',
           width: p.width,
           height: p.height,
         })),

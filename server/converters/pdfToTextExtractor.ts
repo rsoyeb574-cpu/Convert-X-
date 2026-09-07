@@ -13,6 +13,7 @@ const execFileAsync = promisify(execFile);
 export interface ExtractedPageData {
   pageNumber: number;
   text: string;
+  html?: string;
   width: number;
   height: number;
   isScanned: boolean;
@@ -347,9 +348,33 @@ export async function extractTextFromPdfBuffer(params: {
 
     const wordCount = extractedText.trim() ? extractedText.trim().split(/\s+/).length : 0;
 
+    // Generate semantic HTML for the page to feed directly into the rich text editor
+    const htmlLines: string[] = [];
+    const textLines = extractedText.split(/\r\n|\r|\n/);
+    for (const tl of textLines) {
+      const trimmed = tl.trim();
+      if (!trimmed) continue;
+      const safeText = trimmed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      if (trimmed.startsWith('# ')) {
+        htmlLines.push(`<h1>${safeText.slice(2)}</h1>`);
+      } else if (trimmed.startsWith('## ')) {
+        htmlLines.push(`<h2>${safeText.slice(3)}</h2>`);
+      } else if (trimmed.startsWith('### ')) {
+        htmlLines.push(`<h3>${safeText.slice(4)}</h3>`);
+      } else if (/^[-*•]\s+/.test(trimmed)) {
+        htmlLines.push(`<ul><li>${safeText.replace(/^[-*•]\s+/, '')}</li></ul>`);
+      } else if (/^\d+\.\s+/.test(trimmed)) {
+        htmlLines.push(`<ol><li>${safeText.replace(/^\d+\.\s+/, '')}</li></ol>`);
+      } else {
+        htmlLines.push(`<p>${safeText}</p>`);
+      }
+    }
+    const pageHtml = htmlLines.length > 0 ? htmlLines.join('\n') : '<p><br></p>';
+
     pagesData.push({
       pageNumber: pageNum,
       text: extractedText,
+      html: pageHtml,
       width,
       height,
       isScanned,

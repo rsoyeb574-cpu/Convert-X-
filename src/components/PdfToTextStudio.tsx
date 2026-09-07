@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { PageView, PdfToTextPage, PdfToTextExtraction, PdfToTextSaveSettings } from '../types.js';
 import {
   FileText,
@@ -16,32 +16,31 @@ import {
   Sparkles,
   Sliders,
   Type,
-  FileCheck,
   ChevronLeft,
   ChevronRight,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
   X,
   Upload,
   ArrowRight,
   ShieldCheck,
-  Printer,
-  Settings2,
-  LayoutGrid,
   CheckCircle2,
   Search,
-  Replace,
   RotateCcw,
   RotateCw,
   Scissors,
-  Clipboard,
   Plus,
   AlertCircle,
-  HelpCircle,
   FileCode,
   FileDown,
   Info,
+  Bold,
+  Italic,
+  Underline,
+  List,
+  ListOrdered,
+  Heading1,
+  Heading2,
+  Maximize2,
+  BookOpen,
 } from 'lucide-react';
 
 interface PdfToTextStudioProps {
@@ -51,7 +50,61 @@ interface PdfToTextStudioProps {
   darkMode?: boolean;
 }
 
-const LOCAL_STORAGE_DRAFT_KEY = 'convertx_pdf_to_text_draft_v1';
+const LOCAL_STORAGE_DRAFT_KEY = 'convertx_pdf_to_text_draft_v2';
+
+/**
+ * Convert plain text (markdown or lines) into semantic HTML
+ */
+function textToHtml(text: string): string {
+  if (!text || !text.trim()) return '<p><br></p>';
+  const lines = text.split(/\r\n|\r|\n/);
+  const htmlParts: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      htmlParts.push('<p><br></p>');
+      continue;
+    }
+    const safe = trimmed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (trimmed.startsWith('# ')) {
+      htmlParts.push(`<h1>${safe.slice(2)}</h1>`);
+    } else if (trimmed.startsWith('## ')) {
+      htmlParts.push(`<h2>${safe.slice(3)}</h2>`);
+    } else if (trimmed.startsWith('### ')) {
+      htmlParts.push(`<h3>${safe.slice(4)}</h3>`);
+    } else if (/^[-*•]\s+/.test(trimmed)) {
+      htmlParts.push(`<ul><li>${safe.replace(/^[-*•]\s+/, '')}</li></ul>`);
+    } else if (/^\d+\.\s+/.test(trimmed)) {
+      htmlParts.push(`<ol><li>${safe.replace(/^\d+\.\s+/, '')}</li></ol>`);
+    } else {
+      htmlParts.push(`<p>${safe}</p>`);
+    }
+  }
+  return htmlParts.join('\n');
+}
+
+/**
+ * Convert semantic HTML back to clean plain text
+ */
+function htmlToPlainText(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n# $1\n')
+    .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n## $1\n')
+    .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n### $1\n')
+    .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '\n• $1\n')
+    .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '\n$1\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
   onNavigate,
@@ -67,6 +120,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
   const [uploadProgressText, setUploadProgressText] = useState<string>('');
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'thumbnails' | 'editor' | 'settings'>('editor');
+  const [viewMode, setViewMode] = useState<'single' | 'all'>('all');
 
   // OCR state
   const [ocrStatus, setOcrStatus] = useState<{ configured: boolean; providerName: string; description: string }>({
@@ -108,7 +162,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
   const [storedDraftData, setStoredDraftData] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
+  const pageEditableRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Fetch OCR status on mount
   useEffect(() => {
@@ -118,184 +172,247 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
         if (data.success) {
           setOcrStatus({
             configured: data.configured,
-            providerName: data.providerName,
-            description: data.description,
+            providerName: data.providerName || 'Local Engine',
+            description: data.description || '',
           });
         }
       })
-      .catch((e) => console.warn('Could not fetch OCR status:', e));
-  }, []);
+      .catch((err) => {
+        console.warn('Could not check OCR status:', err);
+      });
 
-  // Check for saved local draft
-  useEffect(() => {
+    // Check for saved local draft
     try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_DRAFT_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.pages && parsed.pages.length > 0) {
+      const raw = localStorage.getItem(LOCAL_STORAGE_DRAFT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.pages) && parsed.pages.length > 0) {
           setHasStoredDraft(true);
           setStoredDraftData(parsed);
         }
       }
-    } catch (e) {
-      console.warn('Could not read saved draft:', e);
+    } catch {
+      // Ignore local storage parse errors
     }
   }, []);
 
-  // Autosave to localStorage (debounced)
-  useEffect(() => {
-    if (!pages || pages.length === 0) return;
-
-    const timer = setTimeout(() => {
-      try {
-        const draft = {
-          fileName: extraction?.fileName || 'document.pdf',
-          jobId: extraction?.jobId || '',
-          pages: pages.map((p) => ({
-            pageNumber: p.pageNumber,
-            text: p.text,
-            width: p.width,
-            height: p.height,
-          })),
-          settings,
-          timestamp: new Date().toISOString(),
-        };
-        localStorage.setItem(LOCAL_STORAGE_DRAFT_KEY, JSON.stringify(draft));
-      } catch (e) {
-        // Safe fail
+  // Synchronize DOM innerHTML when active pages change via external action (undo/redo/replace/page add)
+  const syncDomFromPages = useCallback((pagesList: PdfToTextPage[]) => {
+    pagesList.forEach((p, idx) => {
+      const el = pageEditableRefs.current[idx];
+      if (el) {
+        const expectedHtml = p.html || textToHtml(p.text);
+        if (el.innerHTML !== expectedHtml) {
+          el.innerHTML = expectedHtml;
+        }
       }
-    }, 1500);
+    });
+  }, []);
 
-    return () => clearTimeout(timer);
-  }, [pages, settings, extraction]);
-
-  // Push state to undo/redo history
+  // History push
   const pushHistory = (newPages: PdfToTextPage[]) => {
-    const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push({ pages: JSON.parse(JSON.stringify(newPages)) });
-    if (newHistory.length > 30) newHistory.shift();
-    setHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
+    const clone = JSON.parse(JSON.stringify(newPages));
+    const newHist = history.slice(0, historyIndex + 1);
+    newHist.push({ pages: clone });
+    if (newHist.length > 30) newHist.shift();
+    setHistory(newHist);
+    setHistoryIndex(newHist.length - 1);
+
+    // Save draft
+    try {
+      localStorage.setItem(
+        LOCAL_STORAGE_DRAFT_KEY,
+        JSON.stringify({
+          pages: clone,
+          extraction,
+          settings,
+          updatedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // Ignore storage quota
+    }
   };
 
   const handleUndo = () => {
     if (historyIndex > 0) {
-      const targetIndex = historyIndex - 1;
-      setHistoryIndex(targetIndex);
-      setPages(JSON.parse(JSON.stringify(history[targetIndex].pages)));
-      showToast('Undo', 'Reverted last change', 'info');
+      const newIdx = historyIndex - 1;
+      const target = history[newIdx].pages;
+      setHistoryIndex(newIdx);
+      setPages(target);
+      syncDomFromPages(target);
+      showToast('Undo', 'Reverted previous edit.', 'info');
     }
   };
 
   const handleRedo = () => {
     if (historyIndex < history.length - 1) {
-      const targetIndex = historyIndex + 1;
-      setHistoryIndex(targetIndex);
-      setPages(JSON.parse(JSON.stringify(history[targetIndex].pages)));
-      showToast('Redo', 'Reapplied change', 'info');
+      const newIdx = historyIndex + 1;
+      const target = history[newIdx].pages;
+      setHistoryIndex(newIdx);
+      setPages(target);
+      syncDomFromPages(target);
+      showToast('Redo', 'Reapplied edit.', 'info');
     }
   };
 
-  // Update page text
-  const handlePageTextChange = (pageIndex: number, newText: string) => {
-    const updated = [...pages];
-    const words = newText.trim() ? newText.trim().split(/\s+/).length : 0;
-    updated[pageIndex] = {
-      ...updated[pageIndex],
-      text: newText,
-      characterCount: newText.length,
-      wordCount: words,
-    };
-    setPages(updated);
+  // Content change handler from contentEditable
+  const handleContentInput = (pageIndex: number) => {
+    const el = pageEditableRefs.current[pageIndex];
+    if (!el) return;
+
+    const currentHtml = el.innerHTML;
+    const plainText = htmlToPlainText(currentHtml);
+    const words = plainText ? plainText.split(/\s+/).filter(Boolean).length : 0;
+
+    setPages((prev) => {
+      const updated = [...prev];
+      if (updated[pageIndex]) {
+        updated[pageIndex] = {
+          ...updated[pageIndex],
+          html: currentHtml,
+          text: plainText,
+          characterCount: plainText.length,
+          wordCount: words,
+        };
+      }
+      return updated;
+    });
+  };
+
+  // Content blur pushes to history stack
+  const handleContentBlur = (pageIndex: number) => {
+    const el = pageEditableRefs.current[pageIndex];
+    if (!el) return;
+    const currentHtml = el.innerHTML;
+    const plainText = htmlToPlainText(currentHtml);
+    const words = plainText ? plainText.split(/\s+/).filter(Boolean).length : 0;
+
+    const updated = pages.map((p, i) =>
+      i === pageIndex
+        ? {
+            ...p,
+            html: currentHtml,
+            text: plainText,
+            characterCount: plainText.length,
+            wordCount: words,
+          }
+        : p
+    );
     pushHistory(updated);
   };
 
-  // Restore draft
-  const handleRestoreDraft = () => {
-    if (!storedDraftData) return;
-    setPages(storedDraftData.pages);
-    if (storedDraftData.settings) {
-      setSettings(storedDraftData.settings);
+  // Rich-text formatting command execution
+  const executeFormatting = (command: string, value: string | undefined = undefined) => {
+    const el = pageEditableRefs.current[activePageIndex];
+    if (el) {
+      el.focus();
     }
-    setExtraction({
-      jobId: storedDraftData.jobId || 'draft_restored',
-      fileName: storedDraftData.fileName || 'restored_draft.pdf',
-      originalFileSize: 0,
-      totalPages: storedDraftData.pages.length,
-      pdfType: 'text',
-      detectedPageSize: 'A4 (Restored)',
-      ocrConfigured: ocrStatus.configured,
-      ocrEngineName: ocrStatus.providerName,
-      pages: storedDraftData.pages,
-    });
-    setHasStoredDraft(false);
-    showToast('Draft Restored', 'Your previous editing session has been recovered.', 'success');
+    document.execCommand(command, false, value);
+    handleContentInput(activePageIndex);
   };
 
-  const handleDismissDraft = () => {
-    setHasStoredDraft(false);
-    try {
-      localStorage.removeItem(LOCAL_STORAGE_DRAFT_KEY);
-    } catch {}
+  // Key shortcuts
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, pageIndex: number) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        executeFormatting('bold');
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        executeFormatting('italic');
+      } else if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        executeFormatting('underline');
+      } else if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        setShowFindReplace((prev) => !prev);
+      }
+    }
   };
 
-  // Handle PDF file upload
+  // Clean text paste
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>, pageIndex: number) => {
+    e.preventDefault();
+    const plain = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, plain);
+    handleContentInput(pageIndex);
+  };
+
+  // PDF File Upload
   const handlePdfUpload = async (file: File) => {
-    if (!file) return;
-
-    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-      showToast('Invalid File', 'Please select a valid PDF file (.pdf).', 'error');
+    if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('Invalid File', 'Please upload a valid PDF document (.pdf).', 'error');
       return;
     }
 
-    if (file.size > 100 * 1024 * 1024) {
-      showToast('File Too Large', 'Maximum PDF size is 100MB.', 'error');
+    // Size limit check (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      showToast('File Too Large', 'Maximum supported PDF size is 50MB.', 'error');
       return;
     }
 
     setIsUploading(true);
-    setUploadProgressText('Analyzing PDF structure & page geometry...');
+    setUploadProgressText('Parsing PDF pages & extracting structured text...');
+
+    const formData = new FormData();
+    formData.append('file', file);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      setTimeout(() => {
-        setUploadProgressText('Extracting selectable text streams...');
-      }, 700);
-
-      setTimeout(() => {
-        if (ocrStatus.configured) {
-          setUploadProgressText('Analyzing pages for scanned OCR pass...');
-        } else {
-          setUploadProgressText('Reconstructing document paragraphs & layout...');
-        }
-      }, 1500);
-
-      const response = await fetch('/api/pdf-to-text/extract', {
+      const res = await fetch('/api/pdf-to-text/extract', {
         method: 'POST',
         body: formData,
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      const data = await res.json();
+      if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to extract text from PDF.');
       }
 
-      setExtraction(data);
-      setPages(data.pages);
-      setActivePageIndex(0);
+      // Ensure pages have html
+      const processedPages: PdfToTextPage[] = (data.pages || []).map((p: any) => ({
+        ...p,
+        html: p.html || textToHtml(p.text || ''),
+      }));
 
-      // Initialize history
-      setHistory([{ pages: JSON.parse(JSON.stringify(data.pages)) }]);
+      setExtraction(data);
+      setPages(processedPages);
+      setActivePageIndex(0);
+      setHistory([{ pages: JSON.parse(JSON.stringify(processedPages)) }]);
       setHistoryIndex(0);
 
+      // Save initial draft
+      try {
+        localStorage.setItem(
+          LOCAL_STORAGE_DRAFT_KEY,
+          JSON.stringify({
+            pages: processedPages,
+            extraction: data,
+            settings,
+            updatedAt: new Date().toISOString(),
+          })
+        );
+      } catch {
+        // Ignore
+      }
+
       showToast(
-        'PDF Loaded',
-        `Extracted ${data.totalPages} page${data.totalPages > 1 ? 's' : ''} (${data.pdfType.toUpperCase()} PDF).`,
+        'Text Extracted',
+        `Successfully extracted ${data.totalPages} page${data.totalPages > 1 ? 's' : ''}. Document is ready for editing!`,
         'success'
       );
+
+      // Populate DOM elements after render
+      setTimeout(() => {
+        syncDomFromPages(processedPages);
+      }, 50);
     } catch (err: any) {
       showToast('Extraction Error', err.message || 'Could not parse the PDF.', 'error');
     } finally {
@@ -304,7 +421,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
     }
   };
 
-  // Load built-in sample PDF for instant testing
+  // Load built-in sample PDF
   const handleLoadSample = async () => {
     setIsUploading(true);
     setUploadProgressText('Loading sample vector PDF...');
@@ -330,13 +447,22 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
         throw new Error(data.error || 'Failed to extract sample text.');
       }
 
+      const processedPages: PdfToTextPage[] = (data.pages || []).map((p: any) => ({
+        ...p,
+        html: p.html || textToHtml(p.text || ''),
+      }));
+
       setExtraction(data);
-      setPages(data.pages);
+      setPages(processedPages);
       setActivePageIndex(0);
-      setHistory([{ pages: JSON.parse(JSON.stringify(data.pages)) }]);
+      setHistory([{ pages: JSON.parse(JSON.stringify(processedPages)) }]);
       setHistoryIndex(0);
 
-      showToast('Sample Loaded', 'Sample PDF successfully loaded and extracted.', 'success');
+      showToast('Sample Loaded', 'Sample PDF loaded into the editor.', 'success');
+
+      setTimeout(() => {
+        syncDomFromPages(processedPages);
+      }, 50);
     } catch (err: any) {
       showToast('Sample Error', err.message || 'Could not load sample PDF.', 'error');
     } finally {
@@ -345,12 +471,36 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
     }
   };
 
+  // Restore stored draft
+  const handleRestoreDraft = () => {
+    if (!storedDraftData) return;
+    setExtraction(storedDraftData.extraction || null);
+    setPages(storedDraftData.pages || []);
+    if (storedDraftData.settings) setSettings(storedDraftData.settings);
+    setActivePageIndex(0);
+    setHistory([{ pages: JSON.parse(JSON.stringify(storedDraftData.pages || [])) }]);
+    setHistoryIndex(0);
+    setHasStoredDraft(false);
+
+    showToast('Draft Restored', 'Recovered your previous editing session.', 'success');
+
+    setTimeout(() => {
+      syncDomFromPages(storedDraftData.pages || []);
+    }, 50);
+  };
+
+  const handleDismissDraft = () => {
+    setHasStoredDraft(false);
+    localStorage.removeItem(LOCAL_STORAGE_DRAFT_KEY);
+  };
+
   // Page operations
   const handleAddPage = () => {
     const newPageNum = pages.length + 1;
     const newPage: PdfToTextPage = {
       pageNumber: newPageNum,
       text: '',
+      html: '<p><br></p>',
       width: 595,
       height: 842,
       isScanned: false,
@@ -363,6 +513,10 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
     pushHistory(updated);
     setActivePageIndex(updated.length - 1);
     showToast('Page Added', `Added Page ${newPageNum}`, 'info');
+
+    setTimeout(() => {
+      syncDomFromPages(updated);
+    }, 50);
   };
 
   const handleDeletePage = (index: number) => {
@@ -377,10 +531,27 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
     pushHistory(updated);
     setActivePageIndex(Math.min(activePageIndex, updated.length - 1));
     showToast('Page Deleted', `Removed page ${index + 1}`, 'info');
+
+    setTimeout(() => {
+      syncDomFromPages(updated);
+    }, 50);
   };
 
   const handleClearPage = (index: number) => {
-    handlePageTextChange(index, '');
+    const updated = pages.map((p, i) =>
+      i === index
+        ? {
+            ...p,
+            html: '<p><br></p>',
+            text: '',
+            characterCount: 0,
+            wordCount: 0,
+          }
+        : p
+    );
+    setPages(updated);
+    pushHistory(updated);
+    syncDomFromPages(updated);
     showToast('Page Cleared', `Cleared text for Page ${index + 1}`, 'info');
   };
 
@@ -405,30 +576,48 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
 
   const handleReplaceOne = () => {
     if (!findQuery) return;
-    const activeText = pages[activePageIndex]?.text || '';
-    const idx = activeText.toLowerCase().indexOf(findQuery.toLowerCase());
-    if (idx !== -1) {
-      const newText =
-        activeText.substring(0, idx) + replaceQuery + activeText.substring(idx + findQuery.length);
-      handlePageTextChange(activePageIndex, newText);
-      showToast('Replaced', 'Replaced 1 match in current page', 'info');
+    const activePage = pages[activePageIndex];
+    if (!activePage) return;
+
+    const regex = new RegExp(findQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    if (regex.test(activePage.text)) {
+      const newText = activePage.text.replace(regex, replaceQuery);
+      const newHtml = textToHtml(newText);
+
+      const updated = pages.map((p, i) =>
+        i === activePageIndex
+          ? {
+              ...p,
+              text: newText,
+              html: newHtml,
+              characterCount: newText.length,
+              wordCount: newText.trim() ? newText.trim().split(/\s+/).length : 0,
+            }
+          : p
+      );
+      setPages(updated);
+      pushHistory(updated);
+      syncDomFromPages(updated);
+      showToast('Replaced', 'Replaced 1 occurrence on current page.', 'info');
     } else {
-      showToast('No Match', 'No matches found on current page', 'warning');
+      showToast('No Match', 'No matches found on the active page.', 'warning');
     }
   };
 
   const handleReplaceAll = () => {
     if (!findQuery) return;
     const regex = new RegExp(findQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    let replacedTotal = 0;
+    let replacedCount = 0;
 
     const updated = pages.map((p) => {
       const matches = (p.text || '').match(regex);
-      if (matches) replacedTotal += matches.length;
+      if (matches) replacedCount += matches.length;
       const newText = (p.text || '').replace(regex, replaceQuery);
+      const newHtml = textToHtml(newText);
       return {
         ...p,
         text: newText,
+        html: newHtml,
         characterCount: newText.length,
         wordCount: newText.trim() ? newText.trim().split(/\s+/).length : 0,
       };
@@ -436,7 +625,8 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
 
     setPages(updated);
     pushHistory(updated);
-    showToast('Replace All', `Replaced ${replacedTotal} matches across all pages.`, 'success');
+    syncDomFromPages(updated);
+    showToast('Replace All', `Replaced ${replacedCount} occurrence${replacedCount === 1 ? '' : 's'} across the document.`, 'success');
   };
 
   // Copy all document text
@@ -463,6 +653,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
           pages: pages.map((p) => ({
             pageNumber: p.pageNumber,
             text: p.text,
+            html: p.html,
             width: p.width,
             height: p.height,
           })),
@@ -489,9 +680,10 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
+      const formatLabel = format === 'docx' ? 'Microsoft Word (.docx)' : format.toUpperCase();
       showToast(
         'Saved Successfully',
-        `Downloaded your document as ${format.toUpperCase()}`,
+        `Downloaded your editable document as ${formatLabel}`,
         'success'
       );
 
@@ -508,18 +700,11 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
         });
       }
     } catch (err: any) {
-      showToast('Export Error', err.message || 'PDF generation failed. Please try again.', 'error');
+      showToast('Export Error', err.message || 'File export failed. Please try again.', 'error');
     } finally {
       setIsSaving(false);
       setSaveFormat(null);
     }
-  };
-
-  // Download original unchanged PDF
-  const handleDownloadOriginal = () => {
-    if (!extraction?.jobId) return;
-    window.location.href = `/api/pdf-to-text/download-original/${extraction.jobId}`;
-    showToast('Downloading', 'Downloading original PDF...', 'info');
   };
 
   // Aggregate metrics
@@ -531,108 +716,121 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
     () => pages.reduce((sum, p) => sum + (p.characterCount || 0), 0),
     [pages]
   );
-  const estReadingMins = useMemo(
-    () => Math.max(1, Math.ceil(totalWords / 200)),
-    [totalWords]
-  );
+  const estReadingMins = Math.max(1, Math.ceil(totalWords / 200));
+
+  const hasScannedPages = pages.some((p) => p.isScanned);
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      {/* 1. TOP HEADER & NAVIGATION BAR */}
-      <header className={`border-b ${darkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-slate-200'} backdrop-blur sticky top-0 z-30 px-4 py-3.5`}>
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+      {/* --------------------------------------------------------------------- */}
+      {/* TOP APPLICATION HEADER */}
+      {/* --------------------------------------------------------------------- */}
+      <header
+        className={`border-b sticky top-0 z-30 backdrop-blur ${
+          darkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-slate-200'
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
               onClick={() => onNavigate('tools')}
-              className={`p-2 rounded-lg transition ${darkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
-              title="Back to all tools"
+              className={`p-2 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 ${
+                darkMode
+                  ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
+                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm'
+              }`}
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-4 h-4" />
+              <span>Tools Directory</span>
             </button>
+
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight">PDF to Text</h1>
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-600/10 text-blue-600 border border-blue-500/20">
-                  Extract • Edit • Save
+                <span className="font-bold text-sm sm:text-base flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  PDF to Text Document Studio
                 </span>
                 {extraction && (
-                  <span
-                    className={`px-2 py-0.5 text-xs font-medium rounded-md border ${
-                      extraction.pdfType === 'scanned'
-                        ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
-                        : extraction.pdfType === 'mixed'
-                        ? 'bg-purple-500/10 text-purple-600 border-purple-500/20'
-                        : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                    }`}
-                  >
-                    {extraction.pdfType.toUpperCase()} PDF
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                    Edit Extracted Text
                   </span>
                 )}
               </div>
-              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                Extract text from PDF, edit it and save your changes.
-              </p>
+              {extraction && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-xs sm:max-w-md">
+                  {extraction.fileName} • {extraction.totalPages} {extraction.totalPages === 1 ? 'page' : 'pages'} • {extraction.pdfType.toUpperCase()}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Header Action Buttons */}
-          <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
+          {/* TOP RIGHT ACTION BAR */}
+          <div className="flex items-center gap-2">
             {extraction ? (
               <>
                 <button
-                  onClick={handleCopyAll}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
+                  onClick={() => handleSaveDocument('docx')}
+                  disabled={isSaving}
+                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
+                  title="Export valid, fully editable Microsoft Word .docx"
+                >
+                  {isSaving && saveFormat === 'docx' ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileCode className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Download</span> DOCX
+                </button>
+
+                <button
+                  onClick={() => handleSaveDocument('pdf')}
+                  disabled={isSaving}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-50 ${
                     darkMode
                       ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
                       : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm'
                   }`}
-                  title="Copy full document text"
+                  title="Download edited document as PDF"
                 >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Copy All</span>
+                  {isSaving && saveFormat === 'pdf' ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden md:inline">Download</span> PDF
                 </button>
 
                 <button
-                  onClick={handleDownloadOriginal}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
+                  onClick={() => handleSaveDocument('txt')}
+                  disabled={isSaving}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition hidden sm:flex items-center gap-1.5 disabled:opacity-50 ${
                     darkMode
-                      ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 shadow-sm'
+                      ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm'
                   }`}
-                  title="Download original unchanged PDF"
+                  title="Download plain UTF-8 text"
                 >
-                  <Download className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="hidden sm:inline">Original PDF</span>
+                  TXT
                 </button>
 
                 <button
                   onClick={() => {
                     setExtraction(null);
                     setPages([]);
+                    localStorage.removeItem(LOCAL_STORAGE_DRAFT_KEY);
                   }}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition flex items-center gap-1.5 ${
-                    darkMode
-                      ? 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
-                      : 'hover:bg-slate-100 text-slate-600'
-                  }`}
-                  title="Start over with new file"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition"
+                  title="Upload another document"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">New PDF</span>
+                  <X className="w-4 h-4" />
                 </button>
               </>
             ) : (
               <div className="flex items-center gap-2">
-                <span
-                  className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${
-                    ocrStatus.configured
-                      ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                      : 'bg-slate-500/10 text-slate-500 border-slate-500/20'
-                  }`}
-                  title={ocrStatus.description}
-                >
-                  <Sparkles className="w-3 h-3" />
-                  {ocrStatus.configured ? 'OCR Engine Ready' : 'Direct Text Mode'}
+                <span className="text-xs text-slate-400 hidden sm:inline">
+                  OCR: <strong className={ocrStatus.configured ? 'text-emerald-500' : 'text-amber-500'}>{ocrStatus.configured ? 'Active' : 'Unconfigured'}</strong>
                 </span>
               </div>
             )}
@@ -640,26 +838,26 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
         </div>
       </header>
 
-      {/* DRAFT RESTORE BANNER */}
-      {hasStoredDraft && (
-        <div className="bg-blue-600 text-white px-4 py-2.5 shadow-md">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+      {/* --------------------------------------------------------------------- */}
+      {/* RESTORE DRAFT BANNER */}
+      {/* --------------------------------------------------------------------- */}
+      {hasStoredDraft && !extraction && (
+        <div className="bg-blue-600 text-white px-4 py-2.5 text-xs">
+          <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>
-                Found an unsaved editing draft from a previous session. Would you like to restore it?
-              </span>
+              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+              <span>You have an autosaved PDF editing session from earlier. Would you like to restore it?</span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleRestoreDraft}
-                className="px-3 py-1 rounded bg-white text-blue-700 font-semibold hover:bg-blue-50 transition"
+                className="px-2.5 py-1 rounded bg-white text-blue-700 font-bold hover:bg-blue-50 transition"
               >
-                Restore Draft
+                Restore Session
               </button>
               <button
                 onClick={handleDismissDraft}
-                className="px-3 py-1 rounded bg-blue-700/50 hover:bg-blue-700 text-white transition"
+                className="px-2.5 py-1 rounded bg-blue-700 text-white hover:bg-blue-800 transition"
               >
                 Dismiss
               </button>
@@ -668,13 +866,25 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
         </div>
       )}
 
-      {/* MAIN CONTAINER */}
-      <main className="max-w-7xl mx-auto p-4 md:p-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {!extraction ? (
           /* ========================================================================= */
-          /* STAGE 1: PDF UPLOAD & DRAG/DROP ZONE */
+          /* STAGE 1: PDF UPLOAD DROPZONE */
           /* ========================================================================= */
-          <div className="max-w-3xl mx-auto py-10">
+          <div className="max-w-3xl mx-auto py-8">
+            <div className="text-center mb-8">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 mb-3 border border-blue-500/20">
+                <FileText className="w-3.5 h-3.5" />
+                Convert-X PDF to Text Document Editor
+              </span>
+              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3">
+                Extract & Edit PDF Documents
+              </h1>
+              <p className={`text-base max-w-xl mx-auto ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Upload any PDF to extract text page-by-page. Edit with a full rich-text word processor, format headings and lists, and export valid Microsoft Word DOCX, PDF, or UTF-8 TXT files.
+              </p>
+            </div>
+
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -721,7 +931,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
 
               {isUploading ? (
                 <div className="space-y-3">
-                  <h2 className="text-lg font-semibold">Processing PDF...</h2>
+                  <h2 className="text-lg font-semibold">Processing PDF Document...</h2>
                   <p className="text-sm text-blue-600 font-medium animate-pulse">{uploadProgressText}</p>
                   <div className="w-48 h-1.5 mx-auto bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-600 rounded-full animate-indeterminate" />
@@ -729,9 +939,9 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                 </div>
               ) : (
                 <>
-                  <h2 className="text-xl font-bold mb-2">Upload your PDF to Extract & Edit</h2>
+                  <h2 className="text-xl font-bold mb-2">Upload your PDF to Open the Document Editor</h2>
                   <p className={`text-sm mb-6 max-w-md mx-auto ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Drag and drop your PDF here or choose from your device. Supports text-based PDFs and scanned documents via OCR.
+                    Drag and drop your PDF here or choose from your computer. Supports multi-page PDFs, Unicode Hindi & Urdu, and scanned pages.
                   </p>
 
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -740,7 +950,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                       className="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-md transition flex items-center justify-center gap-2"
                     >
                       <Upload className="w-4 h-4" />
-                      Choose PDF
+                      Choose PDF File
                     </button>
 
                     <button
@@ -752,7 +962,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                       }`}
                     >
                       <Sparkles className="w-4 h-4 text-amber-500" />
-                      Try Sample PDF
+                      Try Sample Document
                     </button>
                   </div>
                 </>
@@ -760,27 +970,41 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
 
               <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-slate-500 dark:text-slate-400">
                 <div className="flex items-center justify-center gap-2">
+                  <FileCode className="w-4 h-4 text-blue-500" />
+                  <span>Real Microsoft Word DOCX</span>
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <Type className="w-4 h-4 text-purple-500" />
+                  <span>Rich Formatting & Styling</span>
+                </div>
+                <div className="flex items-center justify-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-500" />
                   <span>Zero-Retention Privacy</span>
-                </div>
-                <div className="flex items-center justify-center gap-2">
-                  <Type className="w-4 h-4 text-blue-500" />
-                  <span>Multilingual Unicode</span>
-                </div>
-                <div className="flex items-center justify-center gap-2">
-                  <Layers className="w-4 h-4 text-purple-500" />
-                  <span>Multi-Page Pagination</span>
                 </div>
               </div>
             </div>
           </div>
         ) : (
           /* ========================================================================= */
-          /* STAGE 2: PROFESSIONAL 3-COLUMN DOCUMENT STUDIO */
+          /* STAGE 2: PROFESSIONAL 3-COLUMN DOCUMENT STUDIO WORKSPACE */
           /* ========================================================================= */
           <div>
+            {/* SCANNED PDF NOTICE BANNER */}
+            {hasScannedPages && !ocrStatus.configured && (
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 text-amber-800 dark:text-amber-300 mb-6">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-sm">Scanned Pages Detected</p>
+                  <p>This PDF appears to contain scanned/image-based pages. Text extraction may require OCR.</p>
+                  <p className="text-[11px] opacity-85">
+                    PDF layout is preserved where possible. Complex layouts may shift slightly during export.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Mobile Tab Navigation */}
-            <div className="flex md:hidden mb-4 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex lg:hidden mb-4 border-b border-slate-200 dark:border-slate-800">
               <button
                 onClick={() => setMobileTab('thumbnails')}
                 className={`flex-1 py-2.5 text-xs font-semibold border-b-2 text-center ${
@@ -799,7 +1023,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                     : 'border-transparent text-slate-500'
                 }`}
               >
-                Editor
+                Document Editor
               </button>
               <button
                 onClick={() => setMobileTab('settings')}
@@ -815,7 +1039,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               {/* --------------------------------------------------------------------- */}
-              {/* LEFT COLUMN: PDF PAGE THUMBNAILS (3 COLS) */}
+              {/* LEFT COLUMN: PAGE NAVIGATION & THUMBNAILS (3 COLS) */}
               {/* --------------------------------------------------------------------- */}
               <div
                 className={`lg:col-span-3 space-y-4 ${
@@ -829,31 +1053,46 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                 >
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Document Pages
+                      Pages ({pages.length})
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 font-semibold">
-                      {pages.length} Pages
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setViewMode(viewMode === 'all' ? 'single' : 'all')}
+                        className={`text-[11px] px-2 py-0.5 rounded font-medium border transition ${
+                          viewMode === 'single'
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                        title="Toggle single page vs continuous scrolling"
+                      >
+                        {viewMode === 'single' ? 'Single Page' : 'All Pages'}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                  {/* THUMBNAIL LIST */}
+                  <div className="space-y-3 max-h-[68vh] overflow-y-auto pr-1">
                     {pages.map((p, idx) => (
                       <div
                         key={`thumb_${p.pageNumber}_${idx}`}
                         onClick={() => {
                           setActivePageIndex(idx);
-                          textareaRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          const el = pageEditableRefs.current[idx];
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            el.focus();
+                          }
                         }}
                         className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
                           activePageIndex === idx
-                            ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30 ring-2 ring-blue-600/20'
+                            ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/30 ring-2 ring-blue-600/20'
                             : darkMode
                             ? 'border-slate-800 hover:border-slate-700 bg-slate-950'
                             : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1.5 text-xs">
-                          <span className="font-semibold">Page {p.pageNumber}</span>
+                        <div className="flex items-center justify-between mb-1 text-xs">
+                          <span className="font-bold">Page {p.pageNumber}</span>
                           <span
                             className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                               p.isScanned
@@ -865,18 +1104,18 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                           </span>
                         </div>
 
-                        {/* Thumbnail Image or Geometry Canvas preview */}
-                        <div className="w-full aspect-[1/1.3] bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col items-center justify-center relative p-2 text-left">
+                        {/* Page Preview */}
+                        <div className="w-full aspect-[1/1.3] bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col items-center justify-center relative p-2 text-left shadow-2xs">
                           {p.thumbnailUrl ? (
                             <img
                               src={p.thumbnailUrl}
-                              alt={`Page ${p.pageNumber} thumbnail`}
+                              alt={`Page ${p.pageNumber}`}
                               className="w-full h-full object-contain"
                               loading="lazy"
                             />
                           ) : (
                             <div className="w-full h-full text-[8px] text-slate-400 overflow-hidden leading-tight select-none">
-                              {(p.text || '').slice(0, 150) || '(Blank Page)'}
+                              {(p.text || '').slice(0, 160) || '(Blank Page)'}
                             </div>
                           )}
                         </div>
@@ -899,67 +1138,78 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                       }`}
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      Add Page Break
+                      Add New Page
                     </button>
                   </div>
                 </div>
               </div>
 
               {/* --------------------------------------------------------------------- */}
-              {/* CENTER COLUMN: DOCUMENT EDITOR & TOOLBAR (6 COLS) */}
+              {/* CENTER COLUMN: WORD PROCESSOR EDITOR & TOOLBAR (6 COLS) */}
               {/* --------------------------------------------------------------------- */}
               <div
                 className={`lg:col-span-6 space-y-4 ${
                   mobileTab === 'editor' ? 'block' : 'hidden lg:block'
                 }`}
               >
-                {/* STICKY EDITOR TOOLBAR */}
+                {/* STICKY RIBBON TOOLBAR */}
                 <div
                   className={`p-2 rounded-xl border sticky top-16 z-20 backdrop-blur shadow-sm ${
                     darkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-slate-200'
                   }`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {/* Undo / Redo */}
                     <div className="flex items-center gap-0.5 border-r border-slate-200 dark:border-slate-800 pr-1.5">
                       <button
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={handleUndo}
                         disabled={historyIndex <= 0}
                         className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 transition"
                         title="Undo (Ctrl+Z)"
                       >
-                        <RotateCcw className="w-4 h-4" />
+                        <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                       <button
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={handleRedo}
                         disabled={historyIndex >= history.length - 1}
                         className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 transition"
                         title="Redo (Ctrl+Y)"
                       >
-                        <RotateCw className="w-4 h-4" />
+                        <RotateCw className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
-                    {/* Find & Replace toggle */}
-                    <button
-                      onClick={() => setShowFindReplace(!showFindReplace)}
-                      className={`p-1.5 rounded text-xs flex items-center gap-1 transition ${
-                        showFindReplace
-                          ? 'bg-blue-600 text-white'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    {/* Block Style dropdown (Heading 1, 2, Paragraph) */}
+                    <select
+                      onChange={(e) => {
+                        const tag = e.target.value;
+                        executeFormatting('formatBlock', tag);
+                      }}
+                      defaultValue="<p>"
+                      className={`text-xs px-2 py-1 rounded border ${
+                        darkMode
+                          ? 'bg-slate-800 border-slate-700 text-slate-200'
+                          : 'bg-white border-slate-200 text-slate-700'
                       }`}
-                      title="Find & Replace (Ctrl+F)"
+                      title="Text Style"
                     >
-                      <Search className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Find</span>
-                    </button>
+                      <option value="<p>">Normal Text</option>
+                      <option value="<h1>">Heading 1</option>
+                      <option value="<h2>">Heading 2</option>
+                      <option value="<h3>">Heading 3</option>
+                    </select>
 
                     {/* Font Family selector */}
                     <select
                       value={settings.fontFamily}
-                      onChange={(e) =>
-                        setSettings({ ...settings, fontFamily: e.target.value as any })
-                      }
+                      onChange={(e) => {
+                        const fam = e.target.value as any;
+                        setSettings({ ...settings, fontFamily: fam });
+                        const fontName = fam === 'serif' ? 'Georgia' : fam === 'mono' ? 'Courier New' : 'Calibri';
+                        executeFormatting('fontName', fontName);
+                      }}
                       className={`text-xs px-2 py-1 rounded border ${
                         darkMode
                           ? 'bg-slate-800 border-slate-700 text-slate-200'
@@ -967,9 +1217,9 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                       }`}
                       title="Font Family"
                     >
-                      <option value="sans">Noto Sans</option>
-                      <option value="serif">Noto Serif</option>
-                      <option value="mono">Noto Monospace</option>
+                      <option value="sans">Sans (Calibri)</option>
+                      <option value="serif">Serif (Times / Georgia)</option>
+                      <option value="mono">Monospace (Courier)</option>
                     </select>
 
                     {/* Font Size */}
@@ -991,26 +1241,120 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                       <option value={12}>12 pt</option>
                       <option value={14}>14 pt</option>
                       <option value={16}>16 pt</option>
+                      <option value={18}>18 pt</option>
+                      <option value={24}>24 pt</option>
                     </select>
 
-                    {/* Line Spacing */}
-                    <select
-                      value={settings.lineSpacing}
-                      onChange={(e) =>
-                        setSettings({ ...settings, lineSpacing: e.target.value as any })
-                      }
-                      className={`text-xs px-2 py-1 rounded border ${
-                        darkMode
-                          ? 'bg-slate-800 border-slate-700 text-slate-200'
-                          : 'bg-white border-slate-200 text-slate-700'
+                    <div className="h-4 w-px bg-slate-200 dark:bg-slate-800" />
+
+                    {/* Bold, Italic, Underline */}
+                    <div className="flex items-center gap-0.5 border-r border-slate-200 dark:border-slate-800 pr-1.5">
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('bold')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition font-bold"
+                        title="Bold (Ctrl+B)"
+                      >
+                        <Bold className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('italic')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition italic"
+                        title="Italic (Ctrl+I)"
+                      >
+                        <Italic className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('underline')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition underline"
+                        title="Underline (Ctrl+U)"
+                      >
+                        <Underline className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Alignment */}
+                    <div className="flex items-center gap-0.5 border-r border-slate-200 dark:border-slate-800 pr-1.5">
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('justifyLeft')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        title="Align Left"
+                      >
+                        <AlignLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('justifyCenter')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        title="Align Center"
+                      >
+                        <AlignCenter className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('justifyRight')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        title="Align Right"
+                      >
+                        <AlignRight className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('justifyFull')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        title="Justify"
+                      >
+                        <AlignJustify className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Lists */}
+                    <div className="flex items-center gap-0.5 border-r border-slate-200 dark:border-slate-800 pr-1.5">
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('insertUnorderedList')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        title="Bullet List"
+                      >
+                        <List className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => executeFormatting('insertOrderedList')}
+                        className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        title="Numbered List"
+                      >
+                        <ListOrdered className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Find & Replace toggle */}
+                    <button
+                      onClick={() => setShowFindReplace(!showFindReplace)}
+                      className={`p-1.5 rounded text-xs flex items-center gap-1 transition ${
+                        showFindReplace
+                          ? 'bg-blue-600 text-white'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
                       }`}
-                      title="Line Spacing"
+                      title="Find & Replace (Ctrl+F)"
                     >
-                      <option value="1.0">1.0 Single</option>
-                      <option value="1.15">1.15 Normal</option>
-                      <option value="1.5">1.5 Medium</option>
-                      <option value="2.0">2.0 Double</option>
-                    </select>
+                      <Search className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Find</span>
+                    </button>
+
+                    {/* Select All */}
+                    <button
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => executeFormatting('selectAll')}
+                      className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs hidden sm:flex items-center gap-1"
+                      title="Select All"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Select All</span>
+                    </button>
                   </div>
 
                   {/* EXPANDABLE FIND & REPLACE BAR */}
@@ -1070,94 +1414,143 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                   )}
                 </div>
 
-                {/* MULTI-PAGE DOCUMENT CANVAS */}
-                <div className="space-y-6">
-                  {pages.map((page, idx) => (
-                    <div
-                      key={`page_sheet_${page.pageNumber}_${idx}`}
-                      className={`rounded-xl border shadow-sm transition-all ${
-                        activePageIndex === idx
-                          ? 'ring-2 ring-blue-500/50'
-                          : ''
-                      } ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}
+                {/* SINGLE PAGE NAVIGATION BAR (If viewMode is single) */}
+                {viewMode === 'single' && (
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
+                    darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+                  }`}>
+                    <button
+                      onClick={() => setActivePageIndex(Math.max(0, activePageIndex - 1))}
+                      disabled={activePageIndex === 0}
+                      className="px-2.5 py-1 rounded border disabled:opacity-40 flex items-center gap-1 font-medium"
                     >
-                      {/* Page Header Bar */}
-                      <div
-                        className={`px-4 py-2.5 border-b flex items-center justify-between text-xs ${
-                          darkMode
-                            ? 'bg-slate-950/60 border-slate-800 text-slate-400'
-                            : 'bg-slate-50/80 border-slate-200 text-slate-600'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-800 dark:text-slate-200">
-                            Page {page.pageNumber} of {pages.length}
-                          </span>
-                          <span className="text-[11px] text-slate-400">
-                            • {page.width} × {page.height} pt
-                          </span>
-                        </div>
+                      <ChevronLeft className="w-3.5 h-3.5" /> Prev Page
+                    </button>
 
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleClearPage(idx)}
-                            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 transition"
-                            title="Clear page text"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          {pages.length > 1 && (
-                            <button
-                              onClick={() => handleDeletePage(idx)}
-                              className="p-1 hover:bg-red-500/10 rounded text-red-500 transition"
-                              title="Delete page"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Multiline Editable Content Area */}
-                      <div className="p-6">
-                        <textarea
-                          ref={(el) => (textareaRefs.current[idx] = el)}
-                          value={page.text}
-                          onChange={(e) => handlePageTextChange(idx, e.target.value)}
-                          onFocus={() => setActivePageIndex(idx)}
-                          rows={Math.max(12, Math.min(30, (page.text || '').split('\n').length + 3))}
-                          placeholder={`Page ${page.pageNumber} content... Type or paste text here.`}
-                          style={{
-                            fontFamily:
-                              settings.fontFamily === 'mono'
-                                ? 'ui-monospace, monospace'
-                                : settings.fontFamily === 'serif'
-                                ? 'Georgia, serif'
-                                : 'system-ui, sans-serif',
-                            fontSize: `${settings.fontSize}pt`,
-                            lineHeight: settings.lineSpacing,
-                          }}
-                          className={`w-full resize-y bg-transparent outline-none border-none p-0 leading-relaxed ${
-                            darkMode ? 'text-slate-100' : 'text-slate-900'
-                          }`}
-                        />
-                      </div>
-
-                      {/* Page Footer Counters */}
-                      <div
-                        className={`px-4 py-2 border-t flex items-center justify-between text-[11px] ${
-                          darkMode
-                            ? 'border-slate-800 text-slate-500'
-                            : 'border-slate-100 text-slate-400'
-                        }`}
-                      >
-                        <span>
-                          {page.wordCount} words • {page.characterCount} characters
-                        </span>
-                        <span>Auto-paginated</span>
-                      </div>
+                    <div className="font-semibold">
+                      Page {activePageIndex + 1} of {pages.length}
                     </div>
-                  ))}
+
+                    <button
+                      onClick={() => setActivePageIndex(Math.min(pages.length - 1, activePageIndex + 1))}
+                      disabled={activePageIndex === pages.length - 1}
+                      className="px-2.5 py-1 rounded border disabled:opacity-40 flex items-center gap-1 font-medium"
+                    >
+                      Next Page <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* PHYSICAL DOCUMENT CANVAS SHEETS */}
+                <div className="space-y-8">
+                  {pages
+                    .filter((_, idx) => (viewMode === 'single' ? idx === activePageIndex : true))
+                    .map((page, displayedIdx) => {
+                      const actualIdx = viewMode === 'single' ? activePageIndex : displayedIdx;
+                      return (
+                        <div
+                          key={`page_sheet_${page.pageNumber}_${actualIdx}`}
+                          className={`rounded-xl border shadow-md transition-all ${
+                            activePageIndex === actualIdx
+                              ? 'ring-2 ring-blue-500/40'
+                              : ''
+                          } ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}
+                        >
+                          {/* Page Sheet Top Bar */}
+                          <div
+                            className={`px-5 py-2.5 border-b flex items-center justify-between text-xs rounded-t-xl ${
+                              darkMode
+                                ? 'bg-slate-950/70 border-slate-800 text-slate-400'
+                                : 'bg-slate-50/90 border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800 dark:text-slate-200">
+                                Page {page.pageNumber} of {pages.length}
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                • {page.width} × {page.height} pt
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleClearPage(actualIdx)}
+                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 transition"
+                                title="Clear page text"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                              {pages.length > 1 && (
+                                <button
+                                  onClick={() => handleDeletePage(actualIdx)}
+                                  className="p-1 hover:bg-red-500/10 rounded text-red-500 transition"
+                                  title="Delete page"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* RICH TEXT EDITABLE PAGE AREA */}
+                          <div
+                            className="p-8 sm:p-12 min-h-[580px] cursor-text"
+                            onClick={() => {
+                              setActivePageIndex(actualIdx);
+                              pageEditableRefs.current[actualIdx]?.focus();
+                            }}
+                            style={{
+                              paddingTop: settings.margin === 'small' ? '1.5rem' : settings.margin === 'large' ? '3.5rem' : '2.5rem',
+                              paddingBottom: settings.margin === 'small' ? '1.5rem' : settings.margin === 'large' ? '3.5rem' : '2.5rem',
+                              paddingLeft: settings.margin === 'small' ? '1.5rem' : settings.margin === 'large' ? '3.5rem' : '2.5rem',
+                              paddingRight: settings.margin === 'small' ? '1.5rem' : settings.margin === 'large' ? '3.5rem' : '2.5rem',
+                            }}
+                          >
+                            <div
+                              ref={(el) => {
+                                pageEditableRefs.current[actualIdx] = el;
+                              }}
+                              contentEditable={true}
+                              suppressContentEditableWarning={true}
+                              onFocus={() => setActivePageIndex(actualIdx)}
+                              onInput={() => handleContentInput(actualIdx)}
+                              onBlur={() => handleContentBlur(actualIdx)}
+                              onKeyDown={(e) => handleKeyDown(e, actualIdx)}
+                              onPaste={(e) => handlePaste(e, actualIdx)}
+                              data-placeholder={`Page ${page.pageNumber} content... Type, edit, or paste your text here.`}
+                              style={{
+                                fontFamily:
+                                  settings.fontFamily === 'mono'
+                                    ? 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+                                    : settings.fontFamily === 'serif'
+                                    ? 'Georgia, Cambria, "Times New Roman", Times, serif'
+                                    : 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                                fontSize: `${settings.fontSize}pt`,
+                                lineHeight: settings.lineSpacing,
+                              }}
+                              className="document-editor-page prose dark:prose-invert max-w-none text-left"
+                            />
+                          </div>
+
+                          {/* Page Footer Counters */}
+                          <div
+                            className={`px-5 py-2 border-t flex items-center justify-between text-[11px] rounded-b-xl ${
+                              darkMode
+                                ? 'border-slate-800 text-slate-500'
+                                : 'border-slate-100 text-slate-400'
+                            }`}
+                          >
+                            <span>
+                              {page.wordCount} words • {page.characterCount} characters
+                            </span>
+                            <span>
+                              {settings.pageNumbers !== 'none' ? `Page ${page.pageNumber}` : 'Auto-paginated'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
 
                 {/* BOTTOM METRICS BAR */}
@@ -1203,14 +1596,70 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                       Save & Download
                     </h3>
                     <FileDown className="w-4 h-4 text-blue-500" />
                   </div>
 
+                  {/* PRIMARY ACTION: DOWNLOAD DOCX */}
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => handleSaveDocument('docx')}
+                      disabled={isSaving}
+                      className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 group"
+                    >
+                      {isSaving && saveFormat === 'docx' ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <FileCode className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                      )}
+                      <span>Download DOCX</span>
+                    </button>
+                    <p className="text-[11px] text-center text-slate-500 dark:text-slate-400">
+                      Standard Microsoft Word document (.docx) • 100% editable
+                    </p>
+                  </div>
+
+                  {/* SECONDARY ACTIONS: PDF & TXT */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      onClick={() => handleSaveDocument('pdf')}
+                      disabled={isSaving}
+                      className={`py-2 px-3 rounded-lg border text-xs font-semibold transition flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                        darkMode
+                          ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm'
+                      }`}
+                    >
+                      {isSaving && saveFormat === 'pdf' ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      <span>Download PDF</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleSaveDocument('txt')}
+                      disabled={isSaving}
+                      className={`py-2 px-3 rounded-lg border text-xs font-semibold transition flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                        darkMode
+                          ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 shadow-sm'
+                      }`}
+                    >
+                      {isSaving && saveFormat === 'txt' ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <FileText className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                      <span>Download TXT</span>
+                    </button>
+                  </div>
+
                   {/* Mode Selector */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
                     <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                       Export Mode
                     </label>
@@ -1239,13 +1688,13 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                     {settings.mode === 'preserve_layout' && (
                       <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-start gap-1 mt-1">
                         <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                        <span>Complex PDFs may not preserve every original design element perfectly.</span>
+                        <span>PDF layout is preserved where possible. Complex layouts may shift slightly during export.</span>
                       </p>
                     )}
                   </div>
 
                   {/* Sizing & Orientation */}
-                  <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="grid grid-cols-2 gap-3 pt-1">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold">Page Size</label>
                       <select
@@ -1326,79 +1775,23 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                     />
                   </div>
 
-                  {/* File Size Metric */}
-                  {extraction && (
-                    <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-xs space-y-1">
-                      <div className="flex justify-between text-slate-500">
-                        <span>Original PDF:</span>
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">
-                          {(extraction.originalFileSize / (1024 * 1024)).toFixed(2)} MB
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-slate-500">
-                        <span>Detected Geometry:</span>
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">
-                          {extraction.detectedPageSize}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* DOWNLOAD BUTTONS */}
-                  <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                    {/* 1. PDF Download */}
+                  {/* Clipboard Action */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                     <button
-                      onClick={() => handleSaveDocument('pdf')}
-                      disabled={isSaving}
-                      className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {isSaving && saveFormat === 'pdf' ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Download className="w-4 h-4" />
-                      )}
-                      <span>Download PDF</span>
-                    </button>
-
-                    {/* 2. DOCX Download */}
-                    <button
-                      onClick={() => handleSaveDocument('docx')}
-                      disabled={isSaving}
-                      className={`w-full py-2 px-4 rounded-xl border text-xs font-semibold transition flex items-center justify-center gap-2 disabled:opacity-50 ${
-                        darkMode
-                          ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
-                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm'
-                      }`}
-                    >
-                      {isSaving && saveFormat === 'docx' ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <FileCode className="w-4 h-4 text-blue-500" />
-                      )}
-                      <span>Download DOCX</span>
-                    </button>
-
-                    {/* 3. TXT Download */}
-                    <button
-                      onClick={() => handleSaveDocument('txt')}
-                      disabled={isSaving}
-                      className={`w-full py-2 px-4 rounded-xl border text-xs font-semibold transition flex items-center justify-center gap-2 disabled:opacity-50 ${
+                      onClick={handleCopyAll}
+                      className={`w-full py-2 px-3 rounded-lg border text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                         darkMode
                           ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300'
-                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 shadow-sm'
+                          : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
                       }`}
                     >
-                      {isSaving && saveFormat === 'txt' ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <FileText className="w-4 h-4 text-slate-400" />
-                      )}
-                      <span>Download TXT</span>
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy Entire Document Text
                     </button>
                   </div>
                 </div>
 
-                {/* Privacy Guarantee Box */}
+                {/* Privacy Guarantee Card */}
                 <div
                   className={`p-4 rounded-xl border text-xs space-y-1.5 ${
                     darkMode ? 'bg-slate-900/50 border-slate-800 text-slate-400' : 'bg-blue-50/50 border-blue-100 text-slate-600'
@@ -1406,10 +1799,10 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                 >
                   <div className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-400">
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Ephemeral Zero-Retention</span>
+                    <span>Zero-Retention Privacy</span>
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    Your files are converted in memory and automatically removed. We never store or retain your documents.
+                    Your documents are processed ephemerally in memory. No user files are permanently stored on our servers.
                   </p>
                 </div>
               </div>

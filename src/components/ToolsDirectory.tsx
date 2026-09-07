@@ -1,12 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { PageView } from '../types.js';
 import {
   ToolItem,
   ToolCategory,
+  SortOption,
   CATEGORY_DEFINITIONS,
   searchToolRegistry,
   getPopularTools,
   getAllFormatsList,
+  sortTools,
 } from '../data/toolRegistry.js';
 import { ToolCard } from './ToolCard.js';
 import {
@@ -20,6 +22,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Filter,
+  ArrowUpDown,
+  ChevronDown,
 } from 'lucide-react';
 
 interface ToolsDirectoryProps {
@@ -30,8 +34,34 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ToolCategory>('all');
   const [selectedFormat, setSelectedFormat] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<SortOption>('popularity');
   const [comingSoonTool, setComingSoonTool] = useState<ToolItem | null>(null);
   const [recentToolIds, setRecentToolIds] = useState<string[]>([]);
+  const [liveAnnouncement, setLiveAnnouncement] = useState<string>('');
+
+  // Accessibility Refs
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const categoryTabsRef = useRef<(HTMLButtonElement | null)[]>([]);
+  const resultsHeadingRef = useRef<HTMLHeadingElement | null>(null);
+
+  // Global Keyboard Shortcut: '/' or 'Ctrl+K' / 'Cmd+K' to focus the search bar
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+      if (!isInput && (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'))) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   // Load recent tools from history on mount
   useEffect(() => {
@@ -80,6 +110,11 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
     return searchToolRegistry(searchQuery, selectedCategory, selectedFormat);
   }, [searchQuery, selectedCategory, selectedFormat]);
 
+  // Order tools based on sort option: Popularity, A-Z, or Recently Added
+  const sortedAndFilteredTools = useMemo(() => {
+    return sortTools(filteredTools, sortBy);
+  }, [filteredTools, sortBy]);
+
   // Popular tools list
   const popularTools = useMemo(() => {
     return getPopularTools().slice(0, 6);
@@ -107,14 +142,132 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
     }
   };
 
+  // Focus management when category changes
+  const handleCategoryChange = (catId: ToolCategory, shouldFocusGrid: boolean = false) => {
+    setSelectedCategory(catId);
+    const catDef = CATEGORY_DEFINITIONS.find((c) => c.id === catId);
+    const catLabel = catDef?.label || catId;
+    const matchingCount = searchToolRegistry(searchQuery, catId, selectedFormat).length;
+    setLiveAnnouncement(
+      `Category filter set to ${catLabel}. ${matchingCount} ${
+        matchingCount === 1 ? 'tool' : 'tools'
+      } available.`
+    );
+
+    if (shouldFocusGrid) {
+      setTimeout(() => {
+        const firstCard = document.querySelector<HTMLElement>('.tool-catalog-card');
+        if (firstCard) {
+          firstCard.focus();
+        } else if (resultsHeadingRef.current) {
+          resultsHeadingRef.current.focus();
+        }
+      }, 50);
+    }
+  };
+
+  // Keyboard navigation for Category Tabs (WAI-ARIA Tablist Pattern)
+  const handleCategoryKeyDown = (
+    e: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+    catId: ToolCategory
+  ) => {
+    const total = CATEGORY_DEFINITIONS.length;
+
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const nextIndex = (index + 1) % total;
+      const nextCat = CATEGORY_DEFINITIONS[nextIndex].id;
+      setSelectedCategory(nextCat);
+      categoryTabsRef.current[nextIndex]?.focus();
+      setLiveAnnouncement(`Selected category: ${CATEGORY_DEFINITIONS[nextIndex].label}`);
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const prevIndex = (index - 1 + total) % total;
+      const prevCat = CATEGORY_DEFINITIONS[prevIndex].id;
+      setSelectedCategory(prevCat);
+      categoryTabsRef.current[prevIndex]?.focus();
+      setLiveAnnouncement(`Selected category: ${CATEGORY_DEFINITIONS[prevIndex].label}`);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setSelectedCategory(CATEGORY_DEFINITIONS[0].id);
+      categoryTabsRef.current[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setSelectedCategory(CATEGORY_DEFINITIONS[total - 1].id);
+      categoryTabsRef.current[total - 1]?.focus();
+    } else if (e.key === 'ArrowDown') {
+      // Jump focus directly to first tool card in the filtered grid
+      e.preventDefault();
+      const firstCard = document.querySelector<HTMLElement>('.tool-catalog-card');
+      if (firstCard) {
+        firstCard.focus();
+      } else {
+        resultsHeadingRef.current?.focus();
+      }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleCategoryChange(catId, true);
+    }
+  };
+
+  // Keyboard navigation for Search Bar
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const firstCard = document.querySelector<HTMLElement>('.tool-catalog-card');
+      if (firstCard) {
+        firstCard.focus();
+      } else {
+        categoryTabsRef.current[0]?.focus();
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const firstCard = document.querySelector<HTMLElement>('.tool-catalog-card');
+      if (firstCard) {
+        firstCard.focus();
+      }
+    } else if (e.key === 'Escape') {
+      if (searchQuery) {
+        e.preventDefault();
+        setSearchQuery('');
+        setLiveAnnouncement('Search query cleared');
+      } else {
+        searchInputRef.current?.blur();
+      }
+    }
+  };
+
   const handleClearFilters = () => {
     setSearchQuery('');
     setSelectedCategory('all');
     setSelectedFormat('all');
+    setSortBy('popularity');
+    setLiveAnnouncement('Filters reset. Showing all tools.');
+    searchInputRef.current?.focus();
   };
 
   return (
     <div className="max-w-7xl mx-auto space-y-8" id="tools-directory-container">
+      {/* Accessible Screen-Reader & Keyboard Skip Link */}
+      <a
+        href="#tools-grid-panel"
+        onClick={(e) => {
+          e.preventDefault();
+          const firstCard = document.querySelector<HTMLElement>('.tool-catalog-card');
+          if (firstCard) firstCard.focus();
+          else resultsHeadingRef.current?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 z-50 px-3.5 py-2 bg-[#2563EB] text-white text-xs font-bold rounded-xl shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white"
+      >
+        Skip to tool results
+      </a>
+
+      {/* Screen Reader Live Region for filter and search updates */}
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {liveAnnouncement}
+      </div>
+
       {/* 1. Header Section */}
       <div className="text-center space-y-3 max-w-3xl mx-auto pt-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/40 text-[#2563EB] dark:text-blue-300 text-xs font-bold shadow-xs">
@@ -137,39 +290,68 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
           </div>
           <input
             id="tools-search-input"
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (e.target.value) {
+                const count = searchToolRegistry(e.target.value, selectedCategory, selectedFormat).length;
+                setLiveAnnouncement(`Search query: ${e.target.value}. ${count} matching tools.`);
+              }
+            }}
+            onKeyDown={handleSearchKeyDown}
             placeholder="Search tools... (e.g. PDF, compress, voice, PSD, DOCX)"
-            aria-label="Search all tools"
-            className="w-full pl-11 pr-10 py-3.5 rounded-2xl bg-white dark:bg-[#111827] border-2 border-slate-200 dark:border-slate-800 text-sm font-medium text-[#0F172A] dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#2563EB] dark:focus:border-blue-500 shadow-sm focus:shadow-md transition-all"
+            aria-label="Search all tools. Press slash to focus, arrow down to navigate results."
+            className="w-full pl-11 pr-24 py-3.5 rounded-2xl bg-white dark:bg-[#111827] border-2 border-slate-200 dark:border-slate-800 text-sm font-medium text-[#0F172A] dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#2563EB] dark:focus:border-blue-500 shadow-sm focus:shadow-md transition-all"
           />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              aria-label="Clear search query"
+          <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center gap-2">
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setLiveAnnouncement('Search query cleared');
+                  searchInputRef.current?.focus();
+                }}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                aria-label="Clear search query (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            ) : null}
+            <span
+              className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded shadow-2xs select-none"
+              title="Shortcut: press / or Ctrl+K to search"
             >
-              <X className="w-4 h-4" />
-            </button>
-          )}
+              <kbd>/</kbd>
+            </span>
+          </div>
         </div>
       </div>
 
       {/* 3. Category & Format Filters */}
       <div className="space-y-4">
         {/* Category Tabs */}
-        <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap" role="tablist" aria-label="Tool Categories">
-          {CATEGORY_DEFINITIONS.map((cat) => {
+        <div
+          className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap"
+          role="tablist"
+          aria-label="Tool Categories"
+        >
+          {CATEGORY_DEFINITIONS.map((cat, idx) => {
             const isActive = selectedCategory === cat.id;
             return (
               <button
                 key={cat.id}
                 id={`cat-filter-${cat.id}`}
+                ref={(el) => (categoryTabsRef.current[idx] = el)}
                 role="tab"
+                tabIndex={isActive ? 0 : -1}
                 aria-selected={isActive}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-[#2563EB] ${
+                aria-controls="tools-grid-panel"
+                onClick={() => handleCategoryChange(cat.id, true)}
+                onKeyDown={(e) => handleCategoryKeyDown(e, idx, cat.id)}
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#2563EB] ${
                   isActive
                     ? 'bg-[#2563EB] text-white shadow-sm shadow-blue-500/20'
                     : 'bg-white dark:bg-[#111827] text-[#64748B] dark:text-[#94A3B8] border border-slate-200 dark:border-slate-800 hover:text-[#0F172A] dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
@@ -253,27 +435,62 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
       )}
 
       {/* 5. Tool Grid (Responsive: 1 col mobile, 2 col tablet, 3-4 col desktop) */}
-      <div className="space-y-4 pt-2">
-        <div className="flex items-center justify-between text-xs text-[#64748B] dark:text-[#94A3B8] pb-1 border-b border-slate-200 dark:border-slate-800">
-          <span>
-            Showing <strong className="text-[#0F172A] dark:text-white">{filteredTools.length}</strong>{' '}
-            {filteredTools.length === 1 ? 'tool' : 'tools'}
-            {searchQuery && ` for "${searchQuery}"`}
-            {selectedCategory !== 'all' && ` in ${selectedCategory}`}
-            {selectedFormat !== 'all' && ` (${selectedFormat})`}
-          </span>
+      <div
+        id="tools-grid-panel"
+        role="region"
+        aria-label="Filtered tools directory"
+        className="space-y-4 pt-2"
+      >
+        <h2 ref={resultsHeadingRef} tabIndex={-1} className="sr-only outline-none">
+          Tools Directory Results
+        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#64748B] dark:text-[#94A3B8] pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>
+              Showing <strong className="text-[#0F172A] dark:text-white">{sortedAndFilteredTools.length}</strong>{' '}
+              {sortedAndFilteredTools.length === 1 ? 'tool' : 'tools'}
+              {searchQuery && ` for "${searchQuery}"`}
+              {selectedCategory !== 'all' && ` in ${selectedCategory}`}
+              {selectedFormat !== 'all' && ` (${selectedFormat})`}
+            </span>
 
-          {(searchQuery || selectedCategory !== 'all' || selectedFormat !== 'all') && (
-            <button
-              onClick={handleClearFilters}
-              className="text-[#2563EB] dark:text-blue-400 hover:underline font-semibold"
+            {(searchQuery || selectedCategory !== 'all' || selectedFormat !== 'all' || sortBy !== 'popularity') && (
+              <button
+                onClick={handleClearFilters}
+                className="text-[#2563EB] dark:text-blue-400 hover:underline font-semibold ml-1"
+              >
+                Reset Filters
+              </button>
+            )}
+          </div>
+
+          {/* Sort by Dropdown */}
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <label
+              htmlFor="tools-sort-select"
+              className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 whitespace-nowrap"
             >
-              Reset Filters
-            </button>
-          )}
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+              <span>Sort by:</span>
+            </label>
+            <div className="relative">
+              <select
+                id="tools-sort-select"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                aria-label="Order tools by"
+                className="appearance-none pl-3 pr-8 py-1.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#2563EB] shadow-2xs cursor-pointer transition-colors"
+              >
+                <option value="popularity">Popularity</option>
+                <option value="az">A-Z</option>
+                <option value="recent">Recently Added</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
         </div>
 
-        {filteredTools.length === 0 ? (
+        {sortedAndFilteredTools.length === 0 ? (
           <div className="text-center py-16 px-4 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 space-y-4 bg-white dark:bg-[#111827]">
             <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
               <Search className="w-6 h-6" />
@@ -296,7 +513,7 @@ export const ToolsDirectory: React.FC<ToolsDirectoryProps> = ({ onNavigate }) =>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredTools.map((tool) => (
+            {sortedAndFilteredTools.map((tool) => (
               <ToolCard key={tool.id} tool={tool} onOpenTool={handleOpenTool} />
             ))}
           </div>
