@@ -13,6 +13,10 @@ import JSZip from 'jszip';
 import { createServer as createViteServer } from 'vite';
 import { registry } from './server/converters/registry.js';
 import { generateTextToPdf } from './server/converters/textToPdfConverter.js';
+import { extractTextFromPdfBuffer } from './server/converters/pdfToTextExtractor.js';
+import { generateEditedPdf } from './server/converters/editedPdfGenerator.js';
+import { generateDocxFromPages } from './server/converters/docxGenerator.js';
+import { ocrManager } from './server/ocr/ocrProvider.js';
 import { compressorEngine } from './server/converters/compressorEngine.js';
 import { ttsEngine, AVAILABLE_VOICES, SUPPORTED_LANGUAGES } from './server/converters/ttsEngine.js';
 import { jobStorage } from './server/queue/jobStorage.js';
@@ -149,6 +153,7 @@ async function startServer() {
 
     const coreRoutes = [
       { loc: '', changefreq: 'daily', priority: '1.0' },
+      { loc: 'pdf-to-text', changefreq: 'daily', priority: '0.95' },
       { loc: 'text-to-voice', changefreq: 'daily', priority: '0.9' },
       { loc: 'compress', changefreq: 'daily', priority: '0.9' },
       { loc: 'tools', changefreq: 'daily', priority: '0.9' },
@@ -1031,7 +1036,310 @@ ${allRoutes
     }
   });
 
-  // 5c. Dedicated Professional File Compression Endpoint (/api/compress)
+  // Ephemeral page thumbnail registry for PDF to Text Studio
+  const pdfThumbnailMap = new Map<string, Map<number, string>>();
+
+  // 5c. PDF to Text + Edit + Save Endpoints (/api/pdf-to-text/*)
+  app.get('/api/pdf-to-text/ocr-status', (req, res) => {
+    try {
+      const status = ocrManager.getProviderStatus();
+      res.json({ success: true, ...status });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message || 'Failed to get OCR status.' });
+    }
+  });
+
+  app.get('/api/pdf-to-text/thumbnail/:jobId/:pageNumber', (req, res) => {
+    const { jobId, pageNumber } = req.params;
+    const pageNum = parseInt(pageNumber, 10);
+    const jobThumbs = pdfThumbnailMap.get(jobId);
+    const thumbPath = jobThumbs?.get(pageNum);
+
+    if (thumbPath && fs.existsSync(thumbPath)) {
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      return fs.createReadStream(thumbPath).pipe(res);
+    }
+    return res.status(404).json({ success: false, error: 'Thumbnail not found.' });
+  });
+
+  app.post(
+    '/api/pdf-to-text/extract',
+    uploadRateLimiter,
+    queueLimitGuard,
+    (req, res, next) => {
+      upload.single('file')(req, res, (err) => {
+        if (err) {
+          if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({
+              success: false,
+              code: 'LIMIT_FILE_SIZE',
+              error: `The uploaded PDF exceeds the limit of ${FREE_MAX_FILE_SIZE_MB}MB. Please compress your file or upgrade to Pro.`,
+            });
+          }
+          return res.status(400).json({ success: false, code: 'UPLOAD_ERROR', error: err.message || 'Upload failed.' });
+        }
+        next();
+      });
+    },
+    async (req, res) => {
+      try {
+        let pdfBuffer: Buffer | null = null;
+        let originalName = 'document.pdf';
+        let jobId = '';
+
+        if (req.body.jobId) {
+          const existingJob = jobStorage.getJob(req.body.jobId);
+          if (existingJob && fs.existsSync(existingJob.inputPath)) {
+            pdfBuffer = fs.readFileSync(existingJob.inputPath);
+            originalName = existingJob.originalName;
+            jobId = existingJob.id;
+          }
+        }
+
+        if (!pdfBuffer && req.file) {
+          pdfBuffer = req.file.buffer;
+          originalName = sanitizeFilename(req.file.originalname || 'document.pdf');
+        }
+
+        if (!pdfBuffer) {
+          return res.status(400).json({
+            success: false,
+            code: 'NO_PDF_PROVIDED',
+            error: 'No PDF file was uploaded or selected.',
+          });
+        }
+
+        // Validate MIME type & file extension
+        const cleanName = sanitizeFilename(originalName);
+        const lowerName = cleanName.toLowerCase();
+        if (!lowerName.endsWith('.pdf')) {
+          return res.status(400).json({
+            success: false,
+            code: 'INVALID_FILE_TYPE',
+            error: 'Only PDF documents (.pdf) are supported.',
+          });
+        }
+
+        const userPlan = getUserPlan(req);
+        const isPro = isProUser(req);
+        const maxAllowedMB = userPlan === 'pro' || userPlan === 'business' ? PRO_MAX_FILE_MB : FREE_MAX_FILE_MB;
+        const maxAllowedBytes = maxAllowedMB * 1024 * 1024;
+
+        if (pdfBuffer.length > maxAllowedBytes) {
+          return res.status(400).json({
+            success: false,
+            code: 'FILE_TOO_LARGE',
+            error: `The PDF (${(pdfBuffer.length / (1024 * 1024)).toFixed(1)}MB) exceeds your plan limit of ${maxAllowedMB}MB.`,
+          });
+        }
+
+        // Verify PDF Magic Bytes
+        const header = pdfBuffer.subarray(0, 1024).toString('binary');
+        if (!header.includes('%PDF-')) {
+          return res.status(400).json({
+            success: false,
+            code: 'CORRUPTED_PDF',
+            error: 'The uploaded file is not a valid or readable PDF document.',
+          });
+        }
+
+        // Ephemeral job storage for session
+        if (!jobId) {
+          const { filePath } = generateTempFilePath('pdf');
+          fs.writeFileSync(filePath, pdfBuffer);
+          const sessionId = (req.headers['x-session-id'] as string) || req.ip || 'anonymous';
+
+          const newJob = jobStorage.createJob({
+            originalName: cleanName,
+            inputFormat: 'pdf',
+            inputPath: filePath,
+            fileSize: pdfBuffer.length,
+            sessionId,
+            isPro,
+          });
+          jobId = newJob.id;
+        }
+
+        const extraction = await extractTextFromPdfBuffer({
+          pdfBuffer,
+          fileName: cleanName,
+          jobId,
+        });
+
+        // Store thumbnails in ephemeral map
+        const thumbPageMap = new Map<number, string>();
+        for (const p of extraction.pages) {
+          if (p.thumbnailPath) {
+            thumbPageMap.set(p.pageNumber, p.thumbnailPath);
+            p.thumbnailPath = `/api/pdf-to-text/thumbnail/${jobId}/${p.pageNumber}`;
+          }
+        }
+        pdfThumbnailMap.set(jobId, thumbPageMap);
+
+        metricsTracker.recordConversion('pdf', 'txt', isPro);
+
+        return res.json({
+          success: true,
+          jobId,
+          fileName: cleanName,
+          originalFileSize: pdfBuffer.length,
+          totalPages: extraction.totalPages,
+          pdfType: extraction.pdfType,
+          detectedPageSize: extraction.detectedPageSize,
+          ocrConfigured: extraction.ocrConfigured,
+          ocrEngineName: extraction.ocrEngineName,
+          pages: extraction.pages.map((p) => ({
+            pageNumber: p.pageNumber,
+            text: p.text,
+            width: p.width,
+            height: p.height,
+            isScanned: p.isScanned,
+            ocrApplied: p.ocrApplied,
+            thumbnailUrl: p.thumbnailPath,
+            characterCount: p.characterCount,
+            wordCount: p.wordCount,
+          })),
+        });
+      } catch (err: any) {
+        console.error('[PDF-to-Text] Extraction failed:', err);
+        return res.status(400).json({
+          success: false,
+          code: 'EXTRACTION_FAILED',
+          error: err.message || 'Failed to extract text from PDF document.',
+        });
+      }
+    }
+  );
+
+  app.post('/api/pdf-to-text/save', convertRateLimiter, async (req, res) => {
+    try {
+      const {
+        pages = [],
+        format = 'pdf',
+        mode = 'extract_and_edit',
+        jobId,
+        filename,
+        options = {},
+      } = req.body;
+
+      if (!pages || !Array.isArray(pages) || pages.length === 0) {
+        return res.status(400).json({
+          success: false,
+          code: 'NO_PAGES',
+          error: 'Document has no page content to save.',
+        });
+      }
+
+      const baseName = sanitizeFilename(filename || 'document').replace(/\.(pdf|txt|docx)$/i, '');
+
+      // Option 1: TXT format
+      if (format === 'txt') {
+        const textContent = pages
+          .map((p: any) => {
+            if (pages.length > 1) {
+              return `--- Page ${p.pageNumber} ---\n\n${p.text || ''}`;
+            }
+            return p.text || '';
+          })
+          .join('\n\n\n');
+
+        const buffer = Buffer.from(textContent, 'utf8');
+        const outName = `${baseName}.txt`;
+
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${outName}"`);
+        res.setHeader('Content-Length', buffer.length.toString());
+        return res.send(buffer);
+      }
+
+      // Option 2: DOCX format
+      if (format === 'docx') {
+        const docxBuffer = await generateDocxFromPages(
+          pages.map((p: any) => ({ pageNumber: p.pageNumber, text: p.text || '' })),
+          { title: baseName, filename: `${baseName}.docx` }
+        );
+
+        const outName = `${baseName}.docx`;
+        res.setHeader(
+          'Content-Type',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        );
+        res.setHeader('Content-Disposition', `attachment; filename="${outName}"`);
+        res.setHeader('Content-Length', docxBuffer.length.toString());
+        return res.send(docxBuffer);
+      }
+
+      // Option 3: PDF format
+      let originalPdfBuffer: Buffer | undefined;
+      if (mode === 'preserve_layout' && jobId) {
+        const existingJob = jobStorage.getJob(jobId);
+        if (existingJob && fs.existsSync(existingJob.inputPath)) {
+          originalPdfBuffer = fs.readFileSync(existingJob.inputPath);
+        }
+      }
+
+      const result = await generateEditedPdf({
+        pages: pages.map((p: any) => ({
+          pageNumber: p.pageNumber,
+          text: p.text || '',
+          width: p.width,
+          height: p.height,
+        })),
+        mode,
+        originalPdfBuffer,
+        pageSize: options.pageSize || 'a4',
+        orientation: options.orientation || 'portrait',
+        margin: options.margin || 'normal',
+        fontFamily: options.fontFamily || 'sans',
+        fontSize: options.fontSize || 11,
+        lineSpacing: options.lineSpacing || '1.15',
+        pageNumbers: options.pageNumbers || 'bottom-center',
+        headerText: options.headerText || '',
+        textColor: options.textColor || '#111827',
+      });
+
+      if (!result.validationPassed || !result.buffer || result.buffer.length === 0) {
+        return res.status(500).json({
+          success: false,
+          code: 'PDF_VALIDATION_FAILED',
+          error: 'PDF generation failed. Please try again.',
+        });
+      }
+
+      const outName = `${baseName}_edited.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${outName}"`);
+      res.setHeader('Content-Length', result.buffer.length.toString());
+      res.setHeader('X-PDF-Page-Count', result.pageCount.toString());
+      res.setHeader('X-PDF-Size-Bytes', result.fileSizeBytes.toString());
+      return res.send(result.buffer);
+    } catch (err: any) {
+      console.error('[PDF-to-Text] Save error:', err);
+      return res.status(500).json({
+        success: false,
+        code: 'SAVE_FAILED',
+        error: 'PDF generation failed. Please try again.',
+      });
+    }
+  });
+
+  app.get('/api/pdf-to-text/download-original/:jobId', (req, res) => {
+    const job = jobStorage.getJob(req.params.jobId);
+    if (!job || !fs.existsSync(job.inputPath)) {
+      return res.status(404).json({
+        success: false,
+        code: 'FILE_NOT_FOUND',
+        error: 'Original PDF file is no longer available or session expired.',
+      });
+    }
+    const cleanName = sanitizeFilename(job.originalName || 'original.pdf');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${cleanName}"`);
+    return fs.createReadStream(job.inputPath).pipe(res);
+  });
+
+  // 5d. Dedicated Professional File Compression Endpoint (/api/compress)
   app.post(
     '/api/compress',
     uploadRateLimiter,
@@ -1526,6 +1834,11 @@ ${allRoutes
           title = cfg.title;
           description = cfg.metaDescription;
           canonicalUrl = `${origin}/${cfg.slug}`;
+        } else if (reqPath === 'pdf-to-text') {
+          title = 'PDF to Text – Extract, Edit & Save PDF Online | Convert-X';
+          description =
+            'Extract text from PDF, edit it online and save your changes as TXT, PDF or DOCX with Convert-X.';
+          canonicalUrl = `${origin}/pdf-to-text`;
         } else if (reqPath === 'text-to-voice') {
           title = 'Text to Voice – Convert Text to Speech Online | Convert-X';
           description =

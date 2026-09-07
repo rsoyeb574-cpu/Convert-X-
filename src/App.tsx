@@ -30,7 +30,9 @@ import { SeoLandingPage } from './components/SeoLandingPage.js';
 import { SeoMetaManager } from './components/SeoMetaManager.js';
 import { PricingPage } from './components/PricingPage.js';
 import { ToolsDirectory } from './components/ToolsDirectory.js';
+import { PopularToolsSection } from './components/PopularToolsSection.js';
 import { TextToPdfStudio } from './components/TextToPdfStudio.js';
+import { PdfToTextStudio } from './components/PdfToTextStudio.js';
 import { TextToVoicePage } from './components/TextToVoicePage.js';
 import { CompressPage } from './components/CompressPage.js';
 import { AboutPage } from './components/AboutPage.js';
@@ -287,6 +289,11 @@ export default function App() {
         return;
       }
 
+      if (pathname === 'pdf-to-text') {
+        setCurrentView('pdf-to-text');
+        return;
+      }
+
       if (SEO_ROUTES[pathname]) {
         setCurrentView('seo');
         setSeoSlug(pathname);
@@ -296,6 +303,7 @@ export default function App() {
           'compress',
           'text-to-voice',
           'text-to-pdf',
+          'pdf-to-text',
           'formats',
           'tools',
           'about',
@@ -1678,6 +1686,7 @@ export default function App() {
                 maxFileSizeMB={safeMaxFileSizeMB}
                 onViewPro={() => handleNavigate('pricing')}
               />
+              <PopularToolsSection onNavigate={handleNavigate} />
               <UniversalExportSection
                 onSelectSample={handleSampleSelected}
                 onNavigateToConverter={() => setCurrentView('converter')}
@@ -1944,6 +1953,26 @@ export default function App() {
                 });
               }}
               darkMode={darkMode}
+            />
+          )}
+
+          {/* 3b-2. Dedicated PDF to Text + Edit + Save Studio View */}
+          {currentView === 'pdf-to-text' && (
+            <PdfToTextStudio
+              onNavigate={handleNavigate}
+              showToast={showToast}
+              darkMode={darkMode}
+              onRecordHistory={(histItem) => {
+                setHistory((prev) => {
+                  const updated = [histItem, ...prev];
+                  try {
+                    localStorage.setItem('convertx_history', JSON.stringify(updated));
+                  } catch (e) {
+                    console.warn('Failed to persist history item', e);
+                  }
+                  return updated;
+                });
+              }}
             />
           )}
 

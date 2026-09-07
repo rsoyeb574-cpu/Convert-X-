@@ -846,6 +846,7 @@ SAMPLE_FILES['sample-dxf'] = SAMPLE_FILES.cad_blueprint;
 SAMPLE_FILES['sample-svg'] = SAMPLE_FILES.vector_artwork;
 SAMPLE_FILES['sample-png'] = SAMPLE_FILES.sample_photo;
 SAMPLE_FILES['sample-pdf'] = SAMPLE_FILES.sample_document;
+SAMPLE_FILES['sample_pdf'] = SAMPLE_FILES.sample_document;
 SAMPLE_FILES['sample-jpg'] = SAMPLE_FILES.sample_jpg;
 SAMPLE_FILES['sample-webp'] = SAMPLE_FILES.sample_webp;
 SAMPLE_FILES['sample-eps'] = SAMPLE_FILES.sample_eps;

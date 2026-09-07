@@ -124,51 +124,19 @@ export const Hero: React.FC<HeroProps> = ({
           </div>
         </div>
 
-        {/* Popular Converter Quicklinks */}
-        <div className="pt-2">
-          <p className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider mb-3">
-            Popular Real-Time Converters
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
-            {popularQuickConverters.map((c) => (
-              <a
-                key={c.slug}
-                href={`/${c.slug}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onNavigate('seo', c.slug);
-                }}
-                className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#111827] hover:bg-blue-50 dark:hover:bg-blue-950/60 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-blue-400 text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] hover:text-[#2563EB] transition-all shadow-2xs"
-              >
-                {c.label}
-              </a>
-            ))}
-          </div>
-        </div>
-
-        {/* Category Cards */}
-        <div className="pt-4">
-          <p className="text-xs font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider mb-4">
-            Active Server-Side Processing Engines
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl mx-auto">
-            {categories.map((cat) => (
-              <div
-                key={cat.name}
-                onClick={() => onNavigate('formats')}
-                className="p-4 rounded-2xl bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/80 border border-[#E2E8F0] dark:border-[#1E293B] hover:border-[#2563EB] shadow-xs hover:shadow-sm transition-all cursor-pointer group text-left"
-              >
-                <div className="flex items-center gap-2 mb-1.5">
-                  {cat.icon}
-                  <span className="text-xs sm:text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#2563EB] transition-colors">
-                    {cat.name}
-                  </span>
-                </div>
-                <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">{cat.desc}</p>
-              </div>
-            ))}
-          </div>
+        {/* Fast Jump to Tools Hub */}
+        <div className="pt-2 flex items-center justify-center">
+          <button
+            onClick={() => onNavigate('tools')}
+            id="hero-jump-to-tools-btn"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs font-semibold text-[#64748B] dark:text-[#94A3B8] transition-colors border border-slate-200 dark:border-slate-800 shadow-2xs group"
+          >
+            <span>Looking for PDF to Text, Audio Synthesis, or Compression?</span>
+            <span className="text-[#2563EB] dark:text-blue-400 font-bold flex items-center gap-1 group-hover:underline">
+              <span>View All 40+ Tools</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </button>
         </div>
       </div>
     </section>

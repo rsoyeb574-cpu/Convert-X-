@@ -115,6 +115,19 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenMetrics }) => 
               </li>
               <li>
                 <a
+                  href="/pdf-to-text"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('pdf-to-text');
+                  }}
+                  className="hover:text-[#2563EB] dark:hover:text-blue-400 transition-colors font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1"
+                >
+                  <span>PDF to Text</span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold">New</span>
+                </a>
+              </li>
+              <li>
+                <a
                   href="/text-to-voice"
                   onClick={(e) => {
                     e.preventDefault();

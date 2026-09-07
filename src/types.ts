@@ -142,6 +142,7 @@ export type PageView =
   | 'compress'
   | 'text-to-voice'
   | 'text-to-pdf'
+  | 'pdf-to-text'
   | 'formats'
   | 'tools'
   | 'referral'
@@ -156,6 +157,43 @@ export type PageView =
   | 'affiliates'
   | 'seo'
   | '404';
+
+export interface PdfToTextPage {
+  pageNumber: number;
+  text: string;
+  width: number;
+  height: number;
+  isScanned: boolean;
+  ocrApplied: boolean;
+  thumbnailUrl?: string;
+  characterCount: number;
+  wordCount: number;
+}
+
+export interface PdfToTextExtraction {
+  jobId: string;
+  fileName: string;
+  originalFileSize: number;
+  totalPages: number;
+  pdfType: 'text' | 'scanned' | 'mixed';
+  detectedPageSize: string;
+  ocrConfigured: boolean;
+  ocrEngineName: string;
+  pages: PdfToTextPage[];
+}
+
+export interface PdfToTextSaveSettings {
+  mode: 'extract_and_edit' | 'preserve_layout';
+  pageSize: 'a4' | 'a3' | 'letter' | 'original';
+  orientation: 'portrait' | 'landscape' | 'original';
+  margin: 'small' | 'normal' | 'large' | number;
+  fontFamily: 'sans' | 'serif' | 'mono';
+  fontSize: number;
+  lineSpacing: '1.0' | '1.15' | '1.5' | '2.0' | number;
+  pageNumbers: 'none' | 'bottom-center' | 'bottom-right' | 'top-right';
+  headerText: string;
+  textColor: string;
+}
 
 export interface TtsVoiceOption {
   id: string;

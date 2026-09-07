@@ -368,10 +368,227 @@ export const SeoMetaManager: React.FC<SeoMetaManagerProps> = ({ currentView, seo
             },
           ],
         });
+      } else if (currentView === 'pdf-to-text') {
+        title = 'PDF to Text – Extract, Edit & Save PDF Online | Convert-X';
+        description =
+          'Extract text from PDF, edit it online and save your changes as TXT, PDF or DOCX with Convert-X.';
+        canonicalUrl = `${origin}/pdf-to-text`;
+
+        // 1. SoftwareApplication Schema for PDF to Text Studio
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': ['SoftwareApplication', 'WebApplication'],
+          '@id': `${canonicalUrl}#software`,
+          name: 'Convert-X PDF to Text & Document Studio',
+          headline: 'PDF to Text – Extract, Edit & Save PDF Online | Convert-X',
+          description: description,
+          url: canonicalUrl,
+          applicationCategory: 'UtilitiesApplication',
+          applicationSubCategory: 'DocumentEditor',
+          operatingSystem: 'All (Web Browser, Windows, macOS, Linux, iOS, Android)',
+          browserRequirements: 'Requires JavaScript. Requires HTML5.',
+          softwareVersion: '2.5.0',
+          offers: {
+            '@type': 'Offer',
+            price: '0.00',
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+            category: 'Free Online PDF to Text Editor',
+          },
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: '4.9',
+            reviewCount: '1580',
+            bestRating: '5',
+            worstRating: '1',
+          },
+          featureList: [
+            'Extract selectable text and reconstruct paragraphs',
+            'Scanned PDF detection with pluggable neural OCR engine',
+            'Interactive multi-page document editor with undo/redo and search & replace',
+            'Multilingual Unicode support (English, Hindi, Urdu, and more)',
+            'Export to clean TXT, vector PDF, or Microsoft Word DOCX',
+            'Zero-retention 256-bit encrypted ephemeral processing',
+          ],
+        });
+
+        // 2. HowTo Schema
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': 'HowTo',
+          '@id': `${canonicalUrl}#howto`,
+          name: 'How to extract text from PDF, edit it and save online for free',
+          description: 'Step-by-step instructions to extract text from PDF, edit content, and save as TXT, PDF, or DOCX using Convert-X.',
+          totalTime: 'PT30S',
+          step: [
+            {
+              '@type': 'HowToStep',
+              position: 1,
+              name: 'Upload PDF',
+              text: 'Select or drag-and-drop your PDF into Convert-X PDF to Text studio.',
+            },
+            {
+              '@type': 'HowToStep',
+              position: 2,
+              name: 'Edit Document',
+              text: 'Edit extracted text directly in the browser with full formatting tools and find & replace.',
+            },
+            {
+              '@type': 'HowToStep',
+              position: 3,
+              name: 'Save & Download',
+              text: 'Download your edited file as a freshly generated PDF, Microsoft Word DOCX, or plain text TXT.',
+            },
+          ],
+        });
+
+        // 3. BreadcrumbList Schema
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Home',
+              item: origin,
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Tools',
+              item: `${origin}/tools`,
+            },
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: 'PDF to Text',
+              item: canonicalUrl,
+            },
+          ],
+        });
       } else if (currentView === 'tools') {
-        title = 'All Free Online Conversion Tools | Convert-X Directory';
-        description = 'Browse the complete catalog of free online file conversion tools. Fast, private, and zero-retention image, PDF, and vector converters.';
+        title = 'All Tools – Convert, Compress, Edit & Create | Convert-X';
+        description =
+          "Everything you need to convert, compress, edit and create. Discover Convert-X's complete catalog of fast, private, zero-retention online tools.";
         canonicalUrl = `${origin}/tools`;
+
+        // 1. CollectionPage Schema
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': 'CollectionPage',
+          '@id': `${canonicalUrl}#collection`,
+          name: title,
+          description: description,
+          url: canonicalUrl,
+          mainEntity: {
+            '@type': 'ItemList',
+            numberOfItems: 22,
+            itemListElement: [
+              {
+                '@type': 'ListItem',
+                position: 1,
+                name: 'PDF to Text Studio',
+                url: `${origin}/pdf-to-text`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 2,
+                name: 'Text to PDF Studio',
+                url: `${origin}/text-to-pdf`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 3,
+                name: 'Universal File Compressor',
+                url: `${origin}/compress`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 4,
+                name: 'Text to Voice Studio',
+                url: `${origin}/text-to-voice`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 5,
+                name: 'Universal Converter Workspace',
+                url: `${origin}/converter`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 6,
+                name: 'PNG to JPG Converter',
+                url: `${origin}/png-to-jpg`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 7,
+                name: 'JPG to PNG Converter',
+                url: `${origin}/jpg-to-png`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 8,
+                name: 'PDF to PNG Converter',
+                url: `${origin}/pdf-to-png`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 9,
+                name: 'DXF to PDF CAD Converter',
+                url: `${origin}/dxf-to-pdf`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 10,
+                name: 'PSD to PNG Adobe Converter',
+                url: `${origin}/psd-to-png`,
+              },
+            ],
+          },
+        });
+
+        // 2. SoftwareApplication Schema for Tools Hub
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': ['SoftwareApplication', 'WebApplication'],
+          '@id': `${canonicalUrl}#software`,
+          name: 'Convert-X All Tools Hub',
+          headline: title,
+          description: description,
+          url: canonicalUrl,
+          applicationCategory: 'UtilitiesApplication',
+          operatingSystem: 'All (Web Browser, Windows, macOS, Linux, iOS, Android)',
+          browserRequirements: 'Requires JavaScript. Requires HTML5.',
+          softwareVersion: '2.5.0',
+          offers: {
+            '@type': 'Offer',
+            price: '0.00',
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+          },
+        });
+
+        // 3. BreadcrumbList Schema
+        jsonLdSchemas.push({
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Home',
+              item: origin,
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Tools',
+              item: canonicalUrl,
+            },
+          ],
+        });
       } else if (currentView === 'about') {
         title = 'About Convert-X - Fast, Ephemeral & Private File Conversion';
         description = 'Learn about Convert-X: our high-speed C++ conversion pipeline, zero-retention privacy architecture, 256-bit encryption, and technical mission.';

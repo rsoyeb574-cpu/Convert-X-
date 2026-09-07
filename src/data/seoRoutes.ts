@@ -1531,4 +1531,71 @@ export const SEO_ROUTES: Record<string, SeoRouteConfig> = {
     ],
     relatedSlugs: ['pdf-to-png', 'png-to-pdf', 'pdf-to-jpg', 'compress-pdf'],
   },
+  'pdf-to-text': {
+    slug: 'pdf-to-text',
+    title: 'PDF to Text – Extract, Edit & Save PDF Online | Convert-X',
+    h1: 'PDF to Text Converter & Editor',
+    metaDescription: 'Extract text from PDF, edit it online and save your changes as TXT, PDF or DOCX with Convert-X.',
+    fromFormat: 'pdf',
+    toFormat: 'txt',
+    category: 'pdf',
+    badge: 'OCR & Document Editor',
+    shortExplanation: 'Extract text from any PDF with layout preservation, edit the content in a professional document studio, and save your changes as TXT, PDF, or DOCX.',
+    sampleKey: 'sample_pdf',
+    supportedInputFormats: ['PDF (Portable Document Format)', 'application/pdf', 'Scanned PDF via OCR'],
+    supportedOutputFormats: ['TXT (Plain Text)', 'PDF (Edited Document)', 'DOCX (Microsoft Word)'],
+    features: [
+      'Accurate text extraction preserving lines, paragraphs, and headings',
+      'Intelligent scanned PDF detection with pluggable neural OCR engine',
+      'Built-in multi-page document editor with undo/redo and find & replace',
+      'Multilingual Unicode support (English, Hindi, Urdu, and more)',
+      'Export directly to clean TXT, professional vector PDF, or editable DOCX',
+      'Zero-retention ephemeral processing: files automatically deleted',
+    ],
+    whyConvert: {
+      title: 'Why Extract and Edit PDF Text with Convert-X?',
+      description: 'PDFs are typically read-only and difficult to modify. Convert-X extracts editable text with structural fidelity, lets you edit in your browser, and re-exports in your desired format.',
+      points: [
+        {
+          title: 'Direct Browser Editing',
+          text: 'Modify text, correct typos, adjust paragraphs, and organize sections without requiring expensive desktop software.',
+        },
+        {
+          title: 'Scanned & Native PDF Support',
+          text: 'Seamlessly processes both text-based PDFs and scanned document pages with automatic OCR detection.',
+        },
+        {
+          title: 'Flexible Multi-Format Export',
+          text: 'Save your edited document as clean plain text, a freshly typeset vector PDF with correct margins, or a Microsoft Word DOCX file.',
+        },
+      ],
+    },
+    comparison: {
+      fromTitle: 'Locked PDF File',
+      fromPoints: ['Read-only static pages', 'Difficult to copy or modify content', 'Inconvenient for quick revisions'],
+      toTitle: 'Editable Convert-X Studio',
+      toPoints: ['Interactive document editor with live word count', 'Undo/redo, search & replace, and pagination', 'Export as TXT, PDF, or DOCX in seconds'],
+    },
+    howToUse: [
+      { step: 1, title: 'Upload PDF Document', text: 'Drag and drop your PDF or click Choose PDF to start text extraction.' },
+      { step: 2, title: 'Edit Document Content', text: 'Edit text directly in the multi-page editor with full toolbar formatting.' },
+      { step: 3, title: 'Configure Layout & Export', text: 'Adjust page size, margins, font family, and choose between Extract & Edit or Preserve Layout.' },
+      { step: 4, title: 'Save & Download', text: 'Download as TXT, edited PDF, or Microsoft Word DOCX with one click.' },
+    ],
+    faq: [
+      {
+        question: 'Does this support scanned PDFs and images?',
+        answer: 'Yes! Convert-X identifies whether your PDF is text-based, scanned, or mixed. When an OCR engine is configured, scanned pages are automatically transcribed with high accuracy.',
+      },
+      {
+        question: 'Can I download the edited file as a new PDF?',
+        answer: 'Yes. Convert-X recalculates page breaks, margins, and typography to generate a clean, professional vector PDF with selectable text.',
+      },
+      {
+        question: 'Are my uploaded files kept private?',
+        answer: 'Absolutely. Convert-X uses zero-retention ephemeral processing. Your files and drafts are never stored permanently or shared with third parties.',
+      },
+    ],
+    relatedSlugs: ['text-to-pdf', 'compress-pdf', 'pdf-to-png', 'pdf-to-jpg'],
+  },
 };
