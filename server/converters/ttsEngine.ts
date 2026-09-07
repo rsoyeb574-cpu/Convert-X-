@@ -523,6 +523,11 @@ export class TtsEngine {
 
   private voiceSampleCache: Map<string, { buffer: Buffer; mimeType: string }> = new Map();
 
+  public isConfigured(): boolean {
+    const apiKey = process.env.GEMINI_API_KEY;
+    return Boolean(apiKey && apiKey.trim().length > 0);
+  }
+
   public getAvailableVoices(languageCode?: string): VoiceOption[] {
     if (!languageCode || languageCode === 'all') {
       return AVAILABLE_VOICES;
@@ -570,7 +575,7 @@ export class TtsEngine {
   /**
    * Generates single chunk PCM from Gemini TTS
    */
-  private async synthesizeChunkWithGemini(chunkText: string, voiceName: string, languageName: string): Promise<Buffer | null> {
+  private async synthesizeChunkWithGemini(chunkText: string, voiceName: string, _languageName: string): Promise<Buffer | null> {
     if (!this.aiClient) {
       this.initGemini();
     }
@@ -578,38 +583,40 @@ export class TtsEngine {
       return null;
     }
 
-    try {
-      const response = await this.aiClient.models.generateContent({
-        model: 'gemini-3.1-flash-tts-preview',
-        contents: [
-          {
-            parts: [
-              {
-                text: chunkText,
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    for (const model of modelsToTry) {
+      try {
+        const response = await this.aiClient.models.generateContent({
+          model,
+          contents: [
+            {
+              parts: [
+                {
+                  text: chunkText,
+                },
+              ],
+            },
+          ],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: voiceName as any },
               },
-            ],
-          },
-        ],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: voiceName as any },
             },
           },
-        },
-      });
+        });
 
-      const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (!audioBase64) {
-        return null;
+        const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (audioBase64) {
+          return Buffer.from(audioBase64, 'base64');
+        }
+      } catch (err: any) {
+        console.warn(`[TtsEngine] Gemini TTS call (${model}) failed for chunk: "${chunkText.substring(0, 30)}..."`, err?.message || err);
       }
-
-      return Buffer.from(audioBase64, 'base64');
-    } catch (err: any) {
-      console.warn(`[TtsEngine] Gemini TTS call failed for chunk: "${chunkText.substring(0, 30)}..."`, err?.message || err);
-      return null;
     }
+
+    return null;
   }
 
   /**
@@ -733,6 +740,10 @@ export class TtsEngine {
       throw new Error('Text length exceeds the maximum limit of 50,000 characters.');
     }
 
+    if (!this.isConfigured()) {
+      throw new Error('Text-to-Voice generation requires Gemini API configuration. Please configure GEMINI_API_KEY to generate speech.');
+    }
+
     const selectedVoiceId = options.voice || 'Kore';
     const voiceObj = AVAILABLE_VOICES.find((v) => v.id.toLowerCase() === selectedVoiceId.toLowerCase()) || AVAILABLE_VOICES[0];
     const languageCode = options.language || 'en';
@@ -781,16 +792,13 @@ export class TtsEngine {
 
       let chunkPcm: Buffer | null = null;
 
-      // Attempt with Gemini TTS
+      // Generate with Gemini TTS
       if (this.aiClient) {
         chunkPcm = await this.synthesizeChunkWithGemini(item.text, voiceObj.id, langObj.name);
       }
 
-      // If Gemini TTS is not configured or fails, use clean high-fidelity synthesis fallback
       if (!chunkPcm || chunkPcm.length === 0) {
-        usedProvider = 'natural-synth';
-        let pitchMod = pitch === 'low' ? 0.88 : pitch === 'high' ? 1.15 : 1.0;
-        chunkPcm = this.synthesizeFallbackWaveform(item.text, voiceObj.id, speed, pitchMod);
+        throw new Error(`Speech synthesis failed for chunk: "${item.text.substring(0, 30)}...". Please try again with another voice or check API quota.`);
       }
 
       itemPcmMap.set(i, chunkPcm);

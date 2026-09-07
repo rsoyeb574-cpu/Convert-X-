@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 /**
  * Payment & Subscription Service Abstraction
  * Handles order creation, verification, and entitlement activation.
@@ -139,13 +141,46 @@ export class PaymentService {
       };
     }
 
-    // When real gateway SDK is active, cryptographic signature verification happens here
-    return {
-      success: true,
-      code: 'PAYMENT_VERIFIED',
-      subscriptionId: `sub_${params.orderId}`,
-      status: 'active',
-    };
+    if (!params.signature || typeof params.signature !== 'string') {
+      return {
+        success: false,
+        code: 'INVALID_SIGNATURE',
+        error: 'Missing required cryptographic signature for payment verification.',
+      };
+    }
+
+    // Cryptographic HMAC SHA256 verification (Razorpay standard payload: order_id + "|" + payment_id)
+    try {
+      const payload = `${params.orderId}|${params.paymentId}`;
+      const expectedSignature = crypto
+        .createHmac('sha256', this.secretKey)
+        .update(payload)
+        .digest('hex');
+
+      const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+      const providedBuf = Buffer.from(params.signature, 'utf8');
+
+      if (expectedBuf.length !== providedBuf.length || !crypto.timingSafeEqual(expectedBuf, providedBuf)) {
+        return {
+          success: false,
+          code: 'INVALID_SIGNATURE',
+          error: 'Payment cryptographic signature verification failed.',
+        };
+      }
+
+      return {
+        success: true,
+        code: 'PAYMENT_VERIFIED',
+        subscriptionId: `sub_${params.orderId}`,
+        status: 'active',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        code: 'VERIFICATION_FAILED',
+        error: err?.message || 'Payment signature verification encountered an internal error.',
+      };
+    }
   }
 
   /**

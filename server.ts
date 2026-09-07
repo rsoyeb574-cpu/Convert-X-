@@ -1538,6 +1538,7 @@ ${allRoutes
       const voices = ttsEngine.getAvailableVoices();
       res.json({
         success: true,
+        isConfigured: ttsEngine.isConfigured(),
         languages,
         voices,
         supportedFormats: ['mp3', 'wav'],
