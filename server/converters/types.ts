@@ -52,8 +52,30 @@ export interface ConverterEngine {
   convert(params: ConvertParams): Promise<ConvertResult>;
 }
 
-export type FormatCategory = 'images' | 'pdf' | 'documents' | 'vector' | 'cad' | 'adobe' | 'corel' | '3d';
-export type FormatStatus = 'supported' | 'coming_soon' | 'engine_unavailable';
+export type FormatCategory =
+  | 'images'
+  | 'pdf'
+  | 'documents'
+  | 'vector'
+  | 'cad'
+  | 'adobe'
+  | 'corel'
+  | '3d'
+  | 'threed'
+  | 'audio'
+  | 'video'
+  | 'bim'
+  | 'structural'
+  | 'mechanical'
+  | 'steel'
+  | 'ml'
+  | 'aimodels'
+  | 'datascience'
+  | 'developer'
+  | 'scientific'
+  | 'archives';
+
+export type FormatStatus = 'supported' | 'coming_soon' | 'engine_unavailable' | 'partial';
 
 export interface FormatCapability {
   id: string;

@@ -1,6 +1,7 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { PDFDocument } from 'pdf-lib';
 import sharp from 'sharp';
+import JSZip from 'jszip';
 import { ConverterEngine, ConvertParams, ConvertResult, ValidationResult } from './types.js';
 
 interface Vertex3D {
@@ -31,10 +32,10 @@ interface Mesh3D {
 export class ThreeDConverter implements ConverterEngine {
   id = '3d-mesh-geometry-engine';
   name = '3D Mesh Geometry & CAD Visualization Engine';
-  description = 'Direct 3D geometry engine converting Wavefront OBJ and Stereolithography STL models into high-resolution isometric blueprints (PNG, JPG, WEBP, PDF, SVG) and format cross-conversions (OBJ ↔ STL).';
+  description = 'Direct 3D geometry engine converting Wavefront OBJ, Stereolithography STL, PLY, 3MF, and OFF models into high-resolution isometric blueprints (PNG, JPG, WEBP, PDF, SVG) and format cross-conversions.';
 
-  supportedInputFormats = ['obj', 'stl'];
-  supportedOutputFormats = ['png', 'jpg', 'webp', 'pdf', 'svg', 'obj', 'stl'];
+  supportedInputFormats = ['obj', 'stl', 'ply', '3mf', 'off'];
+  supportedOutputFormats = ['png', 'jpg', 'webp', 'pdf', 'svg', 'obj', 'stl', 'ply'];
 
   supports(inputFormat: string, outputFormat: string): boolean {
     const inFmt = inputFormat.toLowerCase();
@@ -63,6 +64,18 @@ export class ThreeDConverter implements ConverterEngine {
       if (!isAscii && fileBuffer.length < 84) {
         return { valid: false, reason: 'Invalid .STL file: File is smaller than binary STL header.' };
       }
+    } else if (fmt === 'ply') {
+      if (!fileBuffer.slice(0, 30).toString('utf8').startsWith('ply')) {
+        return { valid: false, reason: 'Invalid .PLY file: Missing ply magic header.' };
+      }
+    } else if (fmt === '3mf') {
+      if (fileBuffer[0] !== 0x50 || fileBuffer[1] !== 0x4b) {
+        return { valid: false, reason: 'Invalid .3MF file: Expected ZIP package format.' };
+      }
+    } else if (fmt === 'off') {
+      if (!fileBuffer.slice(0, 30).toString('utf8').trim().startsWith('OFF')) {
+        return { valid: false, reason: 'Invalid .OFF file: Missing OFF header.' };
+      }
     }
 
     return { valid: true, detectedFormat: fmt };
@@ -77,6 +90,12 @@ export class ThreeDConverter implements ConverterEngine {
     let mesh: Mesh3D;
     if (inFmt === 'obj') {
       mesh = this.parseObj(inputBuffer.toString('utf8'));
+    } else if (inFmt === 'ply') {
+      mesh = this.parsePly(inputBuffer);
+    } else if (inFmt === '3mf') {
+      mesh = await this.parse3mf(inputBuffer);
+    } else if (inFmt === 'off') {
+      mesh = this.parseOff(inputBuffer.toString('utf8'));
     } else {
       mesh = this.parseStl(inputBuffer);
     }
@@ -85,7 +104,7 @@ export class ThreeDConverter implements ConverterEngine {
       throw new Error(`3D parser found 0 polygons in .${inFmt.toUpperCase()} file.`);
     }
 
-    // 2. Direct 3D Mesh Cross-Conversion (OBJ ↔ STL)
+    // 2. Direct 3D Mesh Cross-Conversion (OBJ ↔ STL ↔ PLY)
     if (target === 'stl') {
       const stlBuf = this.exportToStlBinary(mesh, fileName || 'model');
       return {
@@ -101,6 +120,15 @@ export class ThreeDConverter implements ConverterEngine {
         buffer: Buffer.from(objStr, 'utf8'),
         mimeType: 'model/obj',
         outputExtension: 'obj',
+      };
+    }
+
+    if (target === 'ply') {
+      const plyStr = this.exportToPlyString(mesh);
+      return {
+        buffer: Buffer.from(plyStr, 'utf8'),
+        mimeType: 'model/ply',
+        outputExtension: 'ply',
       };
     }
 
@@ -551,6 +579,169 @@ export class ThreeDConverter implements ConverterEngine {
     out += '\ns 1\n';
     for (const f of faceIndices) {
       out += `f ${f[0]} ${f[1]} ${f[2]}\n`;
+    }
+
+    return out;
+  }
+
+  private parsePly(buffer: Buffer): Mesh3D {
+    const text = buffer.toString('utf8');
+    const lines = text.split(/\r?\n/);
+    let numVertices = 0;
+    let numFaces = 0;
+    let headerEndIdx = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.startsWith('element vertex ')) {
+        numVertices = parseInt(line.split(/\s+/)[2], 10);
+      } else if (line.startsWith('element face ')) {
+        numFaces = parseInt(line.split(/\s+/)[2], 10);
+      } else if (line === 'end_header') {
+        headerEndIdx = i + 1;
+        break;
+      }
+    }
+
+    const vertices: Vertex3D[] = [];
+    const triangles: Triangle3D[] = [];
+
+    // Parse ASCII vertices
+    for (let i = 0; i < numVertices && headerEndIdx + i < lines.length; i++) {
+      const parts = lines[headerEndIdx + i].trim().split(/\s+/).map(Number);
+      if (parts.length >= 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        vertices.push({ x: parts[0], y: parts[1], z: parts[2] });
+      }
+    }
+
+    // Parse ASCII faces
+    const faceStartIdx = headerEndIdx + numVertices;
+    for (let i = 0; i < numFaces && faceStartIdx + i < lines.length; i++) {
+      const parts = lines[faceStartIdx + i].trim().split(/\s+/).map(Number);
+      if (parts.length >= 4 && parts[0] >= 3) {
+        const count = parts[0];
+        for (let j = 1; j < count - 1; j++) {
+          const idx1 = parts[1];
+          const idx2 = parts[j + 1];
+          const idx3 = parts[j + 2];
+          if (vertices[idx1] && vertices[idx2] && vertices[idx3]) {
+            triangles.push({
+              v1: vertices[idx1],
+              v2: vertices[idx2],
+              v3: vertices[idx3],
+            });
+          }
+        }
+      }
+    }
+
+    return this.calculateMeshBounds(vertices, triangles);
+  }
+
+  private async parse3mf(buffer: Buffer): Promise<Mesh3D> {
+    const zip = await JSZip.loadAsync(buffer);
+    // Find model XML in 3D/3dmodel.model
+    let modelFile = zip.file('3D/3dmodel.model') || zip.file('3d/3dmodel.model');
+    if (!modelFile) {
+      const xmlEntry = Object.keys(zip.files).find((f) => f.endsWith('.model'));
+      if (xmlEntry) modelFile = zip.file(xmlEntry);
+    }
+
+    if (!modelFile) {
+      throw new Error('Invalid .3MF file: 3dmodel.model not found in package.');
+    }
+
+    const xmlText = await modelFile.async('string');
+    const vertices: Vertex3D[] = [];
+    const triangles: Triangle3D[] = [];
+
+    // Extract vertices: <vertex x="0.0" y="0.0" z="0.0" />
+    const vertexMatches = [...xmlText.matchAll(/<vertex\s+[^>]*?x=["']([\d.\-eE]+)["'][^>]*?y=["']([\d.\-eE]+)["'][^>]*?z=["']([\d.\-eE]+)["']/gi)];
+    for (const m of vertexMatches) {
+      vertices.push({
+        x: parseFloat(m[1]),
+        y: parseFloat(m[2]),
+        z: parseFloat(m[3]),
+      });
+    }
+
+    // Extract triangles: <triangle v1="0" v2="1" v3="2" />
+    const triMatches = [...xmlText.matchAll(/<triangle\s+[^>]*?v1=["'](\d+)["'][^>]*?v2=["'](\d+)["'][^>]*?v3=["'](\d+)["']/gi)];
+    for (const m of triMatches) {
+      const idx1 = parseInt(m[1], 10);
+      const idx2 = parseInt(m[2], 10);
+      const idx3 = parseInt(m[3], 10);
+      if (vertices[idx1] && vertices[idx2] && vertices[idx3]) {
+        triangles.push({
+          v1: vertices[idx1],
+          v2: vertices[idx2],
+          v3: vertices[idx3],
+        });
+      }
+    }
+
+    return this.calculateMeshBounds(vertices, triangles);
+  }
+
+  private parseOff(content: string): Mesh3D {
+    const lines = content
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+    let lineIdx = 0;
+    if (lines[0] === 'OFF') {
+      lineIdx = 1;
+    } else if (lines[0].startsWith('OFF')) {
+      lines[0] = lines[0].substring(3).trim();
+    }
+
+    const counts = lines[lineIdx].split(/\s+/).map(Number);
+    const numVertices = counts[0];
+    const numFaces = counts[1];
+    lineIdx++;
+
+    const vertices: Vertex3D[] = [];
+    for (let i = 0; i < numVertices && lineIdx < lines.length; i++, lineIdx++) {
+      const parts = lines[lineIdx].split(/\s+/).map(Number);
+      vertices.push({ x: parts[0], y: parts[1], z: parts[2] });
+    }
+
+    const triangles: Triangle3D[] = [];
+    for (let i = 0; i < numFaces && lineIdx < lines.length; i++, lineIdx++) {
+      const parts = lines[lineIdx].split(/\s+/).map(Number);
+      const count = parts[0];
+      for (let j = 1; j < count - 1; j++) {
+        const i1 = parts[1];
+        const i2 = parts[j + 1];
+        const i3 = parts[j + 2];
+        if (vertices[i1] && vertices[i2] && vertices[i3]) {
+          triangles.push({
+            v1: vertices[i1],
+            v2: vertices[i2],
+            v3: vertices[i3],
+          });
+        }
+      }
+    }
+
+    return this.calculateMeshBounds(vertices, triangles);
+  }
+
+  private exportToPlyString(mesh: Mesh3D): string {
+    const vertCount = mesh.vertices.length;
+    const triCount = mesh.triangles.length;
+
+    let out = `ply\nformat ascii 1.0\ncomment Exported by Convert-X Universal 3D Engine\nelement vertex ${vertCount}\nproperty float x\nproperty float y\nproperty float z\nelement face ${triCount}\nproperty list uchar int vertex_indices\nend_header\n`;
+
+    for (const v of mesh.vertices) {
+      out += `${v.x.toFixed(6)} ${v.y.toFixed(6)} ${v.z.toFixed(6)}\n`;
+    }
+
+    // Vertices in triangles might refer to indices or be direct
+    for (let i = 0; i < triCount; i++) {
+      const base = i * 3;
+      out += `3 ${base} ${base + 1} ${base + 2}\n`;
     }
 
     return out;

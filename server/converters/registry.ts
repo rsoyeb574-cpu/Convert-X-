@@ -17,6 +17,12 @@ import { EpsConverter } from './epsConverter.js';
 import { DocumentConverter } from './documentConverter.js';
 import { ThreeDConverter } from './threeDConverter.js';
 import { TextToPdfConverter } from './textToPdfConverter.js';
+import { DataConverter } from './dataConverter.js';
+import { MlConverter } from './mlConverter.js';
+import { AudioConverter } from './audioConverter.js';
+import { VideoConverter } from './videoConverter.js';
+import { SteelConverter } from './steelConverter.js';
+import { FORMAT_REGISTRY, FormatDefinition } from '../formats/formatRegistry.js';
 import { generateTempFilePath, sanitizeFilename } from '../utils/fileSecurity.js';
 import path from 'path';
 import fs from 'fs';
@@ -39,6 +45,11 @@ export class ConverterRegistry {
     this.registerEngine(new DocumentConverter());
     this.registerEngine(new ThreeDConverter());
     this.registerEngine(new TextToPdfConverter());
+    this.registerEngine(new DataConverter());
+    this.registerEngine(new MlConverter());
+    this.registerEngine(new AudioConverter());
+    this.registerEngine(new VideoConverter());
+    this.registerEngine(new SteelConverter());
     this.loadPersistedJobs();
   }
 
