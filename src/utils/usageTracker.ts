@@ -1,4 +1,4 @@
-import { AppLimits, MonetizationConfig, UsageData } from '../types.js';
+import { AppLimits, MonetizationConfig, ToastAction, ToastNotification, UsageData } from '../types.js';
 import { safeParseJson } from './apiHelper.js';
 
 export const DEFAULT_LIMITS: AppLimits = {
@@ -128,6 +128,81 @@ export function isDailyLimitReached(maxDaily?: number): boolean {
       ? maxDaily
       : DEFAULT_LIMITS.dailyConversions;
   return getDailyConversionCount() >= max;
+}
+
+export function isNearingDailyLimit(maxDaily?: number, thresholdRatio: number = 0.8): boolean {
+  const max =
+    typeof maxDaily === 'number' && !isNaN(maxDaily) && maxDaily > 0
+      ? maxDaily
+      : DEFAULT_LIMITS.dailyConversions;
+  const used = getDailyConversionCount();
+  // Nearing limit means either 1 conversion left, or >= 80% of limit used, but not yet reached
+  const remaining = Math.max(0, max - used);
+  if (remaining <= 0) return false; // Already reached or exceeded
+  return remaining <= 1 || used / max >= thresholdRatio;
+}
+
+export interface UsageLimitToastOptions {
+  onNavigateToPricing: () => void;
+  maxDaily?: number;
+  currentCount?: number;
+}
+
+export function getUsageLimitNotification({
+  onNavigateToPricing,
+  maxDaily,
+  currentCount,
+}: UsageLimitToastOptions): Omit<ToastNotification, 'id'> | null {
+  const max =
+    typeof maxDaily === 'number' && !isNaN(maxDaily) && maxDaily > 0
+      ? maxDaily
+      : DEFAULT_LIMITS.dailyConversions;
+  const used = typeof currentCount === 'number' ? currentCount : getDailyConversionCount();
+  const remaining = Math.max(0, max - used);
+
+  if (remaining === 0) {
+    return {
+      title: 'Daily Conversion Limit Reached',
+      message: `You've used all ${max} free conversions for today. Upgrade to Pro for unlimited conversions and instant processing.`,
+      type: 'warning',
+      duration: 8000,
+      action: {
+        label: 'View Pricing & Upgrade',
+        onClick: onNavigateToPricing,
+        variant: 'primary',
+      },
+    };
+  }
+
+  if (remaining === 1) {
+    return {
+      title: '1 Free Conversion Remaining Today',
+      message: `You've used ${used} of ${max} daily conversions. Unlock unlimited batch conversions with Pro.`,
+      type: 'warning',
+      duration: 7000,
+      action: {
+        label: 'Upgrade to Pro',
+        onClick: onNavigateToPricing,
+        variant: 'warning',
+      },
+    };
+  }
+
+  if (remaining === 2 && max <= 5) {
+    return {
+      title: 'Nearing Daily Conversion Limit',
+      message: `Only ${remaining} of ${max} free conversions left today (${used}/${max} used). Upgrade to Pro for unlimited conversions.`,
+      type: 'info',
+      duration: 6000,
+      action: {
+        label: 'View Pro Plans',
+        onClick: onNavigateToPricing,
+        variant: 'primary',
+      },
+    };
+  }
+
+  return null;
 }
 
 export async function fetchUsageData(): Promise<UsageData> {

@@ -53,6 +53,9 @@ export interface UploadedFile {
   requiresEngine?: string;
   supportedOutputs: string[];
   estimatedOutputSize?: number;
+  file?: File;
+  rawFile?: File;
+  objectUrl?: string;
 }
 
 export interface ConversionResultData {
@@ -308,12 +311,19 @@ export interface UserProfile {
   preferences: UserPreferences;
 }
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+  variant?: 'primary' | 'secondary' | 'warning';
+}
+
 export interface ToastNotification {
   id: string;
   title: string;
   message?: string;
   type: 'success' | 'info' | 'warning' | 'error';
   duration?: number;
+  action?: ToastAction;
 }
 
 export interface AppLimits {

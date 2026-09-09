@@ -47,6 +47,28 @@ export const NotificationToastContainer: React.FC<NotificationToastProps> = ({ t
                   {toast.message}
                 </p>
               )}
+              {toast.action && (
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toast.action?.onClick();
+                      onDismiss(toast.id);
+                    }}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                      toast.action.variant === 'warning'
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                        : toast.action.variant === 'secondary'
+                        ? 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-[#0F172A] dark:text-white'
+                        : 'bg-[#2563EB] hover:bg-blue-700 text-white'
+                    }`}
+                  >
+                    <span>{toast.action.label}</span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <button

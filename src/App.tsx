@@ -11,6 +11,7 @@ import {
   MonetizationConfig,
   UserProfile,
   UserPreferences,
+  ToastAction,
   ToastNotification,
 } from './types.js';
 import { Header } from './components/Header.js';
@@ -51,6 +52,8 @@ import {
   getDailyConversionCount,
   incrementDailyConversionCount,
   isDailyLimitReached,
+  isNearingDailyLimit,
+  getUsageLimitNotification,
   DEFAULT_LIMITS,
   DEFAULT_MONETIZATION,
 } from './utils/usageTracker.js';
@@ -91,18 +94,48 @@ export default function App() {
   // Hidden Global File Input Ref for Ctrl+O / Cmd+O trigger
   const globalFileInputRef = useRef<HTMLInputElement>(null);
 
-  const showToast = (title: string, message?: string, type: ToastNotification['type'] = 'info') => {
+  const showToast = (
+    title: string,
+    message?: string,
+    type: ToastNotification['type'] = 'info',
+    action?: ToastAction,
+    duration: number = 4000
+  ) => {
     const newToast: ToastNotification = {
       id: `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       title,
       message,
       type,
-      duration: 4000,
+      duration,
+      action,
     };
     setToasts((prev) => [...prev, newToast]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== newToast.id));
-    }, 4000);
+    }, duration);
+  };
+
+  // Check and notify user with actionable toast when approaching or reaching daily limit
+  const checkAndNotifyUsageLimit = (nextUsedCount?: number) => {
+    // If Pro user, no daily limit
+    if (limits?.isPro) return;
+
+    const count = typeof nextUsedCount === 'number' ? nextUsedCount : getDailyConversionCount();
+    const notification = getUsageLimitNotification({
+      currentCount: count,
+      maxDaily: safeDailyLimit,
+      onNavigateToPricing: () => handleNavigate('pricing'),
+    });
+
+    if (notification) {
+      showToast(
+        notification.title,
+        notification.message,
+        notification.type,
+        notification.action,
+        notification.duration || 7000
+      );
+    }
   };
 
   // Monetization & Limits State
@@ -113,6 +146,8 @@ export default function App() {
 
   // File Upload and Single Workspace State
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
+  const [uploadedRawFile, setUploadedRawFile] = useState<File | null>(null);
+  const [uploadedObjectUrl, setUploadedObjectUrl] = useState<string | null>(null);
   const [selectedOutputFormat, setSelectedOutputFormat] = useState<string>('png');
   const [options, setOptions] = useState<ConversionOptions>({
     quality: 90,
@@ -122,6 +157,15 @@ export default function App() {
     orientation: 'portrait',
   });
   const [applyToAllQueued, setApplyToAllQueued] = useState<boolean>(false);
+
+  // Clean up uploaded file object URL on unmount or replace
+  useEffect(() => {
+    return () => {
+      if (uploadedObjectUrl) {
+        URL.revokeObjectURL(uploadedObjectUrl);
+      }
+    };
+  }, [uploadedObjectUrl]);
 
   // Multi-File Conversion Queue State with LocalStorage Persistence Recovery
   const [queue, setQueue] = useState<ConversionQueueItem[]>(() => {
@@ -621,8 +665,9 @@ export default function App() {
       );
 
       // Increment daily usage count
-      incrementDailyConversionCount(1);
-      setUsedToday(getDailyConversionCount());
+      const updatedCount = incrementDailyConversionCount(1);
+      setUsedToday(updatedCount);
+      checkAndNotifyUsageLimit(updatedCount);
 
       // Mark queue item as completed
       setQueue((prev) =>
@@ -1019,8 +1064,9 @@ export default function App() {
       );
 
       // Increment daily usage
-      incrementDailyConversionCount(1);
-      setUsedToday(getDailyConversionCount());
+      const updatedCount = incrementDailyConversionCount(1);
+      setUsedToday(updatedCount);
+      checkAndNotifyUsageLimit(updatedCount);
 
       setProgress(100);
       setStage('completed');
@@ -1191,6 +1237,20 @@ export default function App() {
 
           // If only 1 file was selected from a non-dashboard view and no single file active yet, sync single file workspace
           if (files.length === 1 && currentView !== 'dashboard') {
+            if (uploadedObjectUrl) {
+              URL.revokeObjectURL(uploadedObjectUrl);
+            }
+            let objUrl: string | undefined;
+            if (typeof window !== 'undefined' && window.URL && file instanceof Blob) {
+              objUrl = URL.createObjectURL(file);
+              setUploadedObjectUrl(objUrl);
+            }
+            setUploadedRawFile(file);
+            fileData.rawFile = file;
+            fileData.file = file;
+            if (objUrl) {
+              fileData.objectUrl = objUrl;
+            }
             setUploadedFile(fileData);
             setSelectedOutputFormat(defaultOutput);
             setCurrentView('converter');
@@ -1258,6 +1318,23 @@ export default function App() {
       }
 
       const fileData: UploadedFile = await safeParseJson(response);
+
+      // Attempt to load sample file preview blob to generate an object URL before conversion
+      try {
+        const previewRes = await fetch(`/api/preview/${fileData.jobId}`);
+        if (previewRes.ok) {
+          const blob = await previewRes.blob();
+          if (uploadedObjectUrl) {
+            URL.revokeObjectURL(uploadedObjectUrl);
+          }
+          const sampleObjUrl = URL.createObjectURL(blob);
+          fileData.objectUrl = sampleObjUrl;
+          setUploadedObjectUrl(sampleObjUrl);
+        }
+      } catch {
+        // Fallback gracefully
+      }
+
       setUploadedFile(fileData);
 
       const defaultOutput =
@@ -1394,8 +1471,9 @@ export default function App() {
 
       setSelectedOutputFormat(targetFormat);
       setResult(resData);
-      incrementDailyConversionCount(1);
-      setUsedToday(getDailyConversionCount());
+      const updatedCount = incrementDailyConversionCount(1);
+      setUsedToday(updatedCount);
+      checkAndNotifyUsageLimit(updatedCount);
 
       const newHistoryItem: ConversionHistoryItem = {
         id: 'hist-' + Date.now(),
@@ -1478,8 +1556,9 @@ export default function App() {
       }
 
       const resData = await safeParseJson(response);
-      incrementDailyConversionCount(1);
-      setUsedToday(getDailyConversionCount());
+      const updatedCount = incrementDailyConversionCount(1);
+      setUsedToday(updatedCount);
+      checkAndNotifyUsageLimit(updatedCount);
 
       const resultObj: ConversionResultData = {
         jobId: resData.jobId,
@@ -1518,6 +1597,11 @@ export default function App() {
 
   // Reset workspace
   const handleReset = () => {
+    if (uploadedObjectUrl) {
+      URL.revokeObjectURL(uploadedObjectUrl);
+      setUploadedObjectUrl(null);
+    }
+    setUploadedRawFile(null);
     setUploadedFile(null);
     setResult(null);
     setStage('idle');
@@ -1808,6 +1892,8 @@ export default function App() {
                   {/* File Info Card */}
                   <FileCard
                     file={uploadedFile}
+                    rawFile={uploadedRawFile}
+                    objectUrl={uploadedObjectUrl}
                     onReset={handleReset}
                     outputFormat={selectedOutputFormat}
                     estimatedOutputSize={uploadedFile.estimatedOutputSize}

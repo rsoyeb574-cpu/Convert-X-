@@ -316,6 +316,32 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   const failedCount = queue.filter((item) => item.status === 'failed').length;
   const totalBatchItems = queue.length;
 
+  // Helper to extract clean jobId
+  const getJobId = (item: ConversionQueueItem | ConversionHistoryItem): string | undefined => {
+    return (item as any).jobId || (item as any).result?.jobId || (item as any).uploadedFile?.jobId;
+  };
+
+  // Count of total completed results across queue and unexpired history, deduplicated
+  const totalCompletedDashboardResults = useMemo(() => {
+    const seenJobIds = new Set<string>();
+    let count = 0;
+    for (const q of queue) {
+      const jId = getJobId(q);
+      if (q.status === 'completed' && jId && !seenJobIds.has(jId)) {
+        seenJobIds.add(jId);
+        count++;
+      }
+    }
+    for (const h of history) {
+      const jId = getJobId(h);
+      if (h.status === 'completed' && jId && !h.isExpired && !seenJobIds.has(jId)) {
+        seenJobIds.add(jId);
+        count++;
+      }
+    }
+    return count;
+  }, [queue, history]);
+
   const handleAddFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && onAddFiles) {
       onAddFiles(Array.from(e.target.files));
@@ -369,11 +395,40 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
   // Parallel Multi-File ZIP Download Engine
   const handleDownloadAllZip = async (targetItems?: (ConversionQueueItem | ConversionHistoryItem)[]) => {
-    const completedItems = (targetItems || queue).filter(
-      (q) => q.status === 'completed' && (q.result?.jobId || q.uploadedFile?.jobId)
-    );
+    let completedItems: (ConversionQueueItem | ConversionHistoryItem)[] = [];
 
-    if (completedItems.length === 0) return;
+    if (targetItems && targetItems.length > 0) {
+      completedItems = targetItems.filter((item) => {
+        const jId = getJobId(item);
+        const isExpired = (item as any).isExpired;
+        return item.status === 'completed' && Boolean(jId) && !isExpired;
+      });
+    } else {
+      // Gather all completed results from active queue and unexpired history, deduplicated by jobId
+      const seenJobIds = new Set<string>();
+
+      for (const q of queue) {
+        const jId = getJobId(q);
+        if (q.status === 'completed' && jId && !seenJobIds.has(jId)) {
+          seenJobIds.add(jId);
+          completedItems.push(q);
+        }
+      }
+
+      for (const h of history) {
+        const jId = getJobId(h);
+        if (h.status === 'completed' && jId && !h.isExpired && !seenJobIds.has(jId)) {
+          seenJobIds.add(jId);
+          completedItems.push(h);
+        }
+      }
+    }
+
+    if (completedItems.length === 0) {
+      setZipError('No completed files available to package into ZIP.');
+      setTimeout(() => setZipError(null), 4000);
+      return;
+    }
 
     setIsZipping(true);
     setZipError(null);
@@ -383,7 +438,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
     try {
       // 1. Trigger parallel HTTP fetch requests for all completed files
       const parallelFetchPromises = completedItems.map(async (item, index) => {
-        const jobId = item.result?.jobId || item.uploadedFile?.jobId;
+        const jobId = getJobId(item);
         const res = await fetch(`/api/download/${jobId}`);
         if (!res.ok) {
           throw new Error(`Failed to fetch converted file for "${item.fileName}"`);
@@ -404,10 +459,23 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
       setZipProgress(60);
       setZipStatusMessage(`Compressing ${downloadedFiles.length} file${downloadedFiles.length > 1 ? 's' : ''} into ZIP archive...`);
 
-      // 2. Package all parallel-downloaded files into a standard ZIP using JSZip
+      // 2. Package all parallel-downloaded files into a standard ZIP using JSZip with collision handling
       const zip = new JSZip();
+      const usedNames = new Set<string>();
       downloadedFiles.forEach(({ fileName, blob }) => {
-        zip.file(fileName, blob);
+        let uniqueName = fileName;
+        let counter = 1;
+        while (usedNames.has(uniqueName)) {
+          const dotIdx = fileName.lastIndexOf('.');
+          if (dotIdx > 0) {
+            uniqueName = `${fileName.substring(0, dotIdx)}_${counter}${fileName.substring(dotIdx)}`;
+          } else {
+            uniqueName = `${fileName}_${counter}`;
+          }
+          counter++;
+        }
+        usedNames.add(uniqueName);
+        zip.file(uniqueName, blob);
       });
 
       const zipBlob = await zip.generateAsync(
@@ -423,7 +491,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
       // 3. Trigger immediate browser file download
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const zipFilename = `convertx_batch_${timestamp}.zip`;
+      const zipFilename = `convertx_completed_${timestamp}.zip`;
 
       const blobUrl = window.URL.createObjectURL(zipBlob);
       const tempLink = document.createElement('a');
@@ -435,11 +503,11 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
       window.URL.revokeObjectURL(blobUrl);
 
       setZipProgress(100);
-      setZipStatusMessage('Archive ready & downloaded!');
+      setZipStatusMessage(`Archive ready! Downloaded ${downloadedFiles.length} file${downloadedFiles.length > 1 ? 's' : ''}.`);
       setTimeout(() => {
         setZipStatusMessage(null);
         setZipProgress(0);
-      }, 3000);
+      }, 4000);
 
       // Auto-delete after download cleanup if enabled
       if (userPrefs.autoDeleteAfterDownload) {
@@ -457,7 +525,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
       
       // Fallback: request server-side ZIP packaging via /api/download-zip
       try {
-        const completedJobIds = completedItems.map((q) => q.result?.jobId || q.uploadedFile!.jobId);
+        const completedJobIds = completedItems.map((q) => getJobId(q)).filter(Boolean) as string[];
         const response = await fetch('/api/download-zip', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -477,6 +545,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         tempLink.click();
         tempLink.remove();
         window.URL.revokeObjectURL(blobUrl);
+
+        setZipProgress(100);
+        setZipStatusMessage(`Archive downloaded! (${completedJobIds.length} files)`);
+        setTimeout(() => {
+          setZipStatusMessage(null);
+          setZipProgress(0);
+        }, 4000);
 
         // Auto-delete after download cleanup if enabled
         if (userPrefs.autoDeleteAfterDownload) {
@@ -548,6 +623,30 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Download All Completed Results in Dashboard */}
+            {totalCompletedDashboardResults > 0 && (
+              <button
+                type="button"
+                onClick={() => handleDownloadAllZip()}
+                disabled={isZipping}
+                id="dashboard-download-all-btn"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-60"
+                title={`Package and download all ${totalCompletedDashboardResults} completed conversion result${totalCompletedDashboardResults > 1 ? 's' : ''} in a single ZIP file`}
+              >
+                {isZipping ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Packaging ({zipProgress}%)</span>
+                  </>
+                ) : (
+                  <>
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Download All ({totalCompletedDashboardResults} ZIP)</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {/* Account & Preferences Modal Trigger */}
             {onOpenAccountModal && (
               <button
@@ -886,6 +985,87 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ==================================================
+          COMPLETED CONVERSIONS DOWNLOAD CENTER BANNER
+          ================================================== */}
+      {totalCompletedDashboardResults > 0 && (
+        <div
+          id="dashboard-completed-results-banner"
+          className="p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-teal-500/10 dark:from-emerald-950/50 dark:via-emerald-950/30 dark:to-teal-950/40 border border-emerald-300 dark:border-emerald-800/80 shadow-md space-y-4 animate-fade-in"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-600/25">
+                <Archive className="w-6 h-6" />
+              </div>
+              <div className="space-y-0.5">
+                <h4 className="text-sm sm:text-base font-black text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-2">
+                  <span>{totalCompletedDashboardResults} Converted File{totalCompletedDashboardResults > 1 ? 's' : ''} Ready for Download</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 uppercase tracking-wider">
+                    ZIP Archive Ready
+                  </span>
+                </h4>
+                <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">
+                  Package all completed conversion results into a single compressed ZIP archive for one-click download.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleDownloadAllZip()}
+                disabled={isZipping}
+                id="dashboard-banner-download-all-btn"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-black shadow-md shadow-emerald-600/25 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                title={`Download all ${totalCompletedDashboardResults} completed conversion results in a single ZIP`}
+              >
+                {isZipping ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Packaging {zipProgress > 0 ? `${zipProgress}%` : 'ZIP...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>Download All ({totalCompletedDashboardResults} in ZIP)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Inline packaging progress bar if zipping */}
+          {zipStatusMessage && (
+            <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800/50 space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-800 dark:text-emerald-200">
+                <div className="flex items-center gap-2">
+                  {isZipping ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600 dark:text-emerald-400" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  )}
+                  <span>{zipStatusMessage}</span>
+                </div>
+                <span>{zipProgress}%</span>
+              </div>
+              <div className="w-full bg-emerald-200 dark:bg-emerald-900/40 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-emerald-600 dark:bg-emerald-400 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${zipProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {zipError && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400 text-xs font-medium">
+              {zipError}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ==================================================
           2. CONVERSION QUEUE & BATCH PROGRESS EXPERIENCE
@@ -1534,16 +1714,25 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
           {history.length > 0 && (
             <div className="flex items-center gap-2">
-              {history.some((h) => h.status === 'completed' && h.result?.jobId && !h.isExpired) && (
+              {history.some((h) => h.status === 'completed' && (h.jobId || (h as any).result?.jobId) && !h.isExpired) && (
                 <button
-                  onClick={() => handleDownloadAllZip(history.filter((h) => !h.isExpired))}
+                  onClick={() => handleDownloadAllZip(history.filter((h) => !h.isExpired && Boolean(h.jobId || (h as any).result?.jobId)))}
                   disabled={isZipping}
                   id="download-all-history-btn"
                   className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
-                  title="Download all active history files in a single ZIP"
+                  title="Download all active completed history files in a single ZIP"
                 >
-                  <Archive className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Download All (ZIP)</span>
+                  {isZipping ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                      <span>Packaging...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Archive className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Download All (ZIP)</span>
+                    </>
+                  )}
                 </button>
               )}
               <button

@@ -13,6 +13,8 @@ import {
   Sparkles,
   Gauge,
   ArrowRight,
+  ExternalLink,
+  Eye,
 } from 'lucide-react';
 import { formatFileSize, getCompressionRatio, calculateEstimatedSize, fetchEstimatedOutputSize } from '../utils/estimateSize.js';
 
@@ -22,6 +24,8 @@ interface FileCardProps {
   outputFormat?: string;
   estimatedOutputSize?: number;
   result?: ConversionResultData | null;
+  rawFile?: File | null;
+  objectUrl?: string | null;
 }
 
 export const FileCard: React.FC<FileCardProps> = ({
@@ -30,6 +34,8 @@ export const FileCard: React.FC<FileCardProps> = ({
   outputFormat,
   estimatedOutputSize: propEstimatedSize,
   result,
+  rawFile,
+  objectUrl: propObjectUrl,
 }) => {
   const [estimatedSize, setEstimatedSize] = useState<number>(() => {
     if (propEstimatedSize && propEstimatedSize > 0) return propEstimatedSize;
@@ -39,6 +45,45 @@ export const FileCard: React.FC<FileCardProps> = ({
   });
 
   const [isFetchingEstimate, setIsFetchingEstimate] = useState(false);
+
+  // Manage object URL if a File/Blob is provided via rawFile or file.rawFile/file.file
+  const [generatedObjectUrl, setGeneratedObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    // If an object URL is explicitly passed, don't generate another
+    if (propObjectUrl || file.objectUrl) {
+      return;
+    }
+
+    const sourceFile = rawFile || file.rawFile || file.file;
+    if (sourceFile && typeof window !== 'undefined' && window.URL && sourceFile instanceof Blob) {
+      const url = URL.createObjectURL(sourceFile);
+      setGeneratedObjectUrl(url);
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    }
+  }, [rawFile, file.rawFile, file.file, propObjectUrl, file.objectUrl]);
+
+  const effectiveObjectUrl = propObjectUrl || file.objectUrl || generatedObjectUrl;
+
+  const detectedLower = (file.detectedFormat || '').toLowerCase();
+  const fileNameLower = (file.fileName || '').toLowerCase();
+  const mimeTypeLower = (file.mimeType || '').toLowerCase();
+
+  const isPdf =
+    detectedLower === 'pdf' ||
+    fileNameLower.endsWith('.pdf') ||
+    mimeTypeLower === 'application/pdf';
+
+  const isImage =
+    ['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'bmp', 'ico', 'avif', 'tiff', 'tif', 'heic', 'dxf'].includes(
+      detectedLower
+    ) ||
+    file.category === 'images' ||
+    mimeTypeLower.startsWith('image/');
+
+  const isPreConversion = !result;
 
   // Sync estimate whenever outputFormat or file changes
   useEffect(() => {
@@ -112,16 +157,88 @@ export const FileCard: React.FC<FileCardProps> = ({
         {/* File Preview Thumbnail & Details */}
         <div className="flex items-start sm:items-center gap-4 w-full lg:w-auto flex-1 min-w-0">
           {/* Thumbnail preview or icon */}
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-center shrink-0 overflow-hidden relative group">
-            {['png', 'jpg', 'jpeg', 'webp', 'svg', 'dxf'].includes(file.detectedFormat.toLowerCase()) ? (
-              <img
-                src={previewUrl}
-                alt={file.fileName}
-                className="w-full h-full object-contain p-1"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
+          <div
+            id="file-card-preview-container"
+            className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-center shrink-0 overflow-hidden relative group"
+          >
+            {isPreConversion && isPdf ? (
+              /* Document icon for PDFs using the file's object URL */
+              effectiveObjectUrl ? (
+                <a
+                  href={effectiveObjectUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="View PDF document in new tab"
+                  id="file-card-pdf-thumbnail-link"
+                  className="w-full h-full flex flex-col items-center justify-center bg-rose-50/90 hover:bg-rose-100/90 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40 transition-all rounded-xl relative group/pdf cursor-pointer p-1"
+                  aria-label={`View PDF document ${file.fileName}`}
+                >
+                  <div className="relative flex flex-col items-center justify-center">
+                    <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-rose-600 dark:text-rose-400 transition-transform group-hover/pdf:scale-110 drop-shadow-xs" />
+                    <span className="mt-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-xs leading-none">
+                      PDF
+                    </span>
+                  </div>
+                  <span
+                    className="absolute top-1 right-1 opacity-0 group-hover/pdf:opacity-100 transition-opacity bg-rose-700/90 text-white rounded p-0.5 shadow-xs"
+                    title="Open PDF preview in new tab"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </span>
+                </a>
+              ) : (
+                <div
+                  id="file-card-pdf-thumbnail-static"
+                  title="PDF Document"
+                  className="w-full h-full flex flex-col items-center justify-center bg-rose-50/90 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/40 rounded-xl relative p-1"
+                >
+                  <FileText className="w-7 h-7 sm:w-8 sm:h-8 text-rose-600 dark:text-rose-400" />
+                  <span className="mt-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-xs leading-none">
+                    PDF
+                  </span>
+                </div>
+              )
+            ) : isImage ? (
+              /* Thumbnail preview for images using the file's object URL */
+              effectiveObjectUrl ? (
+                <a
+                  href={effectiveObjectUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="View full image in new tab"
+                  id="file-card-image-thumbnail-link"
+                  className="w-full h-full flex items-center justify-center cursor-zoom-in relative group/img"
+                >
+                  <img
+                    src={effectiveObjectUrl}
+                    alt={file.fileName}
+                    className="w-full h-full object-contain p-1 rounded-xl transition-transform duration-200 group-hover/img:scale-105"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      if (target.src !== previewUrl) {
+                        target.src = previewUrl;
+                      } else {
+                        target.style.display = 'none';
+                      }
+                    }}
+                  />
+                  <span
+                    className="absolute bottom-1 right-1 opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/70 text-white rounded p-0.5 pointer-events-none"
+                    title="View image preview"
+                  >
+                    <Eye className="w-2.5 h-2.5" />
+                  </span>
+                </a>
+              ) : (
+                <img
+                  src={previewUrl}
+                  alt={file.fileName}
+                  className="w-full h-full object-contain p-1"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              )
             ) : (
               getCategoryIcon(file.category)
             )}
@@ -136,6 +253,38 @@ export const FileCard: React.FC<FileCardProps> = ({
               <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/40">
                 {file.detectedFormat.toUpperCase()}
               </span>
+
+              {/* Document action for PDFs using the file's object URL */}
+              {isPreConversion && isPdf && effectiveObjectUrl && (
+                <a
+                  href={effectiveObjectUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  id="file-card-pdf-action-link"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 transition-colors shadow-2xs"
+                  title="Open PDF document in browser"
+                >
+                  <FileText className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                  <span>Preview PDF</span>
+                  <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                </a>
+              )}
+
+              {/* Thumbnail preview action for images using the file's object URL */}
+              {isPreConversion && isImage && effectiveObjectUrl && (
+                <a
+                  href={effectiveObjectUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  id="file-card-img-action-link"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-[#2563EB] dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 transition-colors shadow-2xs"
+                  title="Open full image in browser"
+                >
+                  <Eye className="w-3 h-3 text-[#2563EB] dark:text-blue-400" />
+                  <span>Preview Image</span>
+                  <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                </a>
+              )}
             </div>
 
             <div className="flex items-center gap-3 text-xs text-[#64748B] dark:text-[#94A3B8] flex-wrap">
