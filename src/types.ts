@@ -52,6 +52,7 @@ export interface UploadedFile {
   status: FormatStatus;
   requiresEngine?: string;
   supportedOutputs: string[];
+  estimatedOutputSize?: number;
 }
 
 export interface ConversionResultData {
@@ -85,6 +86,7 @@ export interface ConversionQueueItem {
   result?: ConversionResultData | null;
   options: ConversionOptions;
   createdAt: string;
+  estimatedOutputSize?: number;
 }
 
 export type ConversionStepStatus =

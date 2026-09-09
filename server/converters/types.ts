@@ -12,6 +12,15 @@ export interface ConversionOptions {
   margin?: number;
   transparentBackground?: boolean;
   pageNumber?: number; // for PDF page extraction
+  bitrate?: string | number;
+  sampleRate?: number;
+  channels?: number;
+  videoBitrate?: string | number;
+  fps?: number;
+  codec?: string;
+  startTime?: number;
+  duration?: number;
+  [key: string]: any;
 }
 
 export interface ConvertParams {

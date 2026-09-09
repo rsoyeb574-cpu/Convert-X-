@@ -68,7 +68,7 @@ export class AudioConverter implements ConverterEngine {
       // Audio configuration
       if (outFmt === 'mp3') {
         ffmpegArgs.push('-c:a', 'libmp3lame');
-        ffmpegArgs.push('-b:a', options?.bitrate || '192k');
+        ffmpegArgs.push('-b:a', String(options?.bitrate || '192k'));
       } else if (outFmt === 'wav') {
         ffmpegArgs.push('-c:a', 'pcm_s16le');
       } else if (outFmt === 'flac') {
@@ -76,9 +76,9 @@ export class AudioConverter implements ConverterEngine {
       } else if (outFmt === 'ogg') {
         ffmpegArgs.push('-c:a', 'libvorbis', '-q:a', '5');
       } else if (outFmt === 'opus') {
-        ffmpegArgs.push('-c:a', 'libopus', '-b:a', options?.bitrate || '128k');
+        ffmpegArgs.push('-c:a', 'libopus', '-b:a', String(options?.bitrate || '128k'));
       } else if (outFmt === 'm4a') {
-        ffmpegArgs.push('-c:a', 'aac', '-b:a', options?.bitrate || '192k');
+        ffmpegArgs.push('-c:a', 'aac', '-b:a', String(options?.bitrate || '192k'));
       } else if (outFmt === 'aiff') {
         ffmpegArgs.push('-c:a', 'pcm_s16be');
       }

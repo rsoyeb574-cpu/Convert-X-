@@ -1806,7 +1806,13 @@ export default function App() {
                   )}
 
                   {/* File Info Card */}
-                  <FileCard file={uploadedFile} onReset={handleReset} />
+                  <FileCard
+                    file={uploadedFile}
+                    onReset={handleReset}
+                    outputFormat={selectedOutputFormat}
+                    estimatedOutputSize={uploadedFile.estimatedOutputSize}
+                    result={result}
+                  />
 
                   {/* Two Column Layout on Desktop */}
                   {stage !== 'completed' && result === null ? (

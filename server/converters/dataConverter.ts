@@ -1,5 +1,5 @@
 import { ConverterEngine, ConvertParams, ConvertResult, ValidationResult } from './types.js';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import ExcelJS from 'exceljs';
 import { parquetReadObjects } from 'hyparquet';

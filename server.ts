@@ -33,6 +33,7 @@ import {
   sanitizeFilename,
 } from './server/utils/fileSecurity.js';
 import { SAMPLE_FILES } from './server/utils/samples.js';
+import { calculateEstimatedOutputSize, formatBytes } from './server/utils/estimateSize.js';
 import { SEO_ROUTES } from './src/data/seoRoutes.js';
 import { metricsTracker } from './server/utils/metricsTracker.js';
 import { paymentService } from './server/utils/paymentService.js';
@@ -89,7 +90,7 @@ function getCanonicalSiteUrl(req: express.Request): string {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = 3000;
 
   // Run crash recovery on server startup to restore in-flight jobs
   runCrashRecovery();
@@ -517,6 +518,43 @@ ${allRoutes
     }
   });
 
+  // 1c. Get pre-conversion estimated output size
+  app.get('/api/estimate', (req, res) => {
+    try {
+      const inputFormat = String(req.query.inputFormat || '').trim().toLowerCase();
+      const outputFormat = String(req.query.outputFormat || '').trim().toLowerCase();
+      const fileSize = Number(req.query.fileSize) || 0;
+      const quality = req.query.quality ? Number(req.query.quality) : undefined;
+      const dpi = req.query.dpi ? Number(req.query.dpi) : undefined;
+
+      if (!inputFormat || !outputFormat || fileSize <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'inputFormat, outputFormat, and a positive fileSize are required.',
+        });
+      }
+
+      const estimatedOutputSize = calculateEstimatedOutputSize(inputFormat, outputFormat, fileSize, { quality, dpi });
+      const diff = fileSize - estimatedOutputSize;
+      const ratio = estimatedOutputSize / fileSize;
+      const percentReduction = Math.round(((fileSize - estimatedOutputSize) / fileSize) * 100);
+
+      res.json({
+        success: true,
+        inputFormat,
+        outputFormat,
+        inputSize: fileSize,
+        estimatedOutputSize,
+        formattedEstimate: formatBytes(estimatedOutputSize),
+        ratio: parseFloat(ratio.toFixed(2)),
+        percentReduction,
+        isReduction: diff > 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: 'Failed to calculate estimate.' });
+    }
+  });
+
   // 2. Get list of available sample files
   app.get('/api/samples', (req, res) => {
     const list = Object.values(SAMPLE_FILES).map((s) => ({
@@ -556,6 +594,8 @@ ${allRoutes
 
       const capabilities = registry.getCapabilities();
       const cap = capabilities.find((c) => c.extension === detection.format);
+      const defaultOutput = cap?.supportedOutputs?.[0] || 'pdf';
+      const estimatedOutputSize = calculateEstimatedOutputSize(detection.format, defaultOutput, fileBuffer.length);
 
       res.json({
         jobId: job.id,
@@ -567,6 +607,7 @@ ${allRoutes
         status: cap?.status || 'supported',
         requiresEngine: cap?.requiresEngine,
         supportedOutputs: cap?.supportedOutputs || [],
+        estimatedOutputSize,
       });
     } catch (err: any) {
       console.error('Sample retrieval error:', err);
@@ -659,6 +700,8 @@ ${allRoutes
         // Retrieve capability details for input format
         const capabilities = registry.getCapabilities();
         const cap = capabilities.find((c) => c.extension === detection.format);
+        const defaultOutput = cap?.supportedOutputs?.[0] || 'pdf';
+        const estimatedOutputSize = calculateEstimatedOutputSize(detection.format, defaultOutput, fileBuffer.length);
 
         res.json({
           success: true,
@@ -671,6 +714,7 @@ ${allRoutes
           status: cap?.status || 'supported',
           requiresEngine: cap?.requiresEngine,
           supportedOutputs: cap?.supportedOutputs || [],
+          estimatedOutputSize,
         });
       } catch (err: any) {
         console.error('Upload handler error:', err);
