@@ -35,12 +35,20 @@ import {
   Pause,
   Play,
   Square,
+  Bell,
+  Filter,
+  X,
 } from 'lucide-react';
 import { ReferralWidget } from './ReferralWidget.js';
 import { AdSlot } from './AdSlot.js';
 import { QueueItem } from './QueueItem.js';
 import { getCompressionRatio } from '../utils/estimateSize.js';
 import { toggleFavoriteTool, getStoredUserPreferences, saveUserPreferences } from '../utils/userStore.js';
+import {
+  isNotificationSupported,
+  getNotificationPermission,
+  requestNotificationPermission,
+} from '../utils/browserNotifications.js';
 
 interface DashboardHistoryProps {
   queue?: ConversionQueueItem[];
@@ -143,26 +151,32 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
       .catch(() => {});
   }, [usedToday]);
 
-  // Queue sorting state
-  type QueueSortField = 'createdAt' | 'fileName' | 'fileSize' | 'status';
-  type HistorySortField = 'date' | 'fileName' | 'size' | 'status';
+  // Queue sorting & filtering state
+  type QueueSortField = 'createdAt' | 'fileName' | 'fileSize' | 'status' | 'outputFormat';
+  type QueueStatusFilter = 'all' | 'pending' | 'processing' | 'completed' | 'failed';
+  type HistorySortField = 'date' | 'fileName' | 'size' | 'status' | 'format';
+  type HistoryStatusFilter = 'all' | 'completed' | 'failed' | 'active' | 'expired';
   type SortDirection = 'asc' | 'desc';
 
   const [queueSortField, setQueueSortField] = useState<QueueSortField>('createdAt');
   const [queueSortDir, setQueueSortDir] = useState<SortDirection>('desc');
   const [queueSearchQuery, setQueueSearchQuery] = useState<string>('');
+  const [queueStatusFilter, setQueueStatusFilter] = useState<QueueStatusFilter>('all');
+  const [queueFormatFilter, setQueueFormatFilter] = useState<string>('all');
 
-  // History sorting state
+  // History sorting & filtering state
   const [historySortField, setHistorySortField] = useState<HistorySortField>('date');
   const [historySortDir, setHistorySortDir] = useState<SortDirection>('desc');
   const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<HistoryStatusFilter>('all');
+  const [historyFormatFilter, setHistoryFormatFilter] = useState<string>('all');
 
   const handleQueueSort = (field: QueueSortField) => {
     if (queueSortField === field) {
       setQueueSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setQueueSortField(field);
-      setQueueSortDir(field === 'fileName' ? 'asc' : 'desc');
+      setQueueSortDir(field === 'fileName' || field === 'outputFormat' ? 'asc' : 'desc');
     }
   };
 
@@ -171,9 +185,69 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
       setHistorySortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setHistorySortField(field);
-      setHistorySortDir(field === 'fileName' ? 'asc' : 'desc');
+      setHistorySortDir(field === 'fileName' || field === 'format' ? 'asc' : 'desc');
     }
   };
+
+  // Queue counts by status
+  const queueCounts = useMemo(() => {
+    let pending = 0;
+    let processing = 0;
+    let completed = 0;
+    let failed = 0;
+    queue.forEach((item) => {
+      if (item.status === 'pending') pending++;
+      else if (item.status === 'uploading' || item.status === 'converting') processing++;
+      else if (item.status === 'completed') completed++;
+      else if (item.status === 'failed') failed++;
+    });
+    return {
+      all: queue.length,
+      pending,
+      processing,
+      completed,
+      failed,
+    };
+  }, [queue]);
+
+  // Unique formats in queue
+  const queueFormats = useMemo(() => {
+    const set = new Set<string>();
+    queue.forEach((item) => {
+      if (item.inputFormat) set.add(item.inputFormat.toLowerCase());
+    });
+    return Array.from(set).sort();
+  }, [queue]);
+
+  // History counts by status
+  const historyCounts = useMemo(() => {
+    let completed = 0;
+    let failed = 0;
+    let active = 0;
+    let expired = 0;
+    history.forEach((h) => {
+      if (h.status === 'completed') completed++;
+      if (h.status === 'failed') failed++;
+      if (!h.isExpired && h.status === 'completed') active++;
+      if (h.isExpired) expired++;
+    });
+    return {
+      all: history.length,
+      completed,
+      failed,
+      active,
+      expired,
+    };
+  }, [history]);
+
+  // Unique formats in history
+  const historyFormats = useMemo(() => {
+    const set = new Set<string>();
+    history.forEach((h) => {
+      if (h.inputFormat) set.add(h.inputFormat.toLowerCase());
+    });
+    return Array.from(set).sort();
+  }, [history]);
 
   const formatUploadTime = (isoString?: string): string => {
     if (!isoString) return '—';
@@ -193,6 +267,24 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
   const sortedAndFilteredQueue = useMemo(() => {
     let list = queue;
+
+    // 1. Status Filter
+    if (queueStatusFilter !== 'all') {
+      list = list.filter((item) => {
+        if (queueStatusFilter === 'pending') return item.status === 'pending';
+        if (queueStatusFilter === 'processing') return item.status === 'uploading' || item.status === 'converting';
+        if (queueStatusFilter === 'completed') return item.status === 'completed';
+        if (queueStatusFilter === 'failed') return item.status === 'failed';
+        return true;
+      });
+    }
+
+    // 2. Format Filter
+    if (queueFormatFilter !== 'all') {
+      list = list.filter((item) => item.inputFormat.toLowerCase() === queueFormatFilter.toLowerCase());
+    }
+
+    // 3. Search query
     if (queueSearchQuery.trim()) {
       const q = queueSearchQuery.toLowerCase();
       list = list.filter(
@@ -200,10 +292,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           item.fileName.toLowerCase().includes(q) ||
           item.inputFormat.toLowerCase().includes(q) ||
           item.outputFormat.toLowerCase().includes(q) ||
-          item.status.toLowerCase().includes(q)
+          item.status.toLowerCase().includes(q) ||
+          (item.error && item.error.toLowerCase().includes(q)) ||
+          (item.statusText && item.statusText.toLowerCase().includes(q))
       );
     }
 
+    // 4. Sorting
     return [...list].sort((a, b) => {
       let cmp = 0;
       if (queueSortField === 'fileName') {
@@ -224,17 +319,37 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           uploading: 0,
           converting: 1,
           pending: 2,
-          failed: 3,
-          completed: 4,
+          completed: 3,
+          failed: 4,
         };
         cmp = (statusWeight[a.status] ?? 5) - (statusWeight[b.status] ?? 5);
+      } else if (queueSortField === 'outputFormat') {
+        cmp = (a.outputFormat || '').localeCompare(b.outputFormat || '');
       }
       return queueSortDir === 'asc' ? cmp : -cmp;
     });
-  }, [queue, queueSortField, queueSortDir, queueSearchQuery]);
+  }, [queue, queueSortField, queueSortDir, queueSearchQuery, queueStatusFilter, queueFormatFilter]);
 
   const sortedAndFilteredHistory = useMemo(() => {
     let list = history;
+
+    // 1. Status Filter
+    if (historyStatusFilter !== 'all') {
+      list = list.filter((item) => {
+        if (historyStatusFilter === 'completed') return item.status === 'completed';
+        if (historyStatusFilter === 'failed') return item.status === 'failed';
+        if (historyStatusFilter === 'active') return !item.isExpired && item.status === 'completed';
+        if (historyStatusFilter === 'expired') return Boolean(item.isExpired);
+        return true;
+      });
+    }
+
+    // 2. Format Filter
+    if (historyFormatFilter !== 'all') {
+      list = list.filter((item) => item.inputFormat.toLowerCase() === historyFormatFilter.toLowerCase());
+    }
+
+    // 3. Search query
     if (historySearchQuery.trim()) {
       const q = historySearchQuery.toLowerCase();
       list = list.filter(
@@ -242,10 +357,12 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           item.fileName.toLowerCase().includes(q) ||
           item.inputFormat.toLowerCase().includes(q) ||
           item.outputFormat.toLowerCase().includes(q) ||
-          item.status.toLowerCase().includes(q)
+          item.status.toLowerCase().includes(q) ||
+          (item.error && item.error.toLowerCase().includes(q))
       );
     }
 
+    // 4. Sorting
     return [...list].sort((a, b) => {
       let cmp = 0;
       if (historySortField === 'fileName') {
@@ -265,14 +382,16 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         const statusWeight: Record<string, number> = {
           queued: 0,
           processing: 1,
-          failed: 2,
-          completed: 3,
+          completed: 2,
+          failed: 3,
         };
         cmp = (statusWeight[a.status] ?? 4) - (statusWeight[b.status] ?? 4);
+      } else if (historySortField === 'format') {
+        cmp = (a.outputFormat || '').localeCompare(b.outputFormat || '');
       }
       return historySortDir === 'asc' ? cmp : -cmp;
     });
-  }, [history, historySortField, historySortDir, historySearchQuery]);
+  }, [history, historySortField, historySortDir, historySearchQuery, historyStatusFilter, historyFormatFilter]);
 
   useEffect(() => {
     fetch('/api/metrics/popular-tools')
@@ -1163,6 +1282,36 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
               <span>Auto-delete: {userPrefs.autoDeleteAfterDownload ? 'ON' : 'OFF'}</span>
             </button>
 
+            {/* Quick Batch Finish Notification Toggle Button */}
+            <button
+              type="button"
+              id="quick-batch-notification-toggle-btn"
+              onClick={async () => {
+                const nextVal = !userPrefs.notifyOnBatchComplete;
+                if (nextVal) {
+                  if (isNotificationSupported()) {
+                    const perm = getNotificationPermission();
+                    if (perm === 'default') {
+                      const res = await requestNotificationPermission();
+                      if (res !== 'granted') return;
+                    }
+                  }
+                }
+                const updated = saveUserPreferences({ notifyOnBatchComplete: nextVal });
+                setUserPrefs(updated);
+                if (onPreferencesChange) onPreferencesChange(updated);
+              }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                userPrefs.notifyOnBatchComplete
+                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-300 border-purple-300 dark:border-purple-800/80 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#64748B] dark:text-[#94A3B8] border-[#E2E8F0] dark:border-[#1E293B]'
+              }`}
+              title="Toggle browser notification when batch processing finishes (even if in another tab)"
+            >
+              <Bell className={`w-3.5 h-3.5 ${userPrefs.notifyOnBatchComplete ? 'text-purple-600 fill-current' : 'text-slate-400'}`} />
+              <span>Tab alerts: {userPrefs.notifyOnBatchComplete ? 'ON' : 'OFF'}</span>
+            </button>
+
             {/* Add More Files Button */}
             {onAddFiles && (
               <button
@@ -1413,13 +1562,142 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         {/* Queue Table with Sorting Controls */}
         {queue.length > 0 ? (
           <div className="space-y-3">
-            {/* Sorting & Filter Toolbar */}
+            {/* Status & Format Filters Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
+              {/* Status Filter Badges */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider flex items-center gap-1 mr-1">
+                  <Filter className="w-3 h-3 text-[#2563EB]" />
+                  <span>Status:</span>
+                </span>
+
+                {/* All */}
+                <button
+                  type="button"
+                  id="queue-filter-all"
+                  onClick={() => setQueueStatusFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'all'
+                      ? 'bg-[#2563EB] text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-[#64748B] dark:text-[#94A3B8] border border-[#E2E8F0] dark:border-[#1E293B] hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span>All</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                    queueStatusFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  }`}>
+                    {queueCounts.all}
+                  </span>
+                </button>
+
+                {/* Pending */}
+                <button
+                  type="button"
+                  id="queue-filter-pending"
+                  onClick={() => setQueueStatusFilter('pending')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'pending'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40 hover:bg-amber-50 dark:hover:bg-amber-950/50'
+                  }`}
+                >
+                  <Clock className="w-3 h-3" />
+                  <span>Pending</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                    queueStatusFilter === 'pending' ? 'bg-white/20 text-white' : 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200'
+                  }`}>
+                    {queueCounts.pending}
+                  </span>
+                </button>
+
+                {/* Processing */}
+                <button
+                  type="button"
+                  id="queue-filter-processing"
+                  onClick={() => setQueueStatusFilter('processing')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'processing'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40 hover:bg-blue-50 dark:hover:bg-blue-950/50'
+                  }`}
+                >
+                  <RefreshCw className={`w-3 h-3 ${queueCounts.processing > 0 ? 'animate-spin' : ''}`} />
+                  <span>Processing</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                    queueStatusFilter === 'processing' ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200'
+                  }`}>
+                    {queueCounts.processing}
+                  </span>
+                </button>
+
+                {/* Completed */}
+                <button
+                  type="button"
+                  id="queue-filter-completed"
+                  onClick={() => setQueueStatusFilter('completed')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'completed'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 hover:bg-emerald-50 dark:hover:bg-emerald-950/50'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Completed</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                    queueStatusFilter === 'completed' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200'
+                  }`}>
+                    {queueCounts.completed}
+                  </span>
+                </button>
+
+                {/* Failed */}
+                <button
+                  type="button"
+                  id="queue-filter-failed"
+                  onClick={() => setQueueStatusFilter('failed')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    queueStatusFilter === 'failed'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/40 hover:bg-rose-50 dark:hover:bg-rose-950/50'
+                  }`}
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  <span>Failed</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                    queueStatusFilter === 'failed' ? 'bg-white/20 text-white' : 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200'
+                  }`}>
+                    {queueCounts.failed}
+                  </span>
+                </button>
+              </div>
+
+              {/* Format Filter Dropdown */}
+              {queueFormats.length > 1 && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-[11px] font-semibold text-[#64748B] dark:text-[#94A3B8]">Format:</span>
+                  <select
+                    value={queueFormatFilter}
+                    onChange={(e) => setQueueFormatFilter(e.target.value)}
+                    className="px-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  >
+                    <option value="all">All Formats ({queue.length})</option>
+                    {queueFormats.map((fmt) => (
+                      <option key={fmt} value={fmt}>
+                        .{fmt.toUpperCase()} ({queue.filter((q) => q.inputFormat?.toLowerCase() === fmt).length})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Sorting & Search Toolbar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
               {/* Left: Quick Sort Controls */}
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider flex items-center gap-1 mr-1">
                   <SlidersHorizontal className="w-3 h-3 text-[#2563EB]" />
-                  <span>Sort by:</span>
+                  <span>Sort:</span>
                 </span>
 
                 {/* Upload Date Sort Button */}
@@ -1435,7 +1713,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                   title={`Sort by Upload Date (${queueSortField === 'createdAt' && queueSortDir === 'desc' ? 'Newest first' : 'Oldest first'})`}
                 >
                   <Calendar className="w-3 h-3" />
-                  <span>Upload Date</span>
+                  <span>Date</span>
                   {queueSortField === 'createdAt' && (
                     queueSortDir === 'desc' ? <ArrowDown className="w-3 h-3 text-[#2563EB]" /> : <ArrowUp className="w-3 h-3 text-[#2563EB]" />
                   )}
@@ -1454,7 +1732,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                   title={`Sort by File Name (${queueSortField === 'fileName' && queueSortDir === 'asc' ? 'A to Z' : 'Z to A'})`}
                 >
                   <FileText className="w-3 h-3" />
-                  <span>File Name</span>
+                  <span>Name</span>
                   {queueSortField === 'fileName' && (
                     queueSortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-[#2563EB]" /> : <ArrowDown className="w-3 h-3 text-[#2563EB]" />
                   )}
@@ -1496,6 +1774,24 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                   )}
                 </button>
 
+                {/* Target Format Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleQueueSort('outputFormat')}
+                  id="sort-queue-format-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    queueSortField === 'outputFormat'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title="Sort by Target Format"
+                >
+                  <span>Target</span>
+                  {queueSortField === 'outputFormat' && (
+                    queueSortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-[#2563EB]" /> : <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
+
                 {/* Toggle Direction Button */}
                 <button
                   type="button"
@@ -1517,28 +1813,82 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 </button>
               </div>
 
-              {/* Right: Search Filter Input */}
-              {queue.length > 2 && (
-                <div className="relative shrink-0 max-w-xs w-full sm:w-48">
+              {/* Right: Search Filter Input & Reset */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="relative w-full sm:w-48">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={queueSearchQuery}
                     onChange={(e) => setQueueSearchQuery(e.target.value)}
-                    placeholder="Filter queue files..."
-                    className="w-full pl-8 pr-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                    placeholder="Search queue files..."
+                    className="w-full pl-8 pr-7 py-1 text-xs rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
                   />
                   {queueSearchQuery && (
                     <button
                       onClick={() => setQueueSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs cursor-pointer"
+                      title="Clear search"
                     >
                       ✕
                     </button>
                   )}
                 </div>
-              )}
+
+                {/* Reset Filters button if any filter is active */}
+                {(queueStatusFilter !== 'all' || queueFormatFilter !== 'all' || Boolean(queueSearchQuery.trim())) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQueueStatusFilter('all');
+                      setQueueFormatFilter('all');
+                      setQueueSearchQuery('');
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                    title="Reset all filters"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Reset</span>
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Active Filter Summary Banner */}
+            {(queueStatusFilter !== 'all' || queueFormatFilter !== 'all' || Boolean(queueSearchQuery.trim())) && (
+              <div className="flex items-center justify-between text-[11px] text-[#64748B] dark:text-[#94A3B8] px-1">
+                <span>
+                  Showing <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{sortedAndFilteredQueue.length}</strong> of{' '}
+                  <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{queue.length}</strong> files in queue
+                  {queueStatusFilter !== 'all' && (
+                    <span className="ml-1 text-[#2563EB] dark:text-blue-400 font-semibold capitalize">
+                      • Status: {queueStatusFilter}
+                    </span>
+                  )}
+                  {queueFormatFilter !== 'all' && (
+                    <span className="ml-1 text-[#7C3AED] dark:text-violet-400 font-semibold uppercase">
+                      • .{queueFormatFilter}
+                    </span>
+                  )}
+                  {queueSearchQuery && (
+                    <span className="ml-1 italic font-normal">
+                      • Matching &quot;{queueSearchQuery}&quot;
+                    </span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQueueStatusFilter('all');
+                    setQueueFormatFilter('all');
+                    setQueueSearchQuery('');
+                  }}
+                  className="text-xs text-[#2563EB] dark:text-blue-400 hover:underline font-medium cursor-pointer"
+                >
+                  Show all ({queue.length})
+                </button>
+              </div>
+            )}
 
             {/* Queue Table */}
             {sortedAndFilteredQueue.length > 0 ? (
@@ -1569,8 +1919,28 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                         </button>
                       </th>
 
-                      {/* Format Header */}
-                      <th className="py-3 px-3">Format</th>
+                      {/* Sortable Target Format Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleQueueSort('outputFormat')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by target format"
+                        >
+                          <span className={queueSortField === 'outputFormat' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Format
+                          </span>
+                          {queueSortField === 'outputFormat' ? (
+                            queueSortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
 
                       {/* Sortable Size Header */}
                       <th className="py-3 px-3">
@@ -1666,14 +2036,29 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 </table>
               </div>
             ) : (
-              <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0B1120] rounded-xl border border-[#E2E8F0] dark:border-[#1E293B]">
-                No files match filter &quot;{queueSearchQuery}&quot;.{' '}
-                <button
-                  onClick={() => setQueueSearchQuery('')}
-                  className="text-[#2563EB] dark:text-blue-400 font-bold hover:underline ml-1"
-                >
-                  Clear filter
-                </button>
+              <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0B1120] rounded-xl border border-[#E2E8F0] dark:border-[#1E293B] space-y-2">
+                <Filter className="w-6 h-6 mx-auto text-slate-400 opacity-60" />
+                <p className="font-semibold text-slate-700 dark:text-slate-300">
+                  No files in queue match your active filters.
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {queueStatusFilter !== 'all' && `Status: ${queueStatusFilter}. `}
+                  {queueFormatFilter !== 'all' && `Format: .${queueFormatFilter.toUpperCase()}. `}
+                  {queueSearchQuery && `Search: "${queueSearchQuery}".`}
+                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQueueStatusFilter('all');
+                      setQueueFormatFilter('all');
+                      setQueueSearchQuery('');
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#2563EB] text-white font-bold text-xs hover:bg-blue-600 transition-colors cursor-pointer shadow-xs"
+                  >
+                    Clear All Filters
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1749,13 +2134,148 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
         {history.length > 0 ? (
           <div className="space-y-3">
-            {/* Sorting & Filter Toolbar for History */}
+            {/* Status & Format Filters Bar for History */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
+              {/* Status Filter Badges */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider flex items-center gap-1 mr-1">
+                  <Filter className="w-3 h-3 text-[#2563EB]" />
+                  <span>Status:</span>
+                </span>
+
+                {/* All */}
+                <button
+                  type="button"
+                  id="history-filter-all"
+                  onClick={() => setHistoryStatusFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    historyStatusFilter === 'all'
+                      ? 'bg-[#2563EB] text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-[#64748B] dark:text-[#94A3B8] border border-[#E2E8F0] dark:border-[#1E293B] hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span>All</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                    historyStatusFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  }`}>
+                    {historyCounts.all}
+                  </span>
+                </button>
+
+                {/* Completed */}
+                <button
+                  type="button"
+                  id="history-filter-completed"
+                  onClick={() => setHistoryStatusFilter('completed')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    historyStatusFilter === 'completed'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 hover:bg-emerald-50 dark:hover:bg-emerald-950/50'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Completed</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                    historyStatusFilter === 'completed' ? 'bg-white/20 text-white' : 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200'
+                  }`}>
+                    {historyCounts.completed}
+                  </span>
+                </button>
+
+                {/* Active Downloads */}
+                {historyCounts.active > 0 && (
+                  <button
+                    type="button"
+                    id="history-filter-active"
+                    onClick={() => setHistoryStatusFilter('active')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      historyStatusFilter === 'active'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40 hover:bg-blue-50 dark:hover:bg-blue-950/50'
+                    }`}
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Active Downloads</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                      historyStatusFilter === 'active' ? 'bg-white/20 text-white' : 'bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200'
+                    }`}>
+                      {historyCounts.active}
+                    </span>
+                  </button>
+                )}
+
+                {/* Expired */}
+                {historyCounts.expired > 0 && (
+                  <button
+                    type="button"
+                    id="history-filter-expired"
+                    onClick={() => setHistoryStatusFilter('expired')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      historyStatusFilter === 'expired'
+                        ? 'bg-slate-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <Clock className="w-3 h-3" />
+                    <span>Expired</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                      historyStatusFilter === 'expired' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                    }`}>
+                      {historyCounts.expired}
+                    </span>
+                  </button>
+                )}
+
+                {/* Failed */}
+                {historyCounts.failed > 0 && (
+                  <button
+                    type="button"
+                    id="history-filter-failed"
+                    onClick={() => setHistoryStatusFilter('failed')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      historyStatusFilter === 'failed'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-800 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/40 hover:bg-rose-50 dark:hover:bg-rose-950/50'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>Failed</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono leading-none ${
+                      historyStatusFilter === 'failed' ? 'bg-white/20 text-white' : 'bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200'
+                    }`}>
+                      {historyCounts.failed}
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              {/* Format Filter Dropdown */}
+              {historyFormats.length > 1 && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-[11px] font-semibold text-[#64748B] dark:text-[#94A3B8]">Format:</span>
+                  <select
+                    value={historyFormatFilter}
+                    onChange={(e) => setHistoryFormatFilter(e.target.value)}
+                    className="px-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                  >
+                    <option value="all">All Formats ({history.length})</option>
+                    {historyFormats.map((fmt) => (
+                      <option key={fmt} value={fmt}>
+                        .{fmt.toUpperCase()} ({history.filter((h) => h.inputFormat?.toLowerCase() === fmt).length})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Sorting & Search Toolbar for History */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
               {/* Left: Quick Sort Controls */}
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] uppercase tracking-wider flex items-center gap-1 mr-1">
                   <SlidersHorizontal className="w-3 h-3 text-[#2563EB]" />
-                  <span>Sort by:</span>
+                  <span>Sort:</span>
                 </span>
 
                 {/* Date Sort Button */}
@@ -1790,8 +2310,26 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                   title={`Sort by File Name (${historySortField === 'fileName' && historySortDir === 'asc' ? 'A to Z' : 'Z to A'})`}
                 >
                   <FileText className="w-3 h-3" />
-                  <span>File Name</span>
+                  <span>Name</span>
                   {historySortField === 'fileName' && (
+                    historySortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-[#2563EB]" /> : <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                  )}
+                </button>
+
+                {/* Format Sort Button */}
+                <button
+                  type="button"
+                  onClick={() => handleHistorySort('format')}
+                  id="sort-history-format-btn"
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    historySortField === 'format'
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                  }`}
+                  title="Sort by Target Format"
+                >
+                  <span>Format</span>
+                  {historySortField === 'format' && (
                     historySortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-[#2563EB]" /> : <ArrowDown className="w-3 h-3 text-[#2563EB]" />
                   )}
                 </button>
@@ -1853,28 +2391,82 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 </button>
               </div>
 
-              {/* Right: Search Filter Input */}
-              {history.length > 2 && (
-                <div className="relative shrink-0 max-w-xs w-full sm:w-48">
+              {/* Right: Search Filter Input & Reset */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="relative w-full sm:w-48">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={historySearchQuery}
                     onChange={(e) => setHistorySearchQuery(e.target.value)}
-                    placeholder="Filter history..."
-                    className="w-full pl-8 pr-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+                    placeholder="Search history..."
+                    className="w-full pl-8 pr-7 py-1 text-xs rounded-lg bg-white dark:bg-slate-800 border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
                   />
                   {historySearchQuery && (
                     <button
                       onClick={() => setHistorySearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs cursor-pointer"
+                      title="Clear search"
                     >
                       ✕
                     </button>
                   )}
                 </div>
-              )}
+
+                {/* Reset Filters button if any filter is active */}
+                {(historyStatusFilter !== 'all' || historyFormatFilter !== 'all' || Boolean(historySearchQuery.trim())) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoryStatusFilter('all');
+                      setHistoryFormatFilter('all');
+                      setHistorySearchQuery('');
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                    title="Reset all filters"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Reset</span>
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Active Filter Summary Banner */}
+            {(historyStatusFilter !== 'all' || historyFormatFilter !== 'all' || Boolean(historySearchQuery.trim())) && (
+              <div className="flex items-center justify-between text-[11px] text-[#64748B] dark:text-[#94A3B8] px-1">
+                <span>
+                  Showing <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{sortedAndFilteredHistory.length}</strong> of{' '}
+                  <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{history.length}</strong> history records
+                  {historyStatusFilter !== 'all' && (
+                    <span className="ml-1 text-[#2563EB] dark:text-blue-400 font-semibold capitalize">
+                      • Status: {historyStatusFilter}
+                    </span>
+                  )}
+                  {historyFormatFilter !== 'all' && (
+                    <span className="ml-1 text-[#7C3AED] dark:text-violet-400 font-semibold uppercase">
+                      • .{historyFormatFilter}
+                    </span>
+                  )}
+                  {historySearchQuery && (
+                    <span className="ml-1 italic font-normal">
+                      • Matching &quot;{historySearchQuery}&quot;
+                    </span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHistoryStatusFilter('all');
+                    setHistoryFormatFilter('all');
+                    setHistorySearchQuery('');
+                  }}
+                  className="text-xs text-[#2563EB] dark:text-blue-400 hover:underline font-medium cursor-pointer"
+                >
+                  Show all ({history.length})
+                </button>
+              </div>
+            )}
 
             {/* History Table */}
             {sortedAndFilteredHistory.length > 0 ? (
@@ -1905,8 +2497,28 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                         </button>
                       </th>
 
-                      {/* Format Header */}
-                      <th className="py-3 px-3">Format</th>
+                      {/* Sortable Format Header */}
+                      <th className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleHistorySort('format')}
+                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                          title="Click to sort by format"
+                        >
+                          <span className={historySortField === 'format' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                            Format
+                          </span>
+                          {historySortField === 'format' ? (
+                            historySortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </button>
+                      </th>
 
                       {/* Sortable Size Header */}
                       <th className="py-3 px-3">
@@ -2099,14 +2711,29 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 </table>
               </div>
             ) : (
-              <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0B1120] rounded-xl border border-[#E2E8F0] dark:border-[#1E293B]">
-                No history records match filter &quot;{historySearchQuery}&quot;.{' '}
-                <button
-                  onClick={() => setHistorySearchQuery('')}
-                  className="text-[#2563EB] dark:text-blue-400 font-bold hover:underline ml-1"
-                >
-                  Clear filter
-                </button>
+              <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0B1120] rounded-xl border border-[#E2E8F0] dark:border-[#1E293B] space-y-2">
+                <Filter className="w-6 h-6 mx-auto text-slate-400 opacity-60" />
+                <p className="font-semibold text-slate-700 dark:text-slate-300">
+                  No history records match your active filters.
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {historyStatusFilter !== 'all' && `Status: ${historyStatusFilter}. `}
+                  {historyFormatFilter !== 'all' && `Format: .${historyFormatFilter.toUpperCase()}. `}
+                  {historySearchQuery && `Search: "${historySearchQuery}".`}
+                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoryStatusFilter('all');
+                      setHistoryFormatFilter('all');
+                      setHistorySearchQuery('');
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#2563EB] text-white font-bold text-xs hover:bg-blue-600 transition-colors cursor-pointer shadow-xs"
+                  >
+                    Clear All Filters
+                  </button>
+                </div>
               </div>
             )}
           </div>

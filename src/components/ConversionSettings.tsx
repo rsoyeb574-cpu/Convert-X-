@@ -1,6 +1,126 @@
 import React, { useState } from 'react';
 import { ConversionOptions } from '../types.js';
-import { Sliders, FileText, Maximize2, Shield, Eye, Layers, Sparkles, Check, CheckSquare, Square } from 'lucide-react';
+import {
+  Sliders,
+  FileText,
+  Maximize2,
+  Shield,
+  Eye,
+  Layers,
+  Sparkles,
+  Check,
+  CheckSquare,
+  Square,
+  BookmarkPlus,
+  Save,
+  Trash2,
+  X,
+} from 'lucide-react';
+
+export interface ConversionPreset {
+  id: string;
+  name: string;
+  description?: string;
+  tag?: string;
+  options: ConversionOptions;
+  isBuiltIn?: boolean;
+  createdAt?: number;
+}
+
+export const PRESETS_STORAGE_KEY = 'convertx_conversion_presets';
+
+export const BUILT_IN_PRESETS: ConversionPreset[] = [
+  {
+    id: 'preset-web-standard',
+    name: 'Web Standard',
+    tag: 'Web',
+    description: '85% Quality · 72 DPI (Optimized for web)',
+    options: {
+      quality: 85,
+      dpi: 72,
+      backgroundColor: '#ffffff',
+      maintainAspectRatio: true,
+      pageSize: 'a4',
+      orientation: 'portrait',
+    },
+    isBuiltIn: true,
+  },
+  {
+    id: 'preset-high-res-print',
+    name: 'Print Ready',
+    tag: 'Print',
+    description: '95% Quality · 300 DPI · A4 (Publication)',
+    options: {
+      quality: 95,
+      dpi: 300,
+      backgroundColor: '#ffffff',
+      pageSize: 'a4',
+      orientation: 'portrait',
+      maintainAspectRatio: true,
+    },
+    isBuiltIn: true,
+  },
+  {
+    id: 'preset-archival-ultra',
+    name: 'Archival 600',
+    tag: 'Ultra',
+    description: '100% Quality · 600 DPI · A3 (Master)',
+    options: {
+      quality: 100,
+      dpi: 600,
+      backgroundColor: '#ffffff',
+      pageSize: 'a3',
+      orientation: 'portrait',
+      maintainAspectRatio: true,
+    },
+    isBuiltIn: true,
+  },
+  {
+    id: 'preset-compact-draft',
+    name: 'Compact Draft',
+    tag: 'Draft',
+    description: '60% Quality · 150 DPI · Letter (Quick Email)',
+    options: {
+      quality: 60,
+      dpi: 150,
+      backgroundColor: '#ffffff',
+      pageSize: 'letter',
+      orientation: 'portrait',
+      maintainAspectRatio: true,
+    },
+    isBuiltIn: true,
+  },
+  {
+    id: 'preset-presentation-slides',
+    name: 'Presentation',
+    tag: 'Slides',
+    description: '90% Quality · 300 DPI · Landscape',
+    options: {
+      quality: 90,
+      dpi: 300,
+      backgroundColor: '#ffffff',
+      pageSize: 'a4',
+      orientation: 'landscape',
+      maintainAspectRatio: true,
+    },
+    isBuiltIn: true,
+  },
+];
+
+const loadSavedPresets = (): ConversionPreset[] => {
+  try {
+    const raw = localStorage.getItem(PRESETS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load presets from localStorage:', err);
+  }
+  return [];
+};
 
 interface ConversionSettingsProps {
   inputFormat?: string;
@@ -25,8 +145,101 @@ export const ConversionSettings: React.FC<ConversionSettingsProps> = ({
 }) => {
   const [internalApplyToAll, setInternalApplyToAll] = useState<boolean>(false);
   const [syncedFeedback, setSyncedFeedback] = useState<boolean>(false);
+  const [customPresets, setCustomPresets] = useState<ConversionPreset[]>(() => loadSavedPresets());
+  const [isSavingPreset, setIsSavingPreset] = useState<boolean>(false);
+  const [presetNameInput, setPresetNameInput] = useState<string>('');
+  const [activePresetFeedback, setActivePresetFeedback] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
   const isApplyToAllActive = controlledApplyToAll !== undefined ? controlledApplyToAll : internalApplyToAll;
+
+  // Persist custom presets to local storage
+  const saveCustomPresetsToStorage = (updated: ConversionPreset[]) => {
+    setCustomPresets(updated);
+    try {
+      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save presets to localStorage:', e);
+    }
+  };
+
+  const handleApplyPreset = (preset: ConversionPreset) => {
+    const updatedOptions: ConversionOptions = {
+      ...options,
+      ...preset.options,
+    };
+    onChangeOptions(updatedOptions);
+    if (isApplyToAllActive && onApplyToAll) {
+      onApplyToAll(updatedOptions);
+    }
+    setActivePresetFeedback({
+      type: 'info',
+      message: `Applied "${preset.name}" preset`,
+    });
+    setTimeout(() => {
+      setActivePresetFeedback(null);
+    }, 2500);
+  };
+
+  const handleOpenSaveDialog = () => {
+    setIsSavingPreset(true);
+    if (!presetNameInput) {
+      const dpiPart = options.dpi ? `${options.dpi} DPI` : 'Custom';
+      const qPart = options.quality ? `${options.quality}%` : '';
+      setPresetNameInput(`Preset ${dpiPart} ${qPart}`.trim());
+    }
+  };
+
+  const handleConfirmSavePreset = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const finalName = presetNameInput.trim() || `Custom Preset ${new Date().toLocaleDateString()}`;
+    const newPreset: ConversionPreset = {
+      id: `preset_custom_${Date.now()}`,
+      name: finalName,
+      tag: 'Custom',
+      description: `Quality: ${options.quality || 90}% · DPI: ${options.dpi || 300}${options.pageSize ? ` · ${options.pageSize.toUpperCase()}` : ''}`,
+      options: { ...options },
+      isBuiltIn: false,
+      createdAt: Date.now(),
+    };
+
+    const updated = [newPreset, ...customPresets];
+    saveCustomPresetsToStorage(updated);
+    setIsSavingPreset(false);
+    setPresetNameInput('');
+    setActivePresetFeedback({
+      type: 'success',
+      message: `Preset "${finalName}" saved to local storage!`,
+    });
+    setTimeout(() => {
+      setActivePresetFeedback(null);
+    }, 3500);
+  };
+
+  const handleDeleteCustomPreset = (e: React.MouseEvent, presetId: string, name: string) => {
+    e.stopPropagation();
+    const updated = customPresets.filter((p) => p.id !== presetId);
+    saveCustomPresetsToStorage(updated);
+    setActivePresetFeedback({
+      type: 'info',
+      message: `Removed preset "${name}"`,
+    });
+    setTimeout(() => {
+      setActivePresetFeedback(null);
+    }, 2500);
+  };
+
+  const allPresets = [...BUILT_IN_PRESETS, ...customPresets];
+
+  // Helper to check if current options match a preset configuration
+  const isMatchingPreset = (preset: ConversionPreset): boolean => {
+    const po = preset.options;
+    if (po.quality !== undefined && options.quality !== undefined && po.quality !== options.quality) return false;
+    if (po.dpi !== undefined && options.dpi !== undefined && po.dpi !== options.dpi) return false;
+    if (po.pageSize !== undefined && options.pageSize !== undefined && po.pageSize !== options.pageSize) return false;
+    if (po.orientation !== undefined && options.orientation !== undefined && po.orientation !== options.orientation) return false;
+    if (po.backgroundColor !== undefined && options.backgroundColor !== undefined && po.backgroundColor !== options.backgroundColor) return false;
+    return true;
+  };
 
   const handleToggleApplyToAll = (checked: boolean) => {
     if (controlledApplyToAll === undefined) {
@@ -71,15 +284,213 @@ export const ConversionSettings: React.FC<ConversionSettingsProps> = ({
 
   return (
     <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-5 sm:p-6 space-y-5 shadow-lg transition-colors">
-      <div className="flex items-center justify-between pb-3.5 border-b border-[#E2E8F0] dark:border-[#1E293B]">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-[#E2E8F0] dark:border-[#1E293B]">
         <h3 className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] uppercase tracking-wider flex items-center gap-2">
           <Sliders className="w-4 h-4 text-[#2563EB] dark:text-blue-400" />
           <span>Conversion Parameters</span>
         </h3>
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-          Target: .{outFmtClean.toUpperCase()}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* Save as Preset Button */}
+          <button
+            type="button"
+            id="save-as-preset-btn"
+            onClick={handleOpenSaveDialog}
+            className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+            title="Save current parameters to local storage as a reusable preset"
+          >
+            <BookmarkPlus className="w-3.5 h-3.5 text-[#2563EB] dark:text-blue-400" />
+            <span>Save as Preset</span>
+          </button>
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+            Target: .{outFmtClean.toUpperCase()}
+          </span>
+        </div>
       </div>
+
+      {/* Quick Presets & Common Configurations Bar */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-[#2563EB] dark:text-blue-400" />
+            <span>Configuration Presets</span>
+          </label>
+          <span className="text-[10px] text-[#64748B] dark:text-[#94A3B8]">
+            Click to quickly apply
+          </span>
+        </div>
+
+        {/* Presets grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {allPresets.map((preset) => {
+            const isActive = isMatchingPreset(preset);
+            return (
+              <div
+                key={preset.id}
+                role="button"
+                tabIndex={0}
+                id={`preset-btn-${preset.id}`}
+                onClick={() => handleApplyPreset(preset)}
+                className={`relative group p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none flex flex-col justify-between ${
+                  isActive
+                    ? 'bg-blue-50/90 dark:bg-blue-950/50 border-[#2563EB] ring-1 ring-[#2563EB] text-[#2563EB] dark:text-blue-300 shadow-xs'
+                    : 'bg-slate-50/70 dark:bg-[#0B1120] hover:bg-slate-100 dark:hover:bg-slate-900 border-[#E2E8F0] dark:border-[#1E293B] text-slate-700 dark:text-slate-300'
+                }`}
+                title={`Apply "${preset.name}" (${preset.description || ''})`}
+              >
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="text-xs font-bold truncate flex items-center gap-1">
+                    {preset.name}
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {preset.tag && (
+                      <span
+                        className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-md uppercase tracking-wider ${
+                          preset.isBuiltIn
+                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                            : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300/60'
+                        }`}
+                      >
+                        {preset.tag}
+                      </span>
+                    )}
+                    {!preset.isBuiltIn && (
+                      <button
+                        type="button"
+                        id={`delete-preset-${preset.id}`}
+                        onClick={(e) => handleDeleteCustomPreset(e, preset.id, preset.name)}
+                        className="opacity-70 group-hover:opacity-100 hover:text-rose-600 dark:hover:text-rose-400 p-0.5 rounded transition-opacity"
+                        title="Delete custom preset"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[10px] text-[#64748B] dark:text-[#94A3B8] leading-tight line-clamp-1">
+                  {preset.description || `${preset.options.quality || 90}% · ${preset.options.dpi || 300} DPI`}
+                </p>
+                {isActive && (
+                  <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-[#2563EB] dark:text-blue-400">
+                    <Check className="w-3 h-3 stroke-[3]" />
+                    <span>Active</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Save as Preset Expandable Form */}
+      {isSavingPreset && (
+        <form
+          onSubmit={handleConfirmSavePreset}
+          id="save-preset-form"
+          className="p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 space-y-3.5 shadow-sm animate-fade-in"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BookmarkPlus className="w-4 h-4 text-[#2563EB] dark:text-blue-400" />
+              <h4 className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Save Current Configuration as Preset
+              </h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSavingPreset(false)}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="preset-name-input" className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
+              Preset Name
+            </label>
+            <input
+              type="text"
+              id="preset-name-input"
+              value={presetNameInput}
+              onChange={(e) => setPresetNameInput(e.target.value)}
+              placeholder="e.g. High-Res Photo Print"
+              autoFocus
+              className="w-full bg-white dark:bg-[#0B1120] border border-blue-300 dark:border-blue-800 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]"
+            />
+          </div>
+
+          {/* Current Options Summary Preview */}
+          <div className="p-2.5 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-blue-100 dark:border-blue-900/40 text-[11px] text-[#64748B] dark:text-[#94A3B8] space-y-1">
+            <span className="font-bold text-slate-700 dark:text-slate-300 block text-[10px] uppercase tracking-wider">
+              Parameters to be Saved in Local Storage:
+            </span>
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono text-[10px]">
+                Quality: {options.quality || 90}%
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono text-[10px]">
+                DPI: {options.dpi || 300}
+              </span>
+              {options.pageSize && (
+                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono text-[10px]">
+                  Page: {options.pageSize.toUpperCase()}
+                </span>
+              )}
+              {options.orientation && (
+                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono text-[10px]">
+                  Orientation: {options.orientation}
+                </span>
+              )}
+              {options.backgroundColor && (
+                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono text-[10px]">
+                  Bg: {options.backgroundColor}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setIsSavingPreset(false)}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              id="confirm-save-preset-btn"
+              className="px-3.5 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save Preset</span>
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Preset Feedback Toast / Alert */}
+      {activePresetFeedback && (
+        <div
+          className={`p-2.5 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 border animate-fade-in ${
+            activePresetFeedback.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200'
+              : 'bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800/60 text-blue-800 dark:text-blue-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>{activePresetFeedback.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActivePresetFeedback(null)}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
 
       {/* 'Apply to All' Queued Items Synchronization Box */}
       <div

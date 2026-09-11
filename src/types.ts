@@ -293,6 +293,7 @@ export interface UserPreferences {
   autoConvert?: boolean;
   autoConvertOnUpload: boolean;
   autoDeleteAfterDownload?: boolean;
+  notifyOnBatchComplete?: boolean; // Send browser notification when a batch queue finishes processing (even in another tab)
   imageQuality: number;
   preserveMetadata: boolean;
   theme: 'dark' | 'light' | 'system';

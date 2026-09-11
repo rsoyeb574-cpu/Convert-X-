@@ -10,6 +10,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   autoConvert: false,
   autoConvertOnUpload: false,
   autoDeleteAfterDownload: false,
+  notifyOnBatchComplete: false,
   imageQuality: 92,
   preserveMetadata: true,
   theme: 'system',
@@ -42,12 +43,18 @@ export function getStoredUserPreferences(): UserPreferences {
         ? parsed.autoDeleteAfterDownload
         : DEFAULT_PREFERENCES.autoDeleteAfterDownload;
 
+    const notifyVal =
+      typeof parsed.notifyOnBatchComplete === 'boolean'
+        ? parsed.notifyOnBatchComplete
+        : DEFAULT_PREFERENCES.notifyOnBatchComplete;
+
     return {
       ...DEFAULT_PREFERENCES,
       ...parsed,
       autoConvert: autoConvertVal,
       autoConvertOnUpload: autoConvertVal,
       autoDeleteAfterDownload: autoDeleteVal,
+      notifyOnBatchComplete: notifyVal,
       favoriteTools: Array.isArray(parsed.favoriteTools) ? parsed.favoriteTools : DEFAULT_PREFERENCES.favoriteTools,
       favoriteVoices: Array.isArray(parsed.favoriteVoices) ? parsed.favoriteVoices : (DEFAULT_PREFERENCES.favoriteVoices || []),
       recentTools: Array.isArray(parsed.recentTools) ? parsed.recentTools : DEFAULT_PREFERENCES.recentTools,

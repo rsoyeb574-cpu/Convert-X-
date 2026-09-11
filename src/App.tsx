@@ -64,6 +64,7 @@ import {
   saveUserPreferences,
   recordRecentTool,
 } from './utils/userStore.js';
+import { sendBatchCompleteNotification } from './utils/browserNotifications.js';
 import { SEO_ROUTES } from './data/seoRoutes.js';
 import { safeParseJson } from './utils/apiHelper.js';
 import {
@@ -88,6 +89,25 @@ export default function App() {
   // User Profile & Preferences State
   const [userProfile, setUserProfile] = useState<UserProfile>(() => getStoredUserProfile());
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => getStoredUserPreferences());
+  const userPreferencesRef = useRef<UserPreferences>(userPreferences);
+  useEffect(() => {
+    userPreferencesRef.current = userPreferences;
+  }, [userPreferences]);
+
+  // Synchronize userPreferences across events
+  useEffect(() => {
+    const handlePreferencesUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<UserPreferences>;
+      if (customEvent.detail) {
+        setUserPreferences(customEvent.detail);
+        userPreferencesRef.current = customEvent.detail;
+      }
+    };
+    window.addEventListener('convertx_preferences_updated', handlePreferencesUpdate);
+    return () => {
+      window.removeEventListener('convertx_preferences_updated', handlePreferencesUpdate);
+    };
+  }, []);
   const [showAccountModal, setShowAccountModal] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
 
@@ -937,6 +957,25 @@ export default function App() {
 
       // Wait for all workers to settle independently
       await Promise.allSettled(workers);
+
+      // Trigger browser notification if batch was not manually cancelled/stopped
+      if (!isBatchCancelledRef.current) {
+        const finalQueue = queueRef.current;
+        const processedItems = initialEligible.map(
+          (init) => finalQueue.find((q) => q.id === init.id) || init
+        );
+        const completedCount = processedItems.filter((q) => q.status === 'completed').length;
+        const failedCount = processedItems.filter((q) => q.status === 'failed').length;
+
+        const currentPrefs = userPreferencesRef.current || userPreferences;
+        if (currentPrefs?.notifyOnBatchComplete) {
+          sendBatchCompleteNotification({
+            completedCount,
+            totalCount: initialEligible.length,
+            failedCount,
+          });
+        }
+      }
     } catch (err) {
       console.error('Unexpected error in batch conversion scheduler:', err);
     } finally {

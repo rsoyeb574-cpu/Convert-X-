@@ -16,9 +16,15 @@ import {
   Mail,
   X,
   Sparkles,
+  Bell,
 } from 'lucide-react';
 import { UserPreferences, UserProfile, PageView } from '../types.js';
 import { saveUserPreferences, saveUserProfile } from '../utils/userStore.js';
+import {
+  isNotificationSupported,
+  getNotificationPermission,
+  requestNotificationPermission,
+} from '../utils/browserNotifications.js';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -81,6 +87,52 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     const updated = saveUserPreferences({ [key]: value });
     onPreferencesChange(updated);
     onToast?.('Preferences Updated', `Saved ${String(key)}.`, 'info');
+  };
+
+  const handleToggleBatchNotification = async () => {
+    if (!preferences.notifyOnBatchComplete) {
+      if (!isNotificationSupported()) {
+        onToast?.(
+          'Notifications Unsupported',
+          'Desktop notifications are not supported in this browser environment.',
+          'warning'
+        );
+        return;
+      }
+      const currentPerm = getNotificationPermission();
+      if (currentPerm === 'denied') {
+        onToast?.(
+          'Notifications Blocked',
+          'Browser notifications are blocked in your browser site permissions. Please allow notifications for this site to receive background completion alerts.',
+          'warning'
+        );
+        return;
+      }
+      if (currentPerm === 'default') {
+        const result = await requestNotificationPermission();
+        if (result !== 'granted') {
+          onToast?.(
+            'Permission Not Granted',
+            'Notification permission was not approved. You can re-enable this anytime.',
+            'warning'
+          );
+          return;
+        }
+      }
+      handlePreferenceUpdate('notifyOnBatchComplete', true);
+      onToast?.(
+        'Batch Notifications Enabled',
+        'ConvertX will alert you with a browser notification when batch processing finishes, even if you are in another tab.',
+        'success'
+      );
+    } else {
+      handlePreferenceUpdate('notifyOnBatchComplete', false);
+      onToast?.(
+        'Batch Notifications Disabled',
+        'Background batch completion notifications turned off.',
+        'info'
+      );
+    }
   };
 
   return (
@@ -333,6 +385,46 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   <span
                     className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
                       preferences.autoDeleteAfterDownload ? 'translate-x-6' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Batch Completion Browser Notification Toggle */}
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
+                <div className="space-y-0.5 pr-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-1.5">
+                      <Bell className="w-4 h-4 text-[#2563EB]" />
+                      <span>Notify on Batch Queue Completion</span>
+                    </span>
+                    {isNotificationSupported() && getNotificationPermission() === 'denied' && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300">
+                        Blocked by Browser
+                      </span>
+                    )}
+                    {preferences.notifyOnBatchComplete && isNotificationSupported() && getNotificationPermission() === 'granted' && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                    Send a system browser notification when batch processing finishes, even if you have navigated to another tab.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  id="account-batch-notification-toggle"
+                  onClick={handleToggleBatchNotification}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+                    preferences.notifyOnBatchComplete ? 'bg-[#2563EB]' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                  aria-label="Toggle batch completion browser notification"
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                      preferences.notifyOnBatchComplete ? 'translate-x-6' : 'translate-x-0'
                     }`}
                   />
                 </button>
