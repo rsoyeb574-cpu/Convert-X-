@@ -35,6 +35,7 @@ import {
   Pause,
   Play,
   Square,
+  CheckSquare,
   Bell,
   Filter,
   X,
@@ -393,6 +394,194 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
     });
   }, [history, historySortField, historySortDir, historySearchQuery, historyStatusFilter, historyFormatFilter]);
 
+  // ========================================================
+  // Multi-Select State & Bulk Operations (Queue & History)
+  // ========================================================
+  const [selectedQueueIds, setSelectedQueueIds] = useState<Set<string>>(new Set());
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
+
+  const queueMasterCheckboxRef = useRef<HTMLInputElement>(null);
+  const historyMasterCheckboxRef = useRef<HTMLInputElement>(null);
+
+  // Sync selectedQueueIds when queue changes to avoid orphan IDs
+  useEffect(() => {
+    setSelectedQueueIds((prev) => {
+      if (prev.size === 0) return prev;
+      const currentIds = new Set(queue.map((q) => q.id));
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (currentIds.has(id)) next.add(id);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [queue]);
+
+  // Sync selectedHistoryIds when history changes to avoid orphan IDs
+  useEffect(() => {
+    setSelectedHistoryIds((prev) => {
+      if (prev.size === 0) return prev;
+      const currentIds = new Set(history.map((h) => h.id));
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (currentIds.has(id)) next.add(id);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [history]);
+
+  // Queue Selection Properties & Handlers
+  const isAllQueueSelected = useMemo(() => {
+    return (
+      sortedAndFilteredQueue.length > 0 &&
+      sortedAndFilteredQueue.every((q) => selectedQueueIds.has(q.id))
+    );
+  }, [sortedAndFilteredQueue, selectedQueueIds]);
+
+  useEffect(() => {
+    if (queueMasterCheckboxRef.current) {
+      const someVisibleSelected =
+        sortedAndFilteredQueue.some((q) => selectedQueueIds.has(q.id)) &&
+        !isAllQueueSelected;
+      queueMasterCheckboxRef.current.indeterminate = someVisibleSelected;
+    }
+  }, [selectedQueueIds, isAllQueueSelected, sortedAndFilteredQueue]);
+
+  const handleToggleSelectQueueItem = (id: string) => {
+    setSelectedQueueIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllQueue = () => {
+    if (isAllQueueSelected) {
+      setSelectedQueueIds((prev) => {
+        const next = new Set(prev);
+        sortedAndFilteredQueue.forEach((q) => next.delete(q.id));
+        return next;
+      });
+    } else {
+      setSelectedQueueIds((prev) => {
+        const next = new Set(prev);
+        sortedAndFilteredQueue.forEach((q) => next.add(q.id));
+        return next;
+      });
+    }
+  };
+
+  const selectedQueueCompletedCount = useMemo(() => {
+    return queue.filter(
+      (q) => selectedQueueIds.has(q.id) && q.status === 'completed' && Boolean(getJobId(q))
+    ).length;
+  }, [queue, selectedQueueIds]);
+
+  const handleDownloadSelectedQueue = () => {
+    const selectedItems = queue.filter((q) => selectedQueueIds.has(q.id));
+    const completedItems = selectedItems.filter(
+      (q) => q.status === 'completed' && Boolean(getJobId(q))
+    );
+    if (completedItems.length === 0) {
+      setZipError('No completed files selected in queue to download.');
+      setTimeout(() => setZipError(null), 3500);
+      return;
+    }
+    handleDownloadAllZip(completedItems);
+  };
+
+  const handleBulkRemoveQueue = () => {
+    if (selectedQueueIds.size === 0 || !onRemoveQueueItem) return;
+    selectedQueueIds.forEach((id) => {
+      onRemoveQueueItem(id);
+    });
+    setSelectedQueueIds(new Set());
+  };
+
+  // History Selection Properties & Handlers
+  const isAllHistorySelected = useMemo(() => {
+    return (
+      sortedAndFilteredHistory.length > 0 &&
+      sortedAndFilteredHistory.every((h) => selectedHistoryIds.has(h.id))
+    );
+  }, [sortedAndFilteredHistory, selectedHistoryIds]);
+
+  useEffect(() => {
+    if (historyMasterCheckboxRef.current) {
+      const someVisibleSelected =
+        sortedAndFilteredHistory.some((h) => selectedHistoryIds.has(h.id)) &&
+        !isAllHistorySelected;
+      historyMasterCheckboxRef.current.indeterminate = someVisibleSelected;
+    }
+  }, [selectedHistoryIds, isAllHistorySelected, sortedAndFilteredHistory]);
+
+  const handleToggleSelectHistoryItem = (id: string) => {
+    setSelectedHistoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllHistory = () => {
+    if (isAllHistorySelected) {
+      setSelectedHistoryIds((prev) => {
+        const next = new Set(prev);
+        sortedAndFilteredHistory.forEach((h) => next.delete(h.id));
+        return next;
+      });
+    } else {
+      setSelectedHistoryIds((prev) => {
+        const next = new Set(prev);
+        sortedAndFilteredHistory.forEach((h) => next.add(h.id));
+        return next;
+      });
+    }
+  };
+
+  const selectedHistoryCompletedCount = useMemo(() => {
+    return history.filter(
+      (h) =>
+        selectedHistoryIds.has(h.id) &&
+        h.status === 'completed' &&
+        !h.isExpired &&
+        Boolean(getJobId(h))
+    ).length;
+  }, [history, selectedHistoryIds]);
+
+  const handleDownloadSelectedHistory = () => {
+    const selectedItems = history.filter((h) => selectedHistoryIds.has(h.id));
+    const completedItems = selectedItems.filter(
+      (h) =>
+        h.status === 'completed' &&
+        !h.isExpired &&
+        Boolean(getJobId(h))
+    );
+    if (completedItems.length === 0) {
+      setZipError('No completed files selected in history to download.');
+      setTimeout(() => setZipError(null), 3500);
+      return;
+    }
+    handleDownloadAllZip(completedItems);
+  };
+
+  const handleBulkRemoveHistory = () => {
+    if (selectedHistoryIds.size === 0) return;
+    selectedHistoryIds.forEach((id) => {
+      onRemoveItem(id);
+    });
+    setSelectedHistoryIds(new Set());
+  };
+
+  const totalSelectedCount = selectedQueueIds.size + selectedHistoryIds.size;
+
   useEffect(() => {
     fetch('/api/metrics/popular-tools')
       .then((res) => res.json())
@@ -730,18 +919,69 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         {/* Dashboard Title & Plan Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E2E8F0] dark:border-[#1E293B]">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
               <h2 className="text-xl sm:text-2xl font-black text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
                 Convert-X Dashboard
               </h2>
+              {totalSelectedCount > 0 && (
+                <span
+                  id="dashboard-header-selected-chip"
+                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1 animate-in fade-in duration-150"
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  <span>{totalSelectedCount} file{totalSelectedCount > 1 ? 's' : ''} selected</span>
+                </span>
+              )}
             </div>
             <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8]">
               Manage file conversions, monitor real-time quotas, and access recent downloads.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Selected Files Counter Widget */}
+            <div
+              id="dashboard-selected-files-counter"
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all shadow-xs ${
+                totalSelectedCount > 0
+                  ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 dark:border-blue-800/80 text-[#2563EB] dark:text-blue-400 ring-1 ring-blue-500/20'
+                  : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-[#64748B] dark:text-[#94A3B8]'
+              }`}
+              title={
+                totalSelectedCount > 0
+                  ? `${totalSelectedCount} file${totalSelectedCount > 1 ? 's' : ''} selected for bulk operations (${selectedQueueIds.size} in queue, ${selectedHistoryIds.size} in history)`
+                  : 'No files currently selected for bulk operations'
+              }
+            >
+              <CheckSquare
+                className={`w-3.5 h-3.5 shrink-0 ${
+                  totalSelectedCount > 0 ? 'text-[#2563EB] dark:text-blue-400' : 'text-slate-400'
+                }`}
+              />
+              <span>
+                <span className="font-semibold text-[#64748B] dark:text-[#94A3B8]">Selected: </span>
+                <span className={totalSelectedCount > 0 ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                  {totalSelectedCount} {totalSelectedCount === 1 ? 'file' : 'files'}
+                </span>
+              </span>
+              {totalSelectedCount > 0 && (
+                <button
+                  type="button"
+                  id="dashboard-header-clear-selection-btn"
+                  onClick={() => {
+                    setSelectedQueueIds(new Set());
+                    setSelectedHistoryIds(new Set());
+                  }}
+                  className="ml-0.5 p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 transition-colors cursor-pointer"
+                  title="Deselect all files"
+                  aria-label="Deselect all files"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
             {/* Download All Completed Results in Dashboard */}
             {totalCompletedDashboardResults > 0 && (
               <button
@@ -1214,11 +1454,21 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0] dark:border-[#1E293B]">
           <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <h3 className="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-2">
                 <Layers className="w-5 h-5 text-[#2563EB]" />
                 <span>Conversion Queue</span>
               </h3>
+              {selectedQueueIds.size > 0 && (
+                <span
+                  id="queue-header-selected-counter"
+                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1 animate-in fade-in duration-150"
+                  title={`${selectedQueueIds.size} file${selectedQueueIds.size > 1 ? 's' : ''} currently selected in queue`}
+                >
+                  <CheckSquare className="w-3 h-3" />
+                  <span>{selectedQueueIds.size} selected</span>
+                </span>
+              )}
               {isBatchPaused ? (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60 flex items-center gap-1.5 shadow-xs">
                   <span className="relative flex h-2 w-2">
@@ -1892,148 +2142,233 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
             {/* Queue Table */}
             {sortedAndFilteredQueue.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
-                      {/* Sortable Filename Header */}
-                      <th className="py-3 px-3">
+              <div className="space-y-3">
+                {/* Queue Bulk Actions Toolbar */}
+                {selectedQueueIds.size > 0 && (
+                  <div
+                    id="queue-bulk-actions-bar"
+                    className="flex flex-wrap items-center justify-between gap-3 p-3 px-4 rounded-xl bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/80 shadow-xs animate-in fade-in slide-in-from-top-1 duration-150"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4 text-[#2563EB] dark:text-blue-400 shrink-0" />
+                      <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                        {selectedQueueIds.size} file{selectedQueueIds.size > 1 ? 's' : ''} selected in queue
+                      </span>
+                      {selectedQueueCompletedCount > 0 && (
+                        <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          ({selectedQueueCompletedCount} completed)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Bulk Download Selected (ZIP) */}
+                      {selectedQueueCompletedCount > 0 && (
                         <button
                           type="button"
-                          onClick={() => handleQueueSort('fileName')}
-                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
-                          title="Click to sort by file name"
+                          id="queue-bulk-download-btn"
+                          onClick={handleDownloadSelectedQueue}
+                          disabled={isZipping}
+                          className="px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-blue-600 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                          title="Download all selected completed files in queue as a ZIP"
                         >
-                          <span className={queueSortField === 'fileName' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
-                            Filename
-                          </span>
-                          {queueSortField === 'fileName' ? (
-                            queueSortDir === 'asc' ? (
-                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
-                            ) : (
-                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
-                          )}
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download Selected ({selectedQueueCompletedCount})</span>
                         </button>
-                      </th>
+                      )}
 
-                      {/* Sortable Target Format Header */}
-                      <th className="py-3 px-3">
+                      {/* Bulk Remove Selected */}
+                      {onRemoveQueueItem && (
                         <button
                           type="button"
-                          onClick={() => handleQueueSort('outputFormat')}
-                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
-                          title="Click to sort by target format"
+                          id="queue-bulk-remove-btn"
+                          onClick={handleBulkRemoveQueue}
+                          className="px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="Remove all selected items from queue"
                         >
-                          <span className={queueSortField === 'outputFormat' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
-                            Format
-                          </span>
-                          {queueSortField === 'outputFormat' ? (
-                            queueSortDir === 'asc' ? (
-                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
-                            ) : (
-                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
-                          )}
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Remove ({selectedQueueIds.size})</span>
                         </button>
-                      </th>
+                      )}
 
-                      {/* Sortable Size Header */}
-                      <th className="py-3 px-3">
-                        <button
-                          type="button"
-                          onClick={() => handleQueueSort('fileSize')}
-                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
-                          title="Click to sort by file size"
-                        >
-                          <span className={queueSortField === 'fileSize' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
-                            Size
-                          </span>
-                          {queueSortField === 'fileSize' ? (
-                            queueSortDir === 'desc' ? (
-                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                      {/* Deselect All */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedQueueIds(new Set())}
+                        className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Deselect all files"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Deselect</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
+                        {/* Master Selection Checkbox */}
+                        <th className="py-3 px-3 w-10 text-center" scope="col">
+                          <label
+                            htmlFor="queue-select-all-checkbox"
+                            className="inline-flex items-center justify-center cursor-pointer p-0.5 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
+                            title={isAllQueueSelected ? 'Deselect all visible files' : 'Select all visible files'}
+                          >
+                            <input
+                              ref={queueMasterCheckboxRef}
+                              type="checkbox"
+                              id="queue-select-all-checkbox"
+                              checked={isAllQueueSelected}
+                              onChange={handleToggleSelectAllQueue}
+                              className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB]"
+                              aria-label={isAllQueueSelected ? 'Deselect all visible files in queue' : 'Select all visible files in queue'}
+                            />
+                          </label>
+                        </th>
+
+                        {/* Sortable Filename Header */}
+                        <th className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => handleQueueSort('fileName')}
+                            className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                            title="Click to sort by file name"
+                          >
+                            <span className={queueSortField === 'fileName' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                              Filename
+                            </span>
+                            {queueSortField === 'fileName' ? (
+                              queueSortDir === 'asc' ? (
+                                <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                              ) : (
+                                <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                              )
                             ) : (
-                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
-                          )}
-                        </button>
-                      </th>
+                              <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </button>
+                        </th>
 
-                      {/* Sortable Status Header */}
-                      <th className="py-3 px-3">
-                        <button
-                          type="button"
-                          onClick={() => handleQueueSort('status')}
-                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
-                          title="Click to sort by status"
-                        >
-                          <span className={queueSortField === 'status' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
-                            Status
-                          </span>
-                          {queueSortField === 'status' ? (
-                            queueSortDir === 'asc' ? (
-                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                        {/* Sortable Target Format Header */}
+                        <th className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => handleQueueSort('outputFormat')}
+                            className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                            title="Click to sort by target format"
+                          >
+                            <span className={queueSortField === 'outputFormat' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                              Format
+                            </span>
+                            {queueSortField === 'outputFormat' ? (
+                              queueSortDir === 'asc' ? (
+                                <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                              ) : (
+                                <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                              )
                             ) : (
-                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
-                          )}
-                        </button>
-                      </th>
+                              <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </button>
+                        </th>
 
-                      {/* Sortable Upload Date / Time Header */}
-                      <th className="py-3 px-3">
-                        <button
-                          type="button"
-                          onClick={() => handleQueueSort('createdAt')}
-                          className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
-                          title="Click to sort by upload date"
-                        >
-                          <span className={queueSortField === 'createdAt' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
-                            Uploaded
-                          </span>
-                          {queueSortField === 'createdAt' ? (
-                            queueSortDir === 'desc' ? (
-                              <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                        {/* Sortable Size Header */}
+                        <th className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => handleQueueSort('fileSize')}
+                            className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                            title="Click to sort by file size"
+                          >
+                            <span className={queueSortField === 'fileSize' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                              Size
+                            </span>
+                            {queueSortField === 'fileSize' ? (
+                              queueSortDir === 'desc' ? (
+                                <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                              ) : (
+                                <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                              )
                             ) : (
-                              <ArrowUp className="w-3 h-3 text-[#2563EB]" />
-                            )
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
-                          )}
-                        </button>
-                      </th>
+                              <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </button>
+                        </th>
 
-                      {/* Actions Header */}
-                      <th className="py-3 px-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]">
-                    {sortedAndFilteredQueue.map((item) => (
-                      <QueueItem
-                        key={item.id}
-                        item={item}
-                        capabilities={capabilities}
-                        isBatchPaused={isBatchPaused}
-                        userPrefs={userPrefs}
-                        onConvertQueueItem={onConvertQueueItem}
-                        onRetryQueueItem={onRetryQueueItem}
-                        onUpdateQueueItemFormat={onUpdateQueueItemFormat}
-                        onRemoveQueueItem={onRemoveQueueItem}
-                        onFileDownloaded={onFileDownloaded}
-                        onConvertAgain={onConvertAgain}
-                        as="tr"
-                      />
-                    ))}
-                  </tbody>
-                </table>
+                        {/* Sortable Status Header */}
+                        <th className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => handleQueueSort('status')}
+                            className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                            title="Click to sort by status"
+                          >
+                            <span className={queueSortField === 'status' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                              Status
+                            </span>
+                            {queueSortField === 'status' ? (
+                              queueSortDir === 'asc' ? (
+                                <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                              ) : (
+                                <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </button>
+                        </th>
+
+                        {/* Sortable Upload Date / Time Header */}
+                        <th className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => handleQueueSort('createdAt')}
+                            className="flex items-center gap-1.5 hover:text-[#0F172A] dark:hover:text-[#F8FAFC] transition-colors group cursor-pointer focus:outline-none"
+                            title="Click to sort by upload date"
+                          >
+                            <span className={queueSortField === 'createdAt' ? 'text-[#2563EB] dark:text-blue-400 font-black' : ''}>
+                              Uploaded
+                            </span>
+                            {queueSortField === 'createdAt' ? (
+                              queueSortDir === 'desc' ? (
+                                <ArrowDown className="w-3 h-3 text-[#2563EB]" />
+                              ) : (
+                                <ArrowUp className="w-3 h-3 text-[#2563EB]" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </button>
+                        </th>
+
+                        {/* Actions Header */}
+                        <th className="py-3 px-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]">
+                      {sortedAndFilteredQueue.map((item) => (
+                        <QueueItem
+                          key={item.id}
+                          item={item}
+                          capabilities={capabilities}
+                          isBatchPaused={isBatchPaused}
+                          userPrefs={userPrefs}
+                          onConvertQueueItem={onConvertQueueItem}
+                          onRetryQueueItem={onRetryQueueItem}
+                          onUpdateQueueItemFormat={onUpdateQueueItemFormat}
+                          onRemoveQueueItem={onRemoveQueueItem}
+                          onFileDownloaded={onFileDownloaded}
+                          onConvertAgain={onConvertAgain}
+                          as="tr"
+                          isSelected={selectedQueueIds.has(item.id)}
+                          onToggleSelect={handleToggleSelectQueueItem}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : (
               <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0B1120] rounded-xl border border-[#E2E8F0] dark:border-[#1E293B] space-y-2">
@@ -2087,11 +2422,23 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           ================================================== */}
       <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-2xl p-6 shadow-xl space-y-6 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0] dark:border-[#1E293B]">
-          <div>
-            <h3 className="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-2">
-              <Clock className="w-5 h-5 text-[#2563EB]" />
-              <span>Conversion History</span>
-            </h3>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h3 className="text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC] flex items-center gap-2">
+                <Clock className="w-5 h-5 text-[#2563EB]" />
+                <span>Conversion History</span>
+              </h3>
+              {selectedHistoryIds.size > 0 && (
+                <span
+                  id="history-header-selected-counter"
+                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1 animate-in fade-in duration-150"
+                  title={`${selectedHistoryIds.size} file${selectedHistoryIds.size > 1 ? 's' : ''} currently selected in conversion history`}
+                >
+                  <CheckSquare className="w-3 h-3" />
+                  <span>{selectedHistoryIds.size} selected</span>
+                </span>
+              )}
+            </div>
             <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">
               Persistent metadata log of past conversions. Expired file sessions retain conversion metadata.
             </p>
@@ -2470,11 +2817,91 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
             {/* History Table */}
             {sortedAndFilteredHistory.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
-                      {/* Sortable Filename Header */}
+              <div className="space-y-3">
+                {/* History Bulk Actions Toolbar */}
+                {selectedHistoryIds.size > 0 && (
+                  <div
+                    id="history-bulk-actions-bar"
+                    className="flex flex-wrap items-center justify-between gap-3 p-3 px-4 rounded-xl bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/80 shadow-xs animate-in fade-in slide-in-from-top-1 duration-150"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4 text-[#2563EB] dark:text-blue-400 shrink-0" />
+                      <span className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                        {selectedHistoryIds.size} file{selectedHistoryIds.size > 1 ? 's' : ''} selected
+                      </span>
+                      {selectedHistoryCompletedCount > 0 && (
+                        <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          ({selectedHistoryCompletedCount} ready to download)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Bulk Download Selected (ZIP) */}
+                      {selectedHistoryCompletedCount > 0 && (
+                        <button
+                          type="button"
+                          id="history-bulk-download-btn"
+                          onClick={handleDownloadSelectedHistory}
+                          disabled={isZipping}
+                          className="px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-blue-600 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                          title="Package all selected completed files into a single ZIP archive"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download Selected ({selectedHistoryCompletedCount})</span>
+                        </button>
+                      )}
+
+                      {/* Bulk Remove Selected */}
+                      <button
+                        type="button"
+                        id="history-bulk-remove-btn"
+                        onClick={handleBulkRemoveHistory}
+                        className="px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Remove all selected items from conversion history"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove ({selectedHistoryIds.size})</span>
+                      </button>
+
+                      {/* Deselect All */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHistoryIds(new Set())}
+                        className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-semibold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Deselect all files"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Deselect</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] text-[#64748B] dark:text-[#94A3B8] uppercase font-bold text-[10px]">
+                        {/* Master Selection Checkbox */}
+                        <th className="py-3 px-3 w-10 text-center" scope="col">
+                          <label
+                            htmlFor="history-select-all-checkbox"
+                            className="inline-flex items-center justify-center cursor-pointer p-0.5 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
+                            title={isAllHistorySelected ? 'Deselect all visible files' : 'Select all visible files'}
+                          >
+                            <input
+                              ref={historyMasterCheckboxRef}
+                              type="checkbox"
+                              id="history-select-all-checkbox"
+                              checked={isAllHistorySelected}
+                              onChange={handleToggleSelectAllHistory}
+                              className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB]"
+                              aria-label={isAllHistorySelected ? 'Deselect all visible files in conversion history' : 'Select all visible files in conversion history'}
+                            />
+                          </label>
+                        </th>
+
+                        {/* Sortable Filename Header */}
                       <th className="py-3 px-3">
                         <button
                           type="button"
@@ -2594,9 +3021,31 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC]">
-                    {sortedAndFilteredHistory.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        {/* Filename */}
+                    {sortedAndFilteredHistory.map((item) => {
+                      const isSelected = selectedHistoryIds.has(item.id);
+                      return (
+                        <tr
+                          key={item.id}
+                          id={`history-row-${item.id}`}
+                          className={`transition-colors ${
+                            isSelected
+                              ? 'bg-blue-50/85 dark:bg-blue-950/45'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }`}
+                        >
+                          {/* Row Selection Checkbox */}
+                          <td className="py-3 px-3 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              id={`history-checkbox-${item.id}`}
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectHistoryItem(item.id)}
+                              className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB]"
+                              aria-label={`Select ${item.fileName}`}
+                            />
+                          </td>
+
+                          {/* Filename */}
                         <td className="py-3 px-3 font-bold text-[#0F172A] dark:text-[#F8FAFC] max-w-xs truncate">
                           <div className="flex items-center gap-2">
                             <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
@@ -2706,10 +3155,12 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                           </button>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
             ) : (
               <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0B1120] rounded-xl border border-[#E2E8F0] dark:border-[#1E293B] space-y-2">
                 <Filter className="w-6 h-6 mx-auto text-slate-400 opacity-60" />

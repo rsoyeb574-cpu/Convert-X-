@@ -40,6 +40,8 @@ export interface QueueItemProps {
   onFileDownloaded?: (jobId: string, queueItemId: string) => void;
   onConvertAgain?: (item: ConversionQueueItem) => void;
   as?: 'tr' | 'card';
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 export const QueueItem: React.FC<QueueItemProps> = ({
@@ -64,6 +66,8 @@ export const QueueItem: React.FC<QueueItemProps> = ({
   onFileDownloaded,
   onConvertAgain,
   as = 'tr',
+  isSelected = false,
+  onToggleSelect,
 }) => {
   // Pre-conversion estimated output size
   const [estimatedSize, setEstimatedSize] = useState<number>(() => {
@@ -176,8 +180,23 @@ export const QueueItem: React.FC<QueueItemProps> = ({
     return (
       <tr
         id={`queue-item-${item.id}`}
-        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+        className={`transition-colors ${
+          isSelected
+            ? 'bg-blue-50/85 dark:bg-blue-950/45'
+            : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+        }`}
       >
+        {/* Selection Checkbox */}
+        <td className="py-3.5 px-3 w-10 text-center">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelect && onToggleSelect(item.id)}
+            className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB]"
+            aria-label={`Select ${item.fileName}`}
+          />
+        </td>
+
         {/* Filename & Format Icon */}
         <td className="py-3.5 px-3 max-w-[200px] sm:max-w-xs truncate">
           <div className="flex items-center gap-2">
@@ -471,10 +490,23 @@ export const QueueItem: React.FC<QueueItemProps> = ({
   return (
     <div
       id={`queue-card-${item.id}`}
-      className="p-4 rounded-xl bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] shadow-sm space-y-3"
+      className={`p-4 rounded-xl border transition-all shadow-sm space-y-3 ${
+        isSelected
+          ? 'bg-blue-50/80 dark:bg-blue-950/40 border-[#2563EB] ring-1 ring-[#2563EB]'
+          : 'bg-white dark:bg-[#111827] border-[#E2E8F0] dark:border-[#1E293B]'
+      }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {onToggleSelect && (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => onToggleSelect(item.id)}
+              className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB] shrink-0"
+              aria-label={`Select ${item.fileName}`}
+            />
+          )}
           <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 shrink-0">
             {getFormatIcon(item.inputFormat)}
           </div>
