@@ -46,6 +46,11 @@ import { AdminMetricsModal } from './components/AdminMetricsModal.js';
 import { AccountModal } from './components/AccountModal.js';
 import { ReferralPage } from './components/ReferralPage.js';
 import { NotificationToastContainer } from './components/NotificationToast.js';
+import { CadStudio } from './components/CadStudio.js';
+import { ThreeDStudio } from './components/ThreeDStudio.js';
+import { DataStudio } from './components/DataStudio.js';
+import { MlStudio } from './components/MlStudio.js';
+import { UniversalFileInspector } from './components/UniversalFileInspector.js';
 import { initAnalytics } from './utils/analytics.js';
 import {
   fetchAppConfig,
@@ -110,6 +115,7 @@ export default function App() {
   }, []);
   const [showAccountModal, setShowAccountModal] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const [inspectedFile, setInspectedFile] = useState<UploadedFile | null>(null);
 
   // Hidden Global File Input Ref for Ctrl+O / Cmd+O trigger
   const globalFileInputRef = useRef<HTMLInputElement>(null);
@@ -1937,6 +1943,7 @@ export default function App() {
                     outputFormat={selectedOutputFormat}
                     estimatedOutputSize={uploadedFile.estimatedOutputSize}
                     result={result}
+                    onInspect={(file) => setInspectedFile(file)}
                   />
 
                   {/* Two Column Layout on Desktop */}
@@ -2149,6 +2156,18 @@ export default function App() {
             />
           )}
 
+          {/* 3e. Dedicated CAD & Steel Studio */}
+          {currentView === 'cad-studio' && <CadStudio onNavigate={handleNavigate} />}
+
+          {/* 3f. Dedicated 3D Studio & Mesh Viewer */}
+          {currentView === 'threed-studio' && <ThreeDStudio onNavigate={handleNavigate} />}
+
+          {/* 3g. Dedicated Data Science & Developer Tools Studio */}
+          {currentView === 'data-studio' && <DataStudio onNavigate={handleNavigate} />}
+
+          {/* 3h. Dedicated ML & Neural Model Studio */}
+          {currentView === 'ml-studio' && <MlStudio onNavigate={handleNavigate} />}
+
           {/* 4. Supported Formats Matrix */}
           {currentView === 'formats' && (
             <div className="space-y-12">
@@ -2321,6 +2340,20 @@ export default function App() {
         isOpen={showAdminMetrics}
         onClose={() => setShowAdminMetrics(false)}
       />
+
+      {/* Universal File Inspector Modal */}
+      {inspectedFile && (
+        <UniversalFileInspector
+          file={inspectedFile}
+          onClose={() => setInspectedFile(null)}
+          capabilities={capabilities}
+          onSelectFormat={(fmt) => {
+            setSelectedOutputFormat(fmt);
+            setCurrentView('converter');
+          }}
+          onNavigate={handleNavigate}
+        />
+      )}
     </div>
   );
 }

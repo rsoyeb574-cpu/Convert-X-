@@ -498,11 +498,11 @@ ${allRoutes
     });
   });
 
-  // 1. Get supported formats and capabilities
-  app.get('/api/formats', (req, res) => {
+  // 1. Get supported formats and capabilities (Single source of truth)
+  app.get(['/api/formats', '/api/capabilities'], (req, res) => {
     try {
       const capabilities = registry.getCapabilities();
-      res.json({ capabilities });
+      res.json({ capabilities, total: capabilities.length });
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to retrieve format capabilities.' });
     }

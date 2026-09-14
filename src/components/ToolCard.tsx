@@ -19,6 +19,9 @@ import {
   ArrowRight,
   Clock,
   CheckCircle2,
+  Compass,
+  Database,
+  Brain,
 } from 'lucide-react';
 
 interface ToolCardProps {
@@ -45,6 +48,12 @@ export const renderToolIcon = (iconName: string, className: string = 'w-4 h-4') 
       return <Cpu className={className} />;
     case 'Box':
       return <Box className={className} />;
+    case 'Compass':
+      return <Compass className={className} />;
+    case 'Database':
+      return <Database className={className} />;
+    case 'Brain':
+      return <Brain className={className} />;
     case 'FileSpreadsheet':
       return <FileSpreadsheet className={className} />;
     case 'BookOpen':
@@ -74,10 +83,35 @@ export const ToolCard: React.FC<ToolCardProps> = ({ tool, onOpenTool, isRecent }
   // Category-specific color accents
   const getCategoryStyles = () => {
     switch (tool.category) {
+      case 'cad':
+        return {
+          iconBg: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/50 dark:text-cyan-400 border-cyan-200 dark:border-cyan-900/60',
+          accent: 'hover:border-cyan-300 dark:hover:border-cyan-700/80',
+          badge: 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800/60',
+        };
+      case '3d':
+        return {
+          iconBg: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/60',
+          accent: 'hover:border-indigo-300 dark:hover:border-indigo-700/80',
+          badge: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60',
+        };
+      case 'data':
+        return {
+          iconBg: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/60',
+          accent: 'hover:border-emerald-300 dark:hover:border-emerald-700/80',
+          badge: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60',
+        };
+      case 'ml':
+        return {
+          iconBg: 'bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400 border-purple-200 dark:border-purple-900/60',
+          accent: 'hover:border-purple-300 dark:hover:border-purple-700/80',
+          badge: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60',
+        };
       case 'pdf':
         return {
           iconBg: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400 border-rose-200 dark:border-rose-900/60',
           accent: 'hover:border-rose-300 dark:hover:border-rose-700/80',
+          badge: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60',
         };
       case 'compress':
         return {

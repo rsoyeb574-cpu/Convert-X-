@@ -86,6 +86,11 @@ interface DashboardHistoryProps {
   onFileDownloaded?: (jobId?: string, queueItemId?: string) => void;
 }
 
+// Helper to extract clean jobId
+const getJobId = (item: ConversionQueueItem | ConversionHistoryItem): string | undefined => {
+  return (item as any).jobId || (item as any).result?.jobId || (item as any).uploadedFile?.jobId;
+};
+
 export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   queue = [],
   history = [],
@@ -665,11 +670,6 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   const completedQueueCount = queue.filter((item) => item.status === 'completed').length;
   const failedCount = queue.filter((item) => item.status === 'failed').length;
   const totalBatchItems = queue.length;
-
-  // Helper to extract clean jobId
-  const getJobId = (item: ConversionQueueItem | ConversionHistoryItem): string | undefined => {
-    return (item as any).jobId || (item as any).result?.jobId || (item as any).uploadedFile?.jobId;
-  };
 
   // Count of total completed results across queue and unexpired history, deduplicated
   const totalCompletedDashboardResults = useMemo(() => {
@@ -3346,22 +3346,38 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                         <tr
                           key={item.id}
                           id={`history-row-${item.id}`}
+                          aria-checked={isSelected}
                           className={`transition-colors ${
                             isSelected
-                              ? 'bg-blue-50/85 dark:bg-blue-950/45'
+                              ? 'bg-blue-50/90 dark:bg-blue-950/50'
                               : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
                           }`}
                         >
                           {/* Row Selection Checkbox */}
-                          <td className="py-3 px-3 w-10 text-center">
-                            <input
-                              type="checkbox"
-                              id={`history-checkbox-${item.id}`}
-                              checked={isSelected}
-                              onChange={() => handleToggleSelectHistoryItem(item.id)}
-                              className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB]"
-                              aria-label={`Select ${item.fileName}`}
-                            />
+                          <td
+                            className="py-3 px-3 w-10 text-center cursor-pointer select-none"
+                            onClick={(e) => {
+                              if ((e.target as HTMLElement).tagName.toLowerCase() !== 'input') {
+                                handleToggleSelectHistoryItem(item.id);
+                              }
+                            }}
+                          >
+                            <label
+                              htmlFor={`history-checkbox-${item.id}`}
+                              className="inline-flex items-center justify-center cursor-pointer p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
+                              title={isSelected ? `Deselect ${item.fileName}` : `Select ${item.fileName}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                id={`history-checkbox-${item.id}`}
+                                checked={isSelected}
+                                aria-checked={isSelected}
+                                onChange={() => handleToggleSelectHistoryItem(item.id)}
+                                className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB]"
+                                aria-label={`Select ${item.fileName}`}
+                              />
+                            </label>
                           </td>
 
                           {/* Filename */}

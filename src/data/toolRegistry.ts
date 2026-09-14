@@ -1,6 +1,6 @@
 import { PageView } from '../types.js';
 
-export type ToolCategory = 'all' | 'converter' | 'pdf' | 'compress' | 'tts' | 'other';
+export type ToolCategory = 'all' | 'converter' | 'pdf' | 'compress' | 'tts' | 'cad' | '3d' | 'data' | 'ml' | 'other';
 
 export type ToolStatus = 'available' | 'coming-soon';
 
@@ -15,7 +15,7 @@ export interface ToolItem {
   name: string;
   slug: string;
   description: string;
-  category: 'converter' | 'pdf' | 'compress' | 'tts' | 'other';
+  category: ToolCategory;
   subCategory?: string;
   icon: string;
   inputFormats: string[];
@@ -31,6 +31,10 @@ export interface ToolItem {
 
 export const CATEGORY_DEFINITIONS: { id: ToolCategory; label: string; description: string }[] = [
   { id: 'all', label: 'All Tools', description: 'Explore all conversion, compression, editing, and speech tools' },
+  { id: 'cad', label: 'CAD & Steel Studio', description: 'Interactive CAD drawing viewer, DXF/DWG/NC parsing, and steel fabrication export' },
+  { id: '3d', label: '3D Studio', description: 'Interactive 3D orbit viewer, geometry inspection, and STL/OBJ/PLY mesh conversion' },
+  { id: 'data', label: 'Data & DevTools', description: 'Bidirectional tabular converter, Parquet schema inspector, and JSON/XML/YAML formatters' },
+  { id: 'ml', label: 'ML / AI Studio', description: 'Zero-bytecode SafeTensors, ONNX, GGUF model inspector and tensor weight auditor' },
   { id: 'converter', label: 'Converters', description: 'Document, image, Adobe, CAD, and 3D vector converters' },
   { id: 'pdf', label: 'PDF Tools', description: 'Extract text, edit, generate, rasterize, and assemble PDFs' },
   { id: 'compress', label: 'Compress', description: 'Reduce JPG, PNG, WebP, and PDF file sizes with instant preview' },
@@ -39,6 +43,71 @@ export const CATEGORY_DEFINITIONS: { id: ToolCategory; label: string; descriptio
 ];
 
 export const TOOL_REGISTRY: ToolItem[] = [
+  // ==================== 0. PROFESSIONAL STUDIOS ====================
+  {
+    id: 'cad-studio',
+    name: 'CAD & Steel Studio',
+    slug: 'cad-studio',
+    description: 'Universal 2D/3D Drawing Viewer with Pan, Zoom, Layer isolation, and direct export to SVG, PDF, DXF, and DSTV NC.',
+    category: 'cad',
+    subCategory: 'cad-bim',
+    icon: 'Compass',
+    inputFormats: ['DXF', 'DWG', 'NC', 'DSTV'],
+    outputFormats: ['SVG', 'PDF', 'PNG', 'DXF'],
+    status: 'available',
+    route: { view: 'cad-studio' },
+    popular: true,
+    badge: 'Pro Studio',
+    keywords: ['cad', 'dxf', 'dwg', 'autocad', 'dstv', 'nc', 'steel fabrication', 'drawing viewer', 'layers'],
+  },
+  {
+    id: 'threed-studio',
+    name: '3D Studio & Mesh Viewer',
+    slug: 'threed-studio',
+    description: 'Inspect 3D polygonal geometry with 360-degree Orbit, Wireframe/Solid shading, and export to STL, Wavefront OBJ, or PLY.',
+    category: '3d',
+    subCategory: 'mesh',
+    icon: 'Box',
+    inputFormats: ['STL', 'OBJ', 'PLY', '3MF'],
+    outputFormats: ['STL', 'OBJ', 'PLY', 'PNG'],
+    status: 'available',
+    route: { view: 'threed-studio' },
+    popular: true,
+    badge: '3D Engine',
+    keywords: ['3d', 'stl', 'obj', 'ply', '3d printing', 'mesh', 'wireframe', 'orbit'],
+  },
+  {
+    id: 'data-studio',
+    name: 'Data Science & Tabular Studio',
+    slug: 'data-studio',
+    description: 'Live tabular data grid with column type inference, search filtering, and conversions between CSV, TSV, JSON, JSONL, and Parquet.',
+    category: 'data',
+    subCategory: 'tabular-code',
+    icon: 'Database',
+    inputFormats: ['CSV', 'TSV', 'JSON', 'JSONL'],
+    outputFormats: ['JSON', 'CSV', 'TSV', 'JSONL', 'PARQUET'],
+    status: 'available',
+    route: { view: 'data-studio' },
+    popular: true,
+    badge: 'Data Tools',
+    keywords: ['csv', 'json', 'tsv', 'parquet', 'jsonl', 'formatter', 'validator', 'dataset'],
+  },
+  {
+    id: 'ml-studio',
+    name: 'ML & Neural Model Studio',
+    slug: 'ml-studio',
+    description: 'Safe header-only model inspection with zero bytecode execution. Inspect SafeTensors, ONNX, GGUF layer shapes and parameter counts.',
+    category: 'ml',
+    subCategory: 'ai-models',
+    icon: 'Brain',
+    inputFormats: ['SAFETENSORS', 'ONNX', 'GGUF', 'TFLITE'],
+    outputFormats: ['JSON', 'TXT'],
+    status: 'available',
+    route: { view: 'ml-studio' },
+    popular: true,
+    badge: 'Safe AI',
+    keywords: ['safetensors', 'onnx', 'gguf', 'huggingface', 'weights', 'tensors', 'ai model'],
+  },
   // ==================== 1. PDF TOOLS ====================
   {
     id: 'pdf-to-text',

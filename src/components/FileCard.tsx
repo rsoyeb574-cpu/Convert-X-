@@ -26,6 +26,7 @@ interface FileCardProps {
   result?: ConversionResultData | null;
   rawFile?: File | null;
   objectUrl?: string | null;
+  onInspect?: (file: UploadedFile) => void;
 }
 
 export const FileCard: React.FC<FileCardProps> = ({
@@ -36,6 +37,7 @@ export const FileCard: React.FC<FileCardProps> = ({
   result,
   rawFile,
   objectUrl: propObjectUrl,
+  onInspect,
 }) => {
   const [estimatedSize, setEstimatedSize] = useState<number>(() => {
     if (propEstimatedSize && propEstimatedSize > 0) return propEstimatedSize;
@@ -284,6 +286,20 @@ export const FileCard: React.FC<FileCardProps> = ({
                   <span>Preview Image</span>
                   <ExternalLink className="w-2.5 h-2.5 opacity-70" />
                 </a>
+              )}
+
+              {/* Universal File Inspector Action */}
+              {onInspect && (
+                <button
+                  type="button"
+                  onClick={() => onInspect(file)}
+                  id="file-card-inspect-action-btn"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 transition-colors shadow-2xs"
+                  title="Inspect metadata, container, and security"
+                >
+                  <Sparkles className="w-3 h-3 text-cyan-500" />
+                  <span>Inspect</span>
+                </button>
               )}
             </div>
 

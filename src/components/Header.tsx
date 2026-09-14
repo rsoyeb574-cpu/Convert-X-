@@ -142,6 +142,66 @@ export const Header: React.FC<HeaderProps> = ({
             Compress
           </a>
           <a
+            id="nav-cad-btn"
+            href="/cad-studio"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('cad-studio');
+            }}
+            className={`px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              currentView === 'cad-studio'
+                ? 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 font-bold'
+                : 'hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>CAD</span>
+          </a>
+          <a
+            id="nav-3d-btn"
+            href="/threed-studio"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('threed-studio');
+            }}
+            className={`px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              currentView === 'threed-studio'
+                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold'
+                : 'hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>3D</span>
+          </a>
+          <a
+            id="nav-data-btn"
+            href="/data-studio"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('data-studio');
+            }}
+            className={`px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              currentView === 'data-studio'
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold'
+                : 'hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>Data</span>
+          </a>
+          <a
+            id="nav-ml-btn"
+            href="/ml-studio"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate('ml-studio');
+            }}
+            className={`px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              currentView === 'ml-studio'
+                ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold'
+                : 'hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>ML</span>
+          </a>
+          <a
             id="nav-text-to-voice-btn"
             href="/text-to-voice"
             onClick={(e) => {
@@ -341,6 +401,50 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <span>Compress Files</span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+          <button
+            onClick={() => handleMobileNav('cad-studio')}
+            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-between ${
+              currentView === 'cad-studio'
+                ? 'bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-300'
+                : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>CAD & Steel Studio</span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+          <button
+            onClick={() => handleMobileNav('threed-studio')}
+            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-between ${
+              currentView === 'threed-studio'
+                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300'
+                : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>3D Studio & Mesh Viewer</span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+          <button
+            onClick={() => handleMobileNav('data-studio')}
+            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-between ${
+              currentView === 'data-studio'
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300'
+                : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>Data Science & Code Studio</span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+          <button
+            onClick={() => handleMobileNav('ml-studio')}
+            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-between ${
+              currentView === 'ml-studio'
+                ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-300'
+                : 'text-[#64748B] dark:text-[#94A3B8] hover:bg-slate-100 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <span>ML & AI Model Studio</span>
             <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
           </button>
           <button

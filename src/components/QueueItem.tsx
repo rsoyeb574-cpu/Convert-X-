@@ -180,21 +180,38 @@ export const QueueItem: React.FC<QueueItemProps> = ({
     return (
       <tr
         id={`queue-item-${item.id}`}
+        aria-checked={isSelected}
         className={`transition-colors ${
           isSelected
-            ? 'bg-blue-50/85 dark:bg-blue-950/45'
+            ? 'bg-blue-50/90 dark:bg-blue-950/50'
             : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
         }`}
       >
         {/* Selection Checkbox */}
-        <td className="py-3.5 px-3 w-10 text-center">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => onToggleSelect && onToggleSelect(item.id)}
-            className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB]"
-            aria-label={`Select ${item.fileName}`}
-          />
+        <td
+          className="py-3.5 px-3 w-10 text-center cursor-pointer select-none"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).tagName.toLowerCase() !== 'input' && onToggleSelect) {
+              onToggleSelect(item.id);
+            }
+          }}
+        >
+          <label
+            htmlFor={`queue-checkbox-${item.id}`}
+            className="inline-flex items-center justify-center cursor-pointer p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors"
+            title={isSelected ? `Deselect ${item.fileName}` : `Select ${item.fileName}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              id={`queue-checkbox-${item.id}`}
+              checked={isSelected}
+              aria-checked={isSelected}
+              onChange={() => onToggleSelect && onToggleSelect(item.id)}
+              className="w-4 h-4 rounded text-[#2563EB] border-slate-300 dark:border-slate-600 focus:ring-[#2563EB] cursor-pointer accent-[#2563EB]"
+              aria-label={`Select ${item.fileName}`}
+            />
+          </label>
         </td>
 
         {/* Filename & Format Icon */}

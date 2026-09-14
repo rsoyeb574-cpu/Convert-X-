@@ -94,6 +94,32 @@ export class ConverterRegistry {
   }
 
   getCapabilities(): FormatCapability[] {
+    return FORMAT_REGISTRY.map((fmt) => {
+      // Filter supported outputs strictly against registered converter engines
+      const verifiedOutputs = fmt.supportedOutputs.filter((out) => {
+        const engine = this.findEngineFor(fmt.extension, out);
+        return engine !== null;
+      });
+
+      const isActuallySupported = fmt.status === 'SUPPORTED' && verifiedOutputs.length > 0;
+
+      const status: 'supported' | 'coming_soon' = isActuallySupported ? 'supported' : 'coming_soon';
+
+      return {
+        id: fmt.extension,
+        name: fmt.name,
+        extension: fmt.extension,
+        mimeType: fmt.mimeType,
+        category: fmt.category as any,
+        status,
+        supportedOutputs: isActuallySupported ? verifiedOutputs : [],
+        requiresEngine: isActuallySupported ? undefined : (fmt.engine || 'Commercial Desktop Engine'),
+        description: fmt.description,
+      };
+    });
+  }
+
+  getLegacyCapabilities(): FormatCapability[] {
     return [
       // DOCUMENTS (Supported DOCX, XLSX, TXT, HTML, PDF; Coming Soon PPTX, ODT, RTF)
       {
