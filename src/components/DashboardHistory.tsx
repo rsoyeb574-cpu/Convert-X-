@@ -39,6 +39,7 @@ import {
   Bell,
   Filter,
   X,
+  HardDrive,
 } from 'lucide-react';
 import { ReferralWidget } from './ReferralWidget.js';
 import { AdSlot } from './AdSlot.js';
@@ -582,6 +583,46 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
   const totalSelectedCount = selectedQueueIds.size + selectedHistoryIds.size;
 
+  const selectedQueueItems = useMemo(() => {
+    return queue.filter((item) => selectedQueueIds.has(item.id));
+  }, [queue, selectedQueueIds]);
+
+  const selectedHistoryItems = useMemo(() => {
+    return history.filter((item) => selectedHistoryIds.has(item.id));
+  }, [history, selectedHistoryIds]);
+
+  const selectedQueueSizeBytes = useMemo(() => {
+    return selectedQueueItems.reduce((acc, item) => {
+      const size = item.fileSize || item.file?.size || item.uploadedFile?.fileSize || 0;
+      return acc + (typeof size === 'number' && !isNaN(size) ? size : 0);
+    }, 0);
+  }, [selectedQueueItems]);
+
+  const selectedHistorySizeBytes = useMemo(() => {
+    return selectedHistoryItems.reduce((acc, item) => {
+      const size = item.fileSize || item.originalSize || item.outputSize || 0;
+      return acc + (typeof size === 'number' && !isNaN(size) ? size : 0);
+    }, 0);
+  }, [selectedHistoryItems]);
+
+  const totalSelectedSizeBytes = selectedQueueSizeBytes + selectedHistorySizeBytes;
+
+  const maxUploadFileSizeMB = limits?.maxFileSizeMB ?? (isPro ? 100 : 25);
+  const maxUploadFileSizeBytes = maxUploadFileSizeMB * 1024 * 1024;
+
+  const oversizedSelectedFiles = useMemo(() => {
+    const list: string[] = [];
+    selectedQueueItems.forEach((q) => {
+      const sz = q.fileSize || q.file?.size || q.uploadedFile?.fileSize || 0;
+      if (sz > maxUploadFileSizeBytes) list.push(q.fileName);
+    });
+    selectedHistoryItems.forEach((h) => {
+      const sz = h.fileSize || h.originalSize || 0;
+      if (sz > maxUploadFileSizeBytes) list.push(h.fileName);
+    });
+    return list;
+  }, [selectedQueueItems, selectedHistoryItems, maxUploadFileSizeBytes]);
+
   useEffect(() => {
     fetch('/api/metrics/popular-tools')
       .then((res) => res.json())
@@ -603,6 +644,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   const remainingConversions = isPro ? 'Unlimited' : Math.max(0, dailyLimit - usedToday);
 
   const formatSize = (bytes?: number): string => {
+    if (bytes === 0) return '0 B';
     if (!bytes || isNaN(bytes)) return '—';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
@@ -927,10 +969,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
               {totalSelectedCount > 0 && (
                 <span
                   id="dashboard-header-selected-chip"
-                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1 animate-in fade-in duration-150"
+                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1.5 animate-in fade-in duration-150"
+                  title={`${totalSelectedCount} file${totalSelectedCount > 1 ? 's' : ''} selected • Combined size: ${formatSize(totalSelectedSizeBytes)}`}
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
                   <span>{totalSelectedCount} file{totalSelectedCount > 1 ? 's' : ''} selected</span>
+                  <span className="text-blue-300 dark:text-blue-700">•</span>
+                  <span>{formatSize(totalSelectedSizeBytes)}</span>
                 </span>
               )}
             </div>
@@ -980,6 +1025,52 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                   <X className="w-3 h-3" />
                 </button>
               )}
+            </div>
+
+            {/* Selected Combined File Size & Upload Quota Summary Widget */}
+            <div
+              id="dashboard-selected-size-summary"
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all shadow-xs ${
+                totalSelectedCount > 0
+                  ? totalSelectedSizeBytes > maxUploadFileSizeBytes || oversizedSelectedFiles.length > 0
+                    ? 'bg-rose-50 dark:bg-rose-950/70 border-rose-300 dark:border-rose-800/80 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/20'
+                    : totalSelectedSizeBytes > maxUploadFileSizeBytes * 0.8
+                    ? 'bg-amber-50 dark:bg-amber-950/70 border-amber-300 dark:border-amber-800/80 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20'
+                    : 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 dark:border-blue-800/80 text-[#2563EB] dark:text-blue-400 ring-1 ring-blue-500/20'
+                  : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-[#64748B] dark:text-[#94A3B8]'
+              }`}
+              title={
+                totalSelectedCount > 0
+                  ? `Combined size: ${formatSize(totalSelectedSizeBytes)} across ${totalSelectedCount} selected file${totalSelectedCount > 1 ? 's' : ''} (${formatSize(selectedQueueSizeBytes)} in queue, ${formatSize(selectedHistorySizeBytes)} in history). Plan upload limit: ${maxUploadFileSizeMB} MB per file.`
+                  : `Total combined size of selected files. Plan upload limit: ${maxUploadFileSizeMB} MB per file.`
+              }
+            >
+              <HardDrive
+                className={`w-3.5 h-3.5 shrink-0 ${
+                  totalSelectedCount > 0
+                    ? totalSelectedSizeBytes > maxUploadFileSizeBytes || oversizedSelectedFiles.length > 0
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : 'text-[#2563EB] dark:text-blue-400'
+                    : 'text-slate-400'
+                }`}
+              />
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-[#64748B] dark:text-[#94A3B8]">Total Size:</span>
+                <span
+                  className={
+                    totalSelectedCount > 0
+                      ? totalSelectedSizeBytes > maxUploadFileSizeBytes || oversizedSelectedFiles.length > 0
+                        ? 'text-rose-700 dark:text-rose-300 font-black'
+                        : 'text-[#0F172A] dark:text-[#F8FAFC] font-black'
+                      : ''
+                  }
+                >
+                  {formatSize(totalSelectedSizeBytes)}
+                </span>
+                <span className="text-[10px] text-[#64748B] dark:text-[#94A3B8] font-normal">
+                  / {maxUploadFileSizeMB}MB limit
+                </span>
+              </div>
             </div>
 
             {/* Download All Completed Results in Dashboard */}
@@ -1032,6 +1123,93 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Selected Files & Quota Management Summary Bar */}
+        {totalSelectedCount > 0 && (
+          <div
+            id="dashboard-selection-quota-summary-bar"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-gradient-to-r from-blue-50/90 via-slate-50 to-indigo-50/80 dark:from-blue-950/40 dark:via-[#0B1120] dark:to-indigo-950/30 border border-blue-200/80 dark:border-blue-900/60 shadow-xs animate-in fade-in slide-in-from-top-1 duration-200"
+          >
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <HardDrive className="w-4 h-4 text-[#2563EB] dark:text-blue-400 shrink-0" />
+                <span className="font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                  Selection Size Summary:
+                </span>
+                <span className="px-2 py-0.5 rounded-md font-black bg-blue-600 text-white text-[11px]">
+                  {totalSelectedCount} {totalSelectedCount === 1 ? 'file' : 'files'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[#334155] dark:text-[#CBD5E1]">
+                <span className="text-[#64748B] dark:text-[#94A3B8]">Combined Size:</span>
+                <span className="font-black text-[#0F172A] dark:text-[#F8FAFC] text-sm">
+                  {formatSize(totalSelectedSizeBytes)}
+                </span>
+              </div>
+
+              {/* Breakdown if both queue and history have selected items */}
+              {selectedQueueIds.size > 0 && selectedHistoryIds.size > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                  <span>(Queue: <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{formatSize(selectedQueueSizeBytes)}</strong></span>
+                  <span>• History: <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{formatSize(selectedHistorySizeBytes)}</strong>)</span>
+                </div>
+              )}
+
+              {/* Upload Quota Status Pill */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#64748B] dark:text-[#94A3B8]">Upload Quota:</span>
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                    oversizedSelectedFiles.length > 0 || totalSelectedSizeBytes > maxUploadFileSizeBytes
+                      ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+                      : totalSelectedSizeBytes > maxUploadFileSizeBytes * 0.8
+                      ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                      : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                  }`}
+                >
+                  {oversizedSelectedFiles.length > 0 ? (
+                    <>
+                      <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                      <span>
+                        {oversizedSelectedFiles.length} file{oversizedSelectedFiles.length > 1 ? 's exceed' : ' exceeds'} {maxUploadFileSizeMB}MB upload limit
+                      </span>
+                    </>
+                  ) : totalSelectedSizeBytes > maxUploadFileSizeBytes ? (
+                    <>
+                      <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                      <span>Combined size exceeds {maxUploadFileSizeMB}MB limit</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                      <span>Within {maxUploadFileSizeMB}MB {isPro ? 'Pro' : 'Free'} upload quota</span>
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Actions & Remaining Daily Quota */}
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                {isPro ? 'Unlimited conversions (Pro)' : `${remainingConversions} conversions remaining today`}
+              </span>
+              <button
+                type="button"
+                id="dashboard-summary-bar-deselect-btn"
+                onClick={() => {
+                  setSelectedQueueIds(new Set());
+                  setSelectedHistoryIds(new Set());
+                }}
+                className="px-2.5 py-1 text-[11px] font-bold text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Deselect all files"
+              >
+                Clear selection
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Quota & Usage Overview Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -1462,11 +1640,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
               {selectedQueueIds.size > 0 && (
                 <span
                   id="queue-header-selected-counter"
-                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1 animate-in fade-in duration-150"
-                  title={`${selectedQueueIds.size} file${selectedQueueIds.size > 1 ? 's' : ''} currently selected in queue`}
+                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1.5 animate-in fade-in duration-150"
+                  title={`${selectedQueueIds.size} file${selectedQueueIds.size > 1 ? 's' : ''} currently selected in queue (${formatSize(selectedQueueSizeBytes)})`}
                 >
                   <CheckSquare className="w-3 h-3" />
                   <span>{selectedQueueIds.size} selected</span>
+                  <span className="text-blue-300 dark:text-blue-700">•</span>
+                  <span>{formatSize(selectedQueueSizeBytes)}</span>
                 </span>
               )}
               {isBatchPaused ? (
@@ -2431,11 +2611,13 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
               {selectedHistoryIds.size > 0 && (
                 <span
                   id="history-header-selected-counter"
-                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1 animate-in fade-in duration-150"
-                  title={`${selectedHistoryIds.size} file${selectedHistoryIds.size > 1 ? 's' : ''} currently selected in conversion history`}
+                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1.5 animate-in fade-in duration-150"
+                  title={`${selectedHistoryIds.size} file${selectedHistoryIds.size > 1 ? 's' : ''} currently selected in conversion history (${formatSize(selectedHistorySizeBytes)})`}
                 >
                   <CheckSquare className="w-3 h-3" />
                   <span>{selectedHistoryIds.size} selected</span>
+                  <span className="text-blue-300 dark:text-blue-700">•</span>
+                  <span>{formatSize(selectedHistorySizeBytes)}</span>
                 </span>
               )}
             </div>
