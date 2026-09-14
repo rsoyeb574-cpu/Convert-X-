@@ -49,25 +49,26 @@ export class DocumentConverter implements ConverterEngine {
 
   async convert(params: ConvertParams): Promise<ConvertResult> {
     const { inputBuffer, inputFormat, outputFormat, options, fileName } = params;
+    const opts = options || {};
     const inFmt = inputFormat.toLowerCase();
     const target = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
     let pageImages: Buffer[] = [];
 
     if (inFmt === 'docx') {
-      pageImages = await this.renderDocxToPageImages(inputBuffer, options, fileName);
+      pageImages = await this.renderDocxToPageImages(inputBuffer, opts, fileName);
     } else if (inFmt === 'pptx') {
-      pageImages = await this.renderPptxToSlideImages(inputBuffer, options, fileName);
+      pageImages = await this.renderPptxToSlideImages(inputBuffer, opts, fileName);
     } else if (inFmt === 'odt') {
-      pageImages = await this.renderOdtToPageImages(inputBuffer, options, fileName);
+      pageImages = await this.renderOdtToPageImages(inputBuffer, opts, fileName);
     } else if (inFmt === 'rtf') {
-      pageImages = await this.renderRtfToPageImages(inputBuffer, options, fileName);
+      pageImages = await this.renderRtfToPageImages(inputBuffer, opts, fileName);
     } else if (inFmt === 'xlsx') {
-      pageImages = await this.renderXlsxToPageImages(inputBuffer, options);
+      pageImages = await this.renderXlsxToPageImages(inputBuffer, opts);
     } else if (inFmt === 'txt') {
-      pageImages = await this.renderTextToPageImages(inputBuffer.toString('utf-8'), options, fileName);
+      pageImages = await this.renderTextToPageImages(inputBuffer.toString('utf-8'), opts, fileName);
     } else if (inFmt === 'html' || inFmt === 'htm') {
-      pageImages = await this.renderHtmlToPageImages(inputBuffer.toString('utf-8'), options, fileName);
+      pageImages = await this.renderHtmlToPageImages(inputBuffer.toString('utf-8'), opts, fileName);
     } else {
       throw new Error(`Unsupported document input format: .${inFmt}`);
     }
@@ -87,8 +88,8 @@ export class DocumentConverter implements ConverterEngine {
         const embeddedImg = await pdfDoc.embedPng(pagePng);
 
         let [pageWidth, pageHeight] = PageSizes.A4;
-        const isLandscape = options.orientation === 'landscape';
-        const pageSizeSetting = options.pageSize || 'a4';
+        const isLandscape = opts.orientation === 'landscape';
+        const pageSizeSetting = opts.pageSize || 'a4';
 
         if (pageSizeSetting === 'letter') {
           pageWidth = 612; pageHeight = 792;
@@ -108,7 +109,7 @@ export class DocumentConverter implements ConverterEngine {
         }
 
         const page = pdfDoc.addPage([pageWidth, pageHeight]);
-        const margin = typeof options.margin === 'number' ? options.margin : 20;
+        const margin = typeof opts.margin === 'number' ? opts.margin : 20;
 
         let drawW = embeddedImg.width;
         let drawH = embeddedImg.height;

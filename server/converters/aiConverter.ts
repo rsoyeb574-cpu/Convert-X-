@@ -59,8 +59,9 @@ export class AiConverter implements ConverterEngine {
 
   async convert(params: ConvertParams): Promise<ConvertResult> {
     const { inputBuffer, outputFormat, options, fileName } = params;
+    const opts = options || {};
     const target = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
-    const targetDpi = [72, 150, 300, 600].includes(Number(options.dpi)) ? Number(options.dpi) : 300;
+    const targetDpi = [72, 150, 300, 600].includes(Number(opts.dpi)) ? Number(opts.dpi) : 300;
 
     // Check for PDF offset if not starting at 0
     const header = inputBuffer.slice(0, 1024).toString('binary');
@@ -86,7 +87,7 @@ export class AiConverter implements ConverterEngine {
         outputFormat: target as any,
         fileName: fileName ? fileName.replace(/\.ai$/i, '.pdf') : 'artwork.pdf',
         options: {
-          ...options,
+          ...opts,
           dpi: targetDpi,
         },
       });

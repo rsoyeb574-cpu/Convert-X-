@@ -38,16 +38,17 @@ export class SharpImageConverter implements ConverterEngine {
 
   async convert(params: ConvertParams): Promise<ConvertResult> {
     const { inputBuffer, outputFormat, options } = params;
+    const opts = options || {};
     const target = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
     let pipeline = sharp(inputBuffer);
 
     // 1. Resizing
-    if (options.width || options.height) {
+    if (opts.width || opts.height) {
       const resizeOptions: { width?: number; height?: number; fit?: 'inside' | 'fill' | 'cover' | 'contain' | 'outside'; withoutEnlargement?: boolean } = {
-        width: options.width ? parseInt(String(options.width), 10) : undefined,
-        height: options.height ? parseInt(String(options.height), 10) : undefined,
-        fit: options.maintainAspectRatio !== false ? 'inside' : 'fill',
+        width: opts.width ? parseInt(String(opts.width), 10) : undefined,
+        height: opts.height ? parseInt(String(opts.height), 10) : undefined,
+        fit: opts.maintainAspectRatio !== false ? 'inside' : 'fill',
         withoutEnlargement: false,
       };
       pipeline = pipeline.resize(resizeOptions);
@@ -59,10 +60,10 @@ export class SharpImageConverter implements ConverterEngine {
       const pdfDoc = await PDFDocument.create();
       const embeddedImage = await pdfDoc.embedPng(flattenedPng);
 
-      const isLandscape = options.orientation === 'landscape';
+      const isLandscape = opts.orientation === 'landscape';
       let [pageWidth, pageHeight] = PageSizes.A4;
 
-      const pageSizeSetting = options.pageSize || 'a4';
+      const pageSizeSetting = opts.pageSize || 'a4';
       if (pageSizeSetting === 'a3') {
         pageWidth = 841.89; pageHeight = 1190.55;
       } else if (pageSizeSetting === 'a2') {
@@ -87,7 +88,7 @@ export class SharpImageConverter implements ConverterEngine {
       }
 
       const page = pdfDoc.addPage([pageWidth, pageHeight]);
-      const margin = typeof options.margin === 'number' ? options.margin : 20;
+      const margin = typeof opts.margin === 'number' ? opts.margin : 20;
 
       let drawWidth = embeddedImage.width;
       let drawHeight = embeddedImage.height;

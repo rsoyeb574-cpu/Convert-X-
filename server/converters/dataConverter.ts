@@ -77,13 +77,16 @@ export class DataConverter implements ConverterEngine {
   name = 'Tabular, Data Science & Developer Engine';
   description = 'Bidirectional transformation across CSV, JSON, JSONL, TSV, Parquet, XLSX, XML, YAML, and Markdown.';
 
-  supportedInputFormats = ['csv', 'tsv', 'json', 'jsonl', 'parquet', 'yaml', 'yml', 'xml', 'md', 'markdown'];
+  supportedInputFormats = ['csv', 'tsv', 'json', 'jsonl', 'parquet', 'yaml', 'yml', 'xml', 'md', 'markdown', 'xlsx'];
   supportedOutputFormats = ['csv', 'tsv', 'json', 'jsonl', 'xlsx', 'xml', 'yaml', 'html', 'pdf', 'txt'];
 
   supports(inputFormat: string, outputFormat: string): boolean {
     const inFmt = inputFormat.toLowerCase();
     const outFmt = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
+    if (['xlsx'].includes(inFmt)) {
+      return ['csv', 'tsv', 'json', 'jsonl'].includes(outFmt);
+    }
     if (['csv', 'tsv'].includes(inFmt)) {
       return ['json', 'jsonl', 'tsv', 'csv', 'xlsx', 'xml', 'yaml'].includes(outFmt);
     }
@@ -143,6 +146,57 @@ export class DataConverter implements ConverterEngine {
     const { inputBuffer, inputFormat, outputFormat, fileName } = params;
     const inFmt = inputFormat.toLowerCase();
     const outFmt = outputFormat.toLowerCase();
+
+    // 0. XLSX INPUT
+    if (inFmt === 'xlsx') {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(inputBuffer);
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        throw new Error('Excel workbook contains no worksheets.');
+      }
+
+      const rows: string[][] = [];
+      worksheet.eachRow({ includeEmpty: false }, (row) => {
+        const rowVals: string[] = [];
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          let v = cell.text ?? cell.value;
+          if (v && typeof v === 'object' && 'result' in v) v = (v as any).result;
+          rowVals.push(v === null || v === undefined ? '' : String(v));
+        });
+        rows.push(rowVals);
+      });
+
+      if (rows.length === 0) {
+        throw new Error('Excel sheet contains no data.');
+      }
+
+      if (outFmt === 'csv' || outFmt === 'tsv') {
+        const targetDelim = outFmt === 'tsv' ? '\t' : ',';
+        const formatted = formatCsv(rows, targetDelim);
+        return {
+          buffer: Buffer.from(formatted, 'utf8'),
+          mimeType: outFmt === 'tsv' ? 'text/tab-separated-values' : 'text/csv',
+          outputExtension: outFmt,
+        };
+      }
+
+      if (outFmt === 'json') {
+        const headers = rows[0].map((h, i) => (h.trim().length > 0 ? h.trim() : `col_${i + 1}`));
+        const dataObjects = rows.slice(1).map((row) => {
+          const obj: Record<string, any> = {};
+          headers.forEach((h, i) => {
+            obj[h] = row[i] !== undefined ? row[i] : '';
+          });
+          return obj;
+        });
+        return {
+          buffer: Buffer.from(JSON.stringify(dataObjects, null, 2), 'utf8'),
+          mimeType: 'application/json',
+          outputExtension: 'json',
+        };
+      }
+    }
 
     // 1. CSV / TSV INPUT
     if (inFmt === 'csv' || inFmt === 'tsv') {

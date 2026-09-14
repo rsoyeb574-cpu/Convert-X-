@@ -49,14 +49,15 @@ export class EpsConverter implements ConverterEngine {
 
   async convert(params: ConvertParams): Promise<ConvertResult> {
     const { inputBuffer, outputFormat, options } = params;
+    const opts = options || {};
     const target = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
     // Default DPI = 300; Supported DPI options: 72, 150, 300, 600
-    const targetDpi = [72, 150, 300, 600].includes(Number(options.dpi)) ? Number(options.dpi) : 300;
-    const quality = options.quality && options.quality > 0 && options.quality <= 100 ? options.quality : 90;
-    const isTransparent = options.transparentBackground || options.backgroundColor === 'transparent';
-    const customBg = options.backgroundColor && options.backgroundColor !== 'transparent' && options.backgroundColor !== '#ffffff'
-      ? options.backgroundColor
+    const targetDpi = [72, 150, 300, 600].includes(Number(opts.dpi)) ? Number(opts.dpi) : 300;
+    const quality = opts.quality && opts.quality > 0 && opts.quality <= 100 ? opts.quality : 90;
+    const isTransparent = opts.transparentBackground || opts.backgroundColor === 'transparent';
+    const customBg = opts.backgroundColor && opts.backgroundColor !== 'transparent' && opts.backgroundColor !== '#ffffff'
+      ? opts.backgroundColor
       : null;
 
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'convertx_eps_'));

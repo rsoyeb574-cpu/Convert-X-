@@ -711,7 +711,7 @@ export class TextToPdfConverter implements ConverterEngine {
 
   async convert(params: ConvertParams): Promise<ConvertResult> {
     const rawText = params.inputBuffer.toString('utf-8');
-    const opts = params.options as any;
+    const opts = (params.options || {}) as any;
 
     const result = await generateTextToPdf({
       text: rawText,

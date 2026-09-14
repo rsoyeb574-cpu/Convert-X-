@@ -93,9 +93,10 @@ export class PdfConverter implements ConverterEngine {
     format: string,
     options: any
   ): Promise<ConvertResult> {
+    const opts = options || {};
     const pdfDoc = await PDFDocument.create();
 
-    const dpi = options.dpi || 150;
+    const dpi = opts.dpi || 150;
     const density = Math.round((dpi / 72) * 150);
 
     // Convert input image buffer to PNG with sharp for lossless embedding
@@ -217,6 +218,7 @@ export class PdfConverter implements ConverterEngine {
     outFmt: 'png' | 'jpg' | 'webp',
     options: any
   ): Promise<ConvertResult> {
+    const opts = options || {};
     // 1. Inspect original PDF document and get exact page metrics
     const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
     const totalPages = pdfDoc.getPageCount();
@@ -227,15 +229,15 @@ export class PdfConverter implements ConverterEngine {
 
     // Default DPI = 300; Supported DPI options: 72, 150, 300, 600
     // Strictly backend-authoritative, independent of client device/viewport
-    const targetDpi = [72, 150, 300, 600].includes(Number(options.dpi)) ? Number(options.dpi) : 300;
-    const quality = options.quality && options.quality > 0 && options.quality <= 100 ? Number(options.quality) : 90;
-    const isTransparent = options.transparentBackground || options.backgroundColor === 'transparent';
-    const customBg = options.backgroundColor && options.backgroundColor !== 'transparent' && options.backgroundColor !== '#ffffff'
-      ? options.backgroundColor
+    const targetDpi = [72, 150, 300, 600].includes(Number(opts.dpi)) ? Number(opts.dpi) : 300;
+    const quality = opts.quality && opts.quality > 0 && opts.quality <= 100 ? Number(opts.quality) : 90;
+    const isTransparent = opts.transparentBackground || opts.backgroundColor === 'transparent';
+    const customBg = opts.backgroundColor && opts.backgroundColor !== 'transparent' && opts.backgroundColor !== '#ffffff'
+      ? opts.backgroundColor
       : null;
 
     // Read the first (or selected) page's actual physical MediaBox / CropBox dimensions in points (1/72 inch)
-    const pageIndexToInspect = options.pageNumber ? Math.max(1, Math.min(options.pageNumber, totalPages)) - 1 : 0;
+    const pageIndexToInspect = opts.pageNumber ? Math.max(1, Math.min(opts.pageNumber, totalPages)) - 1 : 0;
     const targetPage = pdfDoc.getPage(pageIndexToInspect);
     const cropBox = targetPage.getCropBox() || targetPage.getMediaBox();
     const ptWidth = cropBox ? cropBox.width : targetPage.getWidth();

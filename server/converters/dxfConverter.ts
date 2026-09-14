@@ -70,6 +70,7 @@ export class DxfConverter implements ConverterEngine {
 
   async convert(params: ConvertParams): Promise<ConvertResult> {
     const { inputBuffer, outputFormat, options } = params;
+    const opts = options || {};
     const target = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
     // Parse DXF into geometry
@@ -86,7 +87,7 @@ export class DxfConverter implements ConverterEngine {
       throw new Error('DXF file contains no parseable CAD database.');
     }
 
-    const svgXml = this.dxfToSvg(dxfData, options);
+    const svgXml = this.dxfToSvg(dxfData, opts);
 
     // 1. DXF -> SVG
     if (target === 'svg') {
@@ -100,22 +101,22 @@ export class DxfConverter implements ConverterEngine {
 
     // 2. DXF -> PNG or JPG via Sharp
     if (target === 'png' || target === 'jpg') {
-      const dpi = options.dpi || 150;
+      const dpi = opts.dpi || 150;
       const density = Math.round((dpi / 72) * 150);
       let pipeline = sharp(Buffer.from(svgXml, 'utf-8'), { density });
 
-      if (options.width || options.height) {
-        pipeline = pipeline.resize(options.width || null, options.height || null, {
-          fit: options.maintainAspectRatio !== false ? 'contain' : 'fill',
+      if (opts.width || opts.height) {
+        pipeline = pipeline.resize(opts.width || null, opts.height || null, {
+          fit: opts.maintainAspectRatio !== false ? 'contain' : 'fill',
         });
       }
 
       if (target === 'jpg') {
-        const bg = options.backgroundColor && options.backgroundColor !== 'transparent'
-          ? options.backgroundColor
+        const bg = opts.backgroundColor && opts.backgroundColor !== 'transparent'
+          ? opts.backgroundColor
           : '#ffffff';
         pipeline = pipeline.flatten({ background: bg });
-        const buf = await pipeline.jpeg({ quality: options.quality || 90, mozjpeg: true }).toBuffer();
+        const buf = await pipeline.jpeg({ quality: opts.quality || 90, mozjpeg: true }).toBuffer();
         const meta = await sharp(buf).metadata();
         return {
           buffer: buf,
@@ -125,10 +126,10 @@ export class DxfConverter implements ConverterEngine {
           height: meta.height,
         };
       } else {
-        if (options.backgroundColor && options.backgroundColor !== 'transparent') {
-          pipeline = pipeline.flatten({ background: options.backgroundColor });
+        if (opts.backgroundColor && opts.backgroundColor !== 'transparent') {
+          pipeline = pipeline.flatten({ background: opts.backgroundColor });
         }
-        const buf = await pipeline.png({ quality: options.quality || 90 }).toBuffer();
+        const buf = await pipeline.png({ quality: opts.quality || 90 }).toBuffer();
         const meta = await sharp(buf).metadata();
         return {
           buffer: buf,
@@ -142,7 +143,7 @@ export class DxfConverter implements ConverterEngine {
 
     // 3. DXF -> PDF (Vector-to-PDF Embedding)
     if (target === 'pdf') {
-      const dpi = options.dpi || 200;
+      const dpi = opts.dpi || 200;
       const density = Math.round((dpi / 72) * 200);
       const pngBuffer = await sharp(Buffer.from(svgXml, 'utf-8'), { density })
         .png()
@@ -151,10 +152,10 @@ export class DxfConverter implements ConverterEngine {
       const pdfDoc = await PDFDocument.create();
       const pngImage = await pdfDoc.embedPng(pngBuffer);
 
-      const isLandscape = options.orientation === 'landscape';
+      const isLandscape = opts.orientation === 'landscape';
       let [pageWidth, pageHeight] = PageSizes.A4;
 
-      const pageSizeSetting = options.pageSize || 'a4';
+      const pageSizeSetting = opts.pageSize || 'a4';
       if (pageSizeSetting === 'a3') {
         pageWidth = 841.89; pageHeight = 1190.55;
       } else if (pageSizeSetting === 'a2') {

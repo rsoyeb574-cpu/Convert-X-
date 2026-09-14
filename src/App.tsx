@@ -51,6 +51,7 @@ import { ThreeDStudio } from './components/ThreeDStudio.js';
 import { DataStudio } from './components/DataStudio.js';
 import { MlStudio } from './components/MlStudio.js';
 import { UniversalFileInspector } from './components/UniversalFileInspector.js';
+import { HomeDirectorySection } from './components/HomeDirectorySection.js';
 import { initAnalytics } from './utils/analytics.js';
 import {
   fetchAppConfig,
@@ -1815,6 +1816,7 @@ export default function App() {
                 maxFileSizeMB={safeMaxFileSizeMB}
                 onViewPro={() => handleNavigate('pricing')}
               />
+              <HomeDirectorySection onNavigate={handleNavigate} />
               <PopularToolsSection onNavigate={handleNavigate} />
               <UniversalExportSection
                 onSelectSample={handleSampleSelected}

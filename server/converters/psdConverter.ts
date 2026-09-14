@@ -56,6 +56,7 @@ export class PsdConverter implements ConverterEngine {
 
   async convert(params: ConvertParams): Promise<ConvertResult> {
     const { inputBuffer, outputFormat, options } = params;
+    const opts = options || {};
     const target = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
     // 1. Parse PSD with composite canvas extraction
@@ -95,18 +96,18 @@ export class PsdConverter implements ConverterEngine {
     let pipeline = sharp(pngBuffer);
 
     // Apply custom pixel dimensions if provided
-    if (options.width || options.height) {
-      pipeline = pipeline.resize(options.width || null, options.height || null, {
-        fit: options.maintainAspectRatio !== false ? 'contain' : 'fill',
+    if (opts.width || opts.height) {
+      pipeline = pipeline.resize(opts.width || null, opts.height || null, {
+        fit: opts.maintainAspectRatio !== false ? 'contain' : 'fill',
       });
     }
 
     // 2. Output: PNG
     if (target === 'png') {
-      if (options.backgroundColor && options.backgroundColor !== 'transparent') {
-        pipeline = pipeline.flatten({ background: options.backgroundColor });
+      if (opts.backgroundColor && opts.backgroundColor !== 'transparent') {
+        pipeline = pipeline.flatten({ background: opts.backgroundColor });
       }
-      const quality = options.quality || 90;
+      const quality = opts.quality || 90;
       const buf = await pipeline.png({ quality }).toBuffer();
       const meta = await sharp(buf).metadata();
 
@@ -121,11 +122,11 @@ export class PsdConverter implements ConverterEngine {
 
     // 3. Output: JPG
     if (target === 'jpg') {
-      const bg = options.backgroundColor && options.backgroundColor !== 'transparent'
-        ? options.backgroundColor
+      const bg = opts.backgroundColor && opts.backgroundColor !== 'transparent'
+        ? opts.backgroundColor
         : '#ffffff';
       pipeline = pipeline.flatten({ background: bg });
-      const quality = options.quality || 90;
+      const quality = opts.quality || 90;
       const buf = await pipeline.jpeg({ quality, mozjpeg: true }).toBuffer();
       const meta = await sharp(buf).metadata();
 
@@ -144,10 +145,10 @@ export class PsdConverter implements ConverterEngine {
       const pdfDoc = await PDFDocument.create();
       const embeddedImage = await pdfDoc.embedPng(flattenedPng);
 
-      const isLandscape = options.orientation === 'landscape';
+      const isLandscape = opts.orientation === 'landscape';
       let [pageWidth, pageHeight] = PageSizes.A4;
 
-      const pageSizeSetting = options.pageSize || 'a4';
+      const pageSizeSetting = opts.pageSize || 'a4';
       if (pageSizeSetting === 'a3') {
         pageWidth = 841.89; pageHeight = 1190.55;
       } else if (pageSizeSetting === 'a2') {
@@ -172,7 +173,7 @@ export class PsdConverter implements ConverterEngine {
       }
 
       const page = pdfDoc.addPage([pageWidth, pageHeight]);
-      const margin = typeof options.margin === 'number' ? options.margin : 20;
+      const margin = typeof opts.margin === 'number' ? opts.margin : 20;
 
       let drawWidth = embeddedImage.width;
       let drawHeight = embeddedImage.height;

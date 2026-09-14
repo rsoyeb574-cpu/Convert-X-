@@ -37,9 +37,10 @@ export class SvgConverter implements ConverterEngine {
 
   async convert(params: ConvertParams): Promise<ConvertResult> {
     const { inputBuffer, outputFormat, options } = params;
+    const opts = options || {};
     const target = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
-    const dpi = options.dpi || 150;
+    const dpi = opts.dpi || 150;
     const density = Math.round((dpi / 72) * 150);
 
     // 1. SVG -> PDF
@@ -52,8 +53,8 @@ export class SvgConverter implements ConverterEngine {
       const pngImage = await pdfDoc.embedPng(pngBuffer);
 
       let [pageWidth, pageHeight] = PageSizes.A4;
-      const isLandscape = options.orientation === 'landscape';
-      const pageSizeSetting = options.pageSize || 'a4';
+      const isLandscape = opts.orientation === 'landscape';
+      const pageSizeSetting = opts.pageSize || 'a4';
 
       if (pageSizeSetting === 'letter') {
         pageWidth = 612; pageHeight = 792;
