@@ -692,6 +692,32 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
     return count;
   }, [queue, history]);
 
+  // Selected completed and downloadable items across queue and unexpired history, deduplicated by jobId
+  const selectedCompletedItems = useMemo(() => {
+    const list: (ConversionQueueItem | ConversionHistoryItem)[] = [];
+    const seenJobIds = new Set<string>();
+
+    for (const q of selectedQueueItems) {
+      const jId = getJobId(q);
+      if (q.status === 'completed' && jId && !seenJobIds.has(jId)) {
+        seenJobIds.add(jId);
+        list.push(q);
+      }
+    }
+
+    for (const h of selectedHistoryItems) {
+      const jId = getJobId(h);
+      if (h.status === 'completed' && jId && !h.isExpired && !seenJobIds.has(jId)) {
+        seenJobIds.add(jId);
+        list.push(h);
+      }
+    }
+
+    return list;
+  }, [selectedQueueItems, selectedHistoryItems]);
+
+  const selectedCompletedCount = selectedCompletedItems.length;
+
   const handleAddFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && onAddFiles) {
       onAddFiles(Array.from(e.target.files));
@@ -841,7 +867,10 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
       // 3. Trigger immediate browser file download
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const zipFilename = `convertx_completed_${timestamp}.zip`;
+      const isSelectedBatch = Boolean(targetItems && targetItems.length > 0);
+      const zipFilename = isSelectedBatch
+        ? `convertx_selected_${timestamp}.zip`
+        : `convertx_completed_${timestamp}.zip`;
 
       const blobUrl = window.URL.createObjectURL(zipBlob);
       const tempLink = document.createElement('a');
@@ -876,10 +905,12 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
       // Fallback: request server-side ZIP packaging via /api/download-zip
       try {
         const completedJobIds = completedItems.map((q) => getJobId(q)).filter(Boolean) as string[];
+        const isSelectedBatch = Boolean(targetItems && targetItems.length > 0);
+        const fallbackZipName = isSelectedBatch ? 'convertx_selected_export.zip' : 'convertx_batch_export.zip';
         const response = await fetch('/api/download-zip', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobIds: completedJobIds, zipName: 'convertx_batch_export.zip' }),
+          body: JSON.stringify({ jobIds: completedJobIds, zipName: fallbackZipName }),
         });
 
         if (!response.ok) {
@@ -890,7 +921,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         const blobUrl = window.URL.createObjectURL(blob);
         const tempLink = document.createElement('a');
         tempLink.href = blobUrl;
-        tempLink.setAttribute('download', 'convertx_batch_export.zip');
+        tempLink.setAttribute('download', fallbackZipName);
         document.body.appendChild(tempLink);
         tempLink.click();
         tempLink.remove();
@@ -920,6 +951,20 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
     } finally {
       setIsZipping(false);
     }
+  };
+
+  // Download All Currently Selected Completed Files from Dashboard Table(s)
+  const handleDownloadSelectedZip = () => {
+    if (selectedCompletedItems.length === 0) {
+      if (totalSelectedCount === 0) {
+        setZipError('Please select files in the table to download.');
+      } else {
+        setZipError('None of the selected files have completed conversion yet or their download links have expired.');
+      }
+      setTimeout(() => setZipError(null), 3500);
+      return;
+    }
+    handleDownloadAllZip(selectedCompletedItems);
   };
 
   return (
@@ -1073,6 +1118,41 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
               </div>
             </div>
 
+            {/* Download Selected Converted Files in Dashboard Header */}
+            <button
+              type="button"
+              id="dashboard-download-selected-btn"
+              onClick={handleDownloadSelectedZip}
+              disabled={isZipping || selectedCompletedCount === 0}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black shadow-xs transition-all ${
+                selectedCompletedCount > 0
+                  ? 'bg-[#2563EB] hover:bg-blue-700 active:bg-blue-800 text-white shadow-blue-600/25 ring-1 ring-blue-500/40 cursor-pointer'
+                  : 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-65'
+              }`}
+              title={
+                selectedCompletedCount > 0
+                  ? `Package and download ${selectedCompletedCount} selected converted file${selectedCompletedCount > 1 ? 's' : ''} as a single ZIP archive`
+                  : totalSelectedCount > 0
+                  ? 'None of the currently selected files have completed conversion yet'
+                  : 'Select converted files in the table below to download as a ZIP archive'
+              }
+            >
+              {isZipping ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Packaging ({zipProgress}%)</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>
+                    Download Selected
+                    {selectedCompletedCount > 0 ? ` (${selectedCompletedCount})` : ''}
+                  </span>
+                </>
+              )}
+            </button>
+
             {/* Download All Completed Results in Dashboard */}
             {totalCompletedDashboardResults > 0 && (
               <button
@@ -1192,6 +1272,28 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
 
             {/* Quick Actions & Remaining Daily Quota */}
             <div className="flex items-center gap-3 shrink-0">
+              {selectedCompletedCount > 0 && (
+                <button
+                  type="button"
+                  id="dashboard-summary-bar-download-btn"
+                  onClick={handleDownloadSelectedZip}
+                  disabled={isZipping}
+                  className="px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                  title={`Download ${selectedCompletedCount} selected converted file${selectedCompletedCount > 1 ? 's' : ''} as a ZIP archive`}
+                >
+                  {isZipping ? (
+                    <>
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      <span>Packaging ({zipProgress}%)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3 h-3" />
+                      <span>Download Selected ({selectedCompletedCount})</span>
+                    </>
+                  )}
+                </button>
+              )}
               <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
                 {isPro ? 'Unlimited conversions (Pro)' : `${remainingConversions} conversions remaining today`}
               </span>
@@ -2609,16 +2711,27 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 <span>Conversion History</span>
               </h3>
               {selectedHistoryIds.size > 0 && (
-                <span
-                  id="history-header-selected-counter"
-                  className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1.5 animate-in fade-in duration-150"
-                  title={`${selectedHistoryIds.size} file${selectedHistoryIds.size > 1 ? 's' : ''} currently selected in conversion history (${formatSize(selectedHistorySizeBytes)})`}
-                >
-                  <CheckSquare className="w-3 h-3" />
-                  <span>{selectedHistoryIds.size} selected</span>
-                  <span className="text-blue-300 dark:text-blue-700">•</span>
-                  <span>{formatSize(selectedHistorySizeBytes)}</span>
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* File Counter Badge */}
+                  <span
+                    id="history-header-selected-counter"
+                    className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 shadow-xs flex items-center gap-1.5 animate-in fade-in duration-150"
+                    title={`${selectedHistoryIds.size} file${selectedHistoryIds.size > 1 ? 's' : ''} currently selected in conversion history`}
+                  >
+                    <CheckSquare className="w-3 h-3" />
+                    <span>{selectedHistoryIds.size} selected</span>
+                  </span>
+
+                  {/* Combined File Size Summary Area */}
+                  <span
+                    id="history-header-selected-size-summary"
+                    className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800/90 text-[#475569] dark:text-[#CBD5E1] border border-slate-200 dark:border-slate-700/60 shadow-xs flex items-center gap-1.5 animate-in fade-in duration-150"
+                    title={`Total combined file size of all ${selectedHistoryIds.size} selected items: ${formatSize(selectedHistorySizeBytes)}`}
+                  >
+                    <HardDrive className="w-3 h-3 text-[#2563EB]" />
+                    <span>Combined Size: <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{formatSize(selectedHistorySizeBytes)}</strong></span>
+                  </span>
+                </div>
               )}
             </div>
             <p className="text-xs text-[#64748B] dark:text-[#94A3B8]">
@@ -2627,7 +2740,31 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
           </div>
 
           {history.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Header Download Selected Button */}
+              {selectedHistoryCompletedCount > 0 && (
+                <button
+                  type="button"
+                  id="history-header-download-selected-btn"
+                  onClick={handleDownloadSelectedHistory}
+                  disabled={isZipping}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 disabled:opacity-60 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  title={`Download ${selectedHistoryCompletedCount} selected completed file${selectedHistoryCompletedCount > 1 ? 's' : ''} as a ZIP archive`}
+                >
+                  {isZipping ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Packaging ZIP...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Selected ({selectedHistoryCompletedCount})</span>
+                    </>
+                  )}
+                </button>
+              )}
+
               {history.some((h) => h.status === 'completed' && (h.jobId || (h as any).result?.jobId) && !h.isExpired) && (
                 <button
                   onClick={() => handleDownloadAllZip(history.filter((h) => !h.isExpired && Boolean(h.jobId || (h as any).result?.jobId)))}
@@ -2652,7 +2789,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
               <button
                 onClick={onClearHistory}
                 id="clear-history-btn"
-                className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-white text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors flex items-center gap-1.5 w-fit cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#0F172A] dark:text-white text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors flex items-center gap-1.5 w-fit cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5 text-red-500" />
                 <span>Clear History</span>
