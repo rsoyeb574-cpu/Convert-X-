@@ -151,13 +151,19 @@ export class JobQueue {
     const capabilities = registry.getCapabilities();
     const cap = capabilities.find((c) => c.extension === inFmt);
     if (cap && cap.status !== 'supported') {
-      const err = `Format .${inFmt.toUpperCase()} requires the ${cap.requiresEngine || 'Dedicated Commercial Engine'}. This engine is currently disconnected.`;
+      const err = `Format .${inFmt.toUpperCase()} requires the ${cap.requiresEngine || 'Dedicated Commercial Engine'}. Native converter is currently unavailable.`;
       this.storage.updateJob(jobId, {
         status: 'failed',
         errorCode: 'ENGINE_DISCONNECTED',
         errorMessage: err,
+        whyCantConvert: {
+          status: 'COMING_SOON',
+          reason: `Native converter for .${inFmt.toUpperCase()} is currently unavailable or requires dedicated proprietary runtime.`,
+          alternativeWorkflow: inFmt === 'dwg' ? 'Export as AutoCAD DXF, then convert DXF → PDF on Convert-X' : `Inspect file properties or use standard export in authoring application.`,
+          nextStepGuidance: inFmt === 'dwg' ? 'Open file in CAD software (AutoCAD, DraftSight) and Save As DXF.' : 'Use the Smart File Doctor to inspect internal structure.',
+        },
         progress: 0,
-        progressStage: 'Failed: Engine disconnected',
+        progressStage: 'Failed: Engine unavailable',
       });
       metricsTracker.recordFailure();
       return;
@@ -170,6 +176,12 @@ export class JobQueue {
         status: 'failed',
         errorCode: 'UNSUPPORTED_CONVERSION_PAIR',
         errorMessage: err,
+        whyCantConvert: {
+          status: 'OUTPUT_NOT_SUPPORTED',
+          reason: `Direct conversion from .${inFmt.toUpperCase()} to .${outFmt.toUpperCase()} is not supported.`,
+          alternativeWorkflow: cap?.supportedOutputs?.length ? `Try converting to supported output: .${cap.supportedOutputs.join(', .')}` : 'Check format support list.',
+          nextStepGuidance: 'Choose an output format from the verified supported list for this file type.',
+        },
         progress: 0,
         progressStage: 'Failed: Unsupported pair',
       });
@@ -303,10 +315,21 @@ export class JobQueue {
         }, delayMs);
       } else {
         // Permanent failure
+        const isCorrupted = errMsg.toLowerCase().includes('corrupt') || errMsg.toLowerCase().includes('validation') || errMsg.toLowerCase().includes('invalid');
         this.storage.updateJob(jobId, {
           status: 'failed',
-          errorCode: 'CONVERSION_FAILED',
+          errorCode: isCorrupted ? 'FILE_CORRUPTED' : 'CONVERSION_FAILED',
           errorMessage: errMsg,
+          whyCantConvert: {
+            status: isCorrupted ? 'INVALID_FILE' : 'ENGINE_UNAVAILABLE',
+            reason: errMsg,
+            alternativeWorkflow: isCorrupted
+              ? 'Run the Smart File Doctor on Convert-X to inspect and repair the file structure.'
+              : 'Try a different output format or inspect the file before converting.',
+            nextStepGuidance: isCorrupted
+              ? 'Check file health using the Smart File Doctor.'
+              : 'Verify file permissions or select another output format.',
+          },
           progress: 0,
           progressStage: 'Conversion failed',
           completedAt: new Date().toISOString(),

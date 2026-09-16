@@ -24,6 +24,7 @@ import {
   ExternalLink,
   Archive,
   FileCode,
+  ShieldCheck,
 } from 'lucide-react';
 import { ViralShare } from './ViralShare.js';
 import { AdSlot } from './AdSlot.js';
@@ -234,9 +235,15 @@ export const ConversionResult: React.FC<ConversionResultProps> = ({
         <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/40 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#2563EB]">Converted Output</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              Ready to Download
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40">
+                <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                Verified Valid
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                Ready to Download
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Miniature Thumbnail Badge */}

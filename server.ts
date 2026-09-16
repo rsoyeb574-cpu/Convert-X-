@@ -32,6 +32,7 @@ import {
   FREE_MAX_PDF_PAGES,
   sanitizeFilename,
 } from './server/utils/fileSecurity.js';
+import { diagnoseFile, repairFile } from './server/utils/fileDoctor.js';
 import { SAMPLE_FILES } from './server/utils/samples.js';
 import { calculateEstimatedOutputSize, formatBytes } from './server/utils/estimateSize.js';
 import { SEO_ROUTES } from './src/data/seoRoutes.js';
@@ -555,6 +556,96 @@ ${allRoutes
     }
   });
 
+  // 1d. Smart File Doctor: In-depth File Diagnosis & Health Analysis
+  app.post('/api/doctor/diagnose', (req, res, next) => {
+    upload.single('file')(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ success: false, error: err.message || 'File upload failed' });
+      }
+      next();
+    });
+  }, async (req, res) => {
+    try {
+      let fileBuffer: Buffer | null = null;
+      let filename: string = 'unknown_file';
+
+      if (req.file) {
+        fileBuffer = req.file.buffer;
+        filename = req.file.originalname;
+      } else if (req.body.jobId) {
+        const job = jobStorage.getJob(req.body.jobId);
+        if (job && job.inputPath && fs.existsSync(job.inputPath)) {
+          fileBuffer = fs.readFileSync(job.inputPath);
+          filename = job.originalName;
+        }
+      }
+
+      if (!fileBuffer) {
+        return res.status(400).json({ success: false, error: 'No file uploaded or active jobId provided for diagnosis.' });
+      }
+
+      const report = await diagnoseFile(fileBuffer, filename);
+      res.json({ success: true, report });
+    } catch (err: any) {
+      console.error('Doctor diagnosis error:', err);
+      res.status(500).json({ success: false, error: err.message || 'Failed to diagnose file' });
+    }
+  });
+
+  // 1e. Smart File Doctor: File Repair Endpoint
+  app.post('/api/doctor/repair', async (req, res) => {
+    try {
+      const { jobId } = req.body;
+      if (!jobId) {
+        return res.status(400).json({ success: false, error: 'jobId is required for file repair.' });
+      }
+
+      const job = jobStorage.getJob(jobId);
+      if (!job || !job.inputPath || !fs.existsSync(job.inputPath)) {
+        return res.status(404).json({ success: false, error: 'File session expired or not found.' });
+      }
+
+      const inputBuffer = fs.readFileSync(job.inputPath);
+      const repairResult = await repairFile(inputBuffer, job.originalName, job.inputFormat);
+
+      if (!repairResult.success || !repairResult.repairedBuffer) {
+        return res.status(400).json({
+          success: false,
+          repaired: false,
+          notes: repairResult.notes,
+        });
+      }
+
+      // Save repaired buffer to new temp file and update job
+      const newName = repairResult.newFilename || `repaired_${job.originalName}`;
+      const ext = path.extname(newName).replace('.', '') || job.inputFormat;
+      const { filePath: newPath } = generateTempFilePath(ext);
+      fs.writeFileSync(newPath, repairResult.repairedBuffer);
+
+      jobStorage.updateJob(jobId, {
+        originalName: newName,
+        inputPath: newPath,
+        inputFormat: ext,
+        fileSize: repairResult.repairedBuffer.length,
+      });
+
+      const updatedReport = await diagnoseFile(repairResult.repairedBuffer, newName);
+
+      res.json({
+        success: true,
+        repaired: true,
+        jobId,
+        newFilename: newName,
+        newSize: repairResult.repairedBuffer.length,
+        notes: repairResult.notes,
+        updatedReport,
+      });
+    } catch (err: any) {
+      console.error('Doctor repair error:', err);
+      res.status(500).json({ success: false, error: err.message || 'Failed to repair file' });
+    }
+  });
+
   // 2. Get list of available sample files
   app.get('/api/samples', (req, res) => {
     const list = Object.values(SAMPLE_FILES).map((s) => ({
@@ -703,6 +794,9 @@ ${allRoutes
         const defaultOutput = cap?.supportedOutputs?.[0] || 'pdf';
         const estimatedOutputSize = calculateEstimatedOutputSize(detection.format, defaultOutput, fileBuffer.length);
 
+        // Run Smart File Doctor diagnosis
+        const doctorReport = await diagnoseFile(fileBuffer, cleanName);
+
         res.json({
           success: true,
           jobId: job.id,
@@ -715,6 +809,18 @@ ${allRoutes
           requiresEngine: cap?.requiresEngine,
           supportedOutputs: cap?.supportedOutputs || [],
           estimatedOutputSize,
+          // Universal Problem Solver details
+          extensionMismatch: !doctorReport.file.extensionMatches,
+          declaredExtension: doctorReport.file.declaredExtension,
+          detectedExtension: doctorReport.file.detectedExtension,
+          healthStatus: doctorReport.validity.status,
+          healthScore: doctorReport.validity.healthScore,
+          canRepair: doctorReport.validity.canRepair,
+          securityStatus: doctorReport.security.status,
+          recommendedAction: doctorReport.recommendedAction,
+          supportedActions: doctorReport.supportedActions,
+          problemsFound: doctorReport.problemsFound,
+          structure: doctorReport.structure,
         });
       } catch (err: any) {
         console.error('Upload handler error:', err);
@@ -1714,6 +1820,7 @@ ${allRoutes
       progressStage: job.progressStage,
       error: job.errorMessage,
       errorCode: job.errorCode,
+      whyCantConvert: job.whyCantConvert,
       fileSize: job.fileSize,
       outputSize: job.outputSize,
       createdAt: job.createdAt,

@@ -75,6 +75,7 @@ interface DashboardHistoryProps {
   onConvertQueueItem?: (id: string) => void;
   onRetryQueueItem?: (id: string) => void;
   onUpdateQueueItemFormat?: (id: string, format: string) => void;
+  onBulkUpdateQueueFormat?: (format: string) => void;
   onRemoveQueueItem?: (id: string) => void;
   onClearQueue?: () => void;
   onCombineToPdf?: () => Promise<void> | void;
@@ -114,6 +115,7 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   onConvertQueueItem,
   onRetryQueueItem,
   onUpdateQueueItemFormat,
+  onBulkUpdateQueueFormat,
   onRemoveQueueItem,
   onClearQueue,
   onCombineToPdf,
@@ -671,6 +673,100 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
   const failedCount = queue.filter((item) => item.status === 'failed').length;
   const totalBatchItems = queue.length;
 
+  const isBatchActive = isConvertingAll || convertingCount > 0 || isBatchPaused;
+
+  // Global Cumulative Progress calculation across all batch conversions in queue
+  const cumulativeBatchProgress = useMemo(() => {
+    if (queue.length === 0) return 0;
+    const total = queue.length * 100;
+    const current = queue.reduce((acc, item) => {
+      if (item.status === 'completed' || item.status === 'failed') {
+        return acc + 100;
+      }
+      if (item.status === 'converting' || item.status === 'uploading') {
+        const p = typeof item.progress === 'number' && !isNaN(item.progress) ? item.progress : 0;
+        return acc + Math.min(100, Math.max(0, p));
+      }
+      return acc;
+    }, 0);
+    return Math.min(100, Math.max(0, Math.round((current / total) * 100)));
+  }, [queue]);
+
+  // Selected bulk format in local state
+  const [selectedBulkFormat, setSelectedBulkFormat] = useState<string>('');
+
+  // Check if all pending files in the queue currently share the exact same output format
+  const commonPendingFormat = useMemo(() => {
+    const pendingItems = queue.filter((item) => item.status === 'pending');
+    if (pendingItems.length === 0) return '';
+    const firstFormat = pendingItems[0].outputFormat?.toLowerCase();
+    const allSame = pendingItems.every((item) => item.outputFormat?.toLowerCase() === firstFormat);
+    return allSame ? firstFormat : '';
+  }, [queue]);
+
+  const activeBulkFormat = commonPendingFormat || selectedBulkFormat || '';
+
+  // Supported / available output formats for bulk formatting pending files
+  const availableBulkFormats = useMemo(() => {
+    const formatSet = new Set<string>();
+
+    // 1. First collect supported outputs from pending items
+    const pendingItems = queue.filter((item) => item.status === 'pending');
+    pendingItems.forEach((item) => {
+      const cap = capabilities.find(
+        (c) =>
+          c.extension.toLowerCase() === item.inputFormat.toLowerCase() ||
+          (item.inputFormat.toLowerCase() === 'jpeg' && c.extension.toLowerCase() === 'jpg')
+      );
+      const outputs =
+        item.uploadedFile?.supportedOutputs && item.uploadedFile.supportedOutputs.length > 0
+          ? item.uploadedFile.supportedOutputs
+          : cap?.supportedOutputs || [];
+      outputs.forEach((o) => formatSet.add(o.toLowerCase()));
+    });
+
+    // 2. Also include all supported outputs from capabilities catalog
+    capabilities.forEach((c) => {
+      c.supportedOutputs?.forEach((o) => formatSet.add(o.toLowerCase()));
+    });
+
+    // 3. Fallback popular standard formats to ensure a rich catalog is always present
+    const standardFormats = [
+      'pdf', 'png', 'jpg', 'webp', 'svg', 'gif', 'bmp', 'ico', 'tiff',
+      'txt', 'docx', 'html', 'epub',
+      'dxf', 'dwg', 'eps',
+      'obj', 'stl', 'ply',
+      'mp3', 'wav', 'aac', 'ogg', 'mp4', 'webm'
+    ];
+    standardFormats.forEach((f) => formatSet.add(f));
+
+    // Sort with primary priority formats first, then alphabetical
+    const priorityOrder = ['pdf', 'png', 'jpg', 'webp', 'svg', 'docx', 'txt', 'dxf', 'dwg', 'obj', 'stl', 'mp3', 'mp4'];
+    return Array.from(formatSet).sort((a, b) => {
+      const idxA = priorityOrder.indexOf(a);
+      const idxB = priorityOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+  }, [queue, capabilities]);
+
+  const handleBulkFormatChange = (newFormat: string) => {
+    if (!newFormat) return;
+    const normalized = newFormat.toLowerCase();
+    setSelectedBulkFormat(normalized);
+
+    if (onBulkUpdateQueueFormat) {
+      onBulkUpdateQueueFormat(normalized);
+    } else if (onUpdateQueueItemFormat) {
+      const pendingItems = queue.filter((item) => item.status === 'pending');
+      pendingItems.forEach((item) => {
+        onUpdateQueueItemFormat(item.id, normalized);
+      });
+    }
+  };
+
   // Count of total completed results across queue and unexpired history, deduplicated
   const totalCompletedDashboardResults = useMemo(() => {
     const seenJobIds = new Set<string>();
@@ -1176,6 +1272,42 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
                 )}
               </button>
             )}
+
+            {/* Bulk Format Dropdown in Dashboard Header */}
+            <div
+              id="dashboard-bulk-format-control"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 shadow-xs"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-[#2563EB] shrink-0" />
+              <label
+                htmlFor="dashboard-bulk-format-select"
+                className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] whitespace-nowrap cursor-pointer"
+              >
+                Bulk Format:
+              </label>
+              <select
+                id="dashboard-bulk-format-select"
+                data-testid="dashboard-bulk-format-select"
+                value={activeBulkFormat}
+                onChange={(e) => handleBulkFormatChange(e.target.value)}
+                disabled={pendingCount === 0}
+                className="px-2 py-1 text-xs font-bold rounded-lg bg-white dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] focus:ring-2 focus:ring-[#2563EB] focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title={
+                  pendingCount > 0
+                    ? `Change output format for all ${pendingCount} pending files simultaneously`
+                    : 'No pending files in queue to format'
+                }
+              >
+                <option value="" disabled>
+                  {pendingCount > 0 ? `Format (${pendingCount} pending)...` : 'No pending files'}
+                </option>
+                {availableBulkFormats.map((fmt) => (
+                  <option key={fmt} value={fmt}>
+                    .{fmt.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* Account & Preferences Modal Trigger */}
             {onOpenAccountModal && (
@@ -1844,6 +1976,42 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
               <span>Tab alerts: {userPrefs.notifyOnBatchComplete ? 'ON' : 'OFF'}</span>
             </button>
 
+            {/* Bulk Format Dropdown in Queue Header */}
+            <div
+              id="queue-bulk-format-control"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 text-[#0F172A] dark:text-white text-xs font-semibold border border-[#E2E8F0] dark:border-[#1E293B] transition-colors shadow-xs"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-[#2563EB] shrink-0" />
+              <label
+                htmlFor="queue-bulk-format-select"
+                className="text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] whitespace-nowrap cursor-pointer"
+              >
+                Bulk Format:
+              </label>
+              <select
+                id="queue-bulk-format-select"
+                data-testid="queue-bulk-format-select"
+                value={activeBulkFormat}
+                onChange={(e) => handleBulkFormatChange(e.target.value)}
+                disabled={pendingCount === 0}
+                className="px-2 py-1 text-xs font-bold rounded-lg bg-white dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] focus:ring-2 focus:ring-[#2563EB] focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title={
+                  pendingCount > 0
+                    ? `Change output format for all ${pendingCount} pending files simultaneously`
+                    : 'No pending files in queue to format'
+                }
+              >
+                <option value="" disabled>
+                  {pendingCount > 0 ? `Format (${pendingCount} pending)...` : 'No pending files'}
+                </option>
+                {availableBulkFormats.map((fmt) => (
+                  <option key={fmt} value={fmt}>
+                    .{fmt.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Add More Files Button */}
             {onAddFiles && (
               <button
@@ -2094,6 +2262,207 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         {/* Queue Table with Sorting Controls */}
         {queue.length > 0 ? (
           <div className="space-y-3">
+            {/* Global Cumulative Batch Conversion Progress Bar */}
+            <div
+              id="global-batch-progress-bar"
+              data-testid="global-batch-progress-bar"
+              className={`p-3.5 sm:p-4 rounded-xl border transition-all duration-200 ${
+                isBatchPaused
+                  ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60'
+                  : isBatchActive
+                  ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/60'
+                  : cumulativeBatchProgress === 100 && completedQueueCount > 0
+                  ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60'
+                  : 'bg-slate-50 dark:bg-[#0B1120] border-[#E2E8F0] dark:border-[#1E293B]'
+              }`}
+            >
+              {/* Top Row: Title, Status Badges & Cumulative Percentage */}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                <div className="flex items-center gap-2.5">
+                  {isBatchPaused ? (
+                    <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
+                      <Pause className="w-4 h-4 fill-current" />
+                    </div>
+                  ) : isBatchActive ? (
+                    <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-[#2563EB] dark:text-blue-400">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    </div>
+                  ) : cumulativeBatchProgress === 100 && completedQueueCount > 0 ? (
+                    <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                  ) : (
+                    <div className="p-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      <Layers className="w-4 h-4 text-[#2563EB]" />
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
+                        {isBatchPaused
+                          ? 'Batch Conversion Paused'
+                          : isBatchActive
+                          ? 'Batch Conversions in Progress'
+                          : cumulativeBatchProgress === 100 && completedQueueCount > 0
+                          ? 'Batch Conversions Complete'
+                          : 'Batch Queue Progress'}
+                      </span>
+                      {isBatchActive && !isBatchPaused && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-900/60 text-[#2563EB] dark:text-blue-300 animate-pulse">
+                          Running
+                        </span>
+                      )}
+                      {isBatchPaused && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
+                          Paused
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                      {isBatchPaused
+                        ? 'Worker loop paused to conserve resources. In-flight jobs finish gracefully.'
+                        : isBatchActive
+                        ? convertingCount > 1
+                          ? `Parallel conversion engine active — converting ${convertingCount} files concurrently`
+                          : `Converting queued files with active progress tracking`
+                        : cumulativeBatchProgress === 100 && completedQueueCount > 0
+                        ? `All ${completedQueueCount} file(s) successfully converted`
+                        : `${totalBatchItems} file(s) in queue — ready for batch conversion`}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Percentage Display & Quick Batch Controls */}
+                <div className="flex items-center gap-3">
+                  {/* Batch control buttons when active */}
+                  {isBatchActive && (
+                    <div className="flex items-center gap-1.5">
+                      {isBatchPaused ? (
+                        onResumeBatch && (
+                          <button
+                            type="button"
+                            onClick={onResumeBatch}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                            title="Resume batch conversion"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>Resume</span>
+                          </button>
+                        )
+                      ) : (
+                        onPauseBatch && (
+                          <button
+                            type="button"
+                            onClick={onPauseBatch}
+                            className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                            title="Pause batch conversion worker loop"
+                          >
+                            <Pause className="w-3 h-3 fill-current" />
+                            <span>Pause</span>
+                          </button>
+                        )
+                      )}
+                      {onStopBatch && (
+                        <button
+                          type="button"
+                          onClick={onStopBatch}
+                          className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950 text-slate-700 dark:text-slate-300 hover:text-rose-600 text-xs font-semibold border border-slate-300 dark:border-slate-700 transition-colors cursor-pointer"
+                          title="Stop batch conversion"
+                        >
+                          <Square className="w-2.5 h-2.5 fill-current" />
+                          <span>Stop</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Cumulative Percentage */}
+                  <span
+                    id="global-batch-progress-percentage"
+                    className={`text-base sm:text-lg font-black font-mono ${
+                      isBatchPaused
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : isBatchActive
+                        ? 'text-[#2563EB] dark:text-blue-400'
+                        : cumulativeBatchProgress === 100 && completedQueueCount > 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {cumulativeBatchProgress}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Visual Progress Bar Track */}
+              <div
+                role="progressbar"
+                aria-valuenow={cumulativeBatchProgress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Cumulative batch conversion progress"
+                className="w-full bg-slate-200 dark:bg-slate-700/80 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5 shadow-inner"
+              >
+                <div
+                  id="global-batch-progress-fill"
+                  className={`h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden ${
+                    isBatchPaused
+                      ? 'bg-amber-500'
+                      : isBatchActive
+                      ? 'bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED]'
+                      : cumulativeBatchProgress === 100 && completedQueueCount > 0
+                      ? 'bg-emerald-500 dark:bg-emerald-400'
+                      : 'bg-[#2563EB]'
+                  }`}
+                  style={{ width: `${cumulativeBatchProgress}%` }}
+                >
+                  {isBatchActive && !isBatchPaused && (
+                    <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                  )}
+                </div>
+              </div>
+
+              {/* Metrics Breakdown Sub-row */}
+              <div className="flex flex-wrap items-center justify-between gap-2 mt-2 text-[11px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <span className="flex items-center gap-1">
+                    <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{completedQueueCount}</strong> of{' '}
+                    <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{totalBatchItems}</strong> completed
+                  </span>
+                  {convertingCount > 0 && (
+                    <span className="flex items-center gap-1 text-[#2563EB] dark:text-blue-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-ping" />
+                      <span>{convertingCount} converting</span>
+                    </span>
+                  )}
+                  {pendingCount > 0 && (
+                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                      <span>{pendingCount} pending</span>
+                    </span>
+                  )}
+                  {failedCount > 0 && (
+                    <span className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                      <span>{failedCount} failed</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Batch Status Notice or Active Speed / Mode */}
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  {isBatchActive && !isBatchPaused ? (
+                    <span>Cumulative progress: {cumulativeBatchProgress}%</span>
+                  ) : isBatchPaused ? (
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">Paused by user</span>
+                  ) : cumulativeBatchProgress === 100 && completedQueueCount > 0 ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">Batch complete</span>
+                  ) : (
+                    <span>{pendingCount > 0 ? `${pendingCount} file(s) waiting` : 'Ready'}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Status & Format Filters Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">
               {/* Status Filter Badges */}

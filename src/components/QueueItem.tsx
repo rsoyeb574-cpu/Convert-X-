@@ -398,10 +398,44 @@ export const QueueItem: React.FC<QueueItemProps> = ({
           )}
 
           {item.status === 'failed' && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold text-[11px]">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Failed
-            </span>
+            <div className="space-y-1.5 py-1">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold text-[11px]">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Failed
+              </span>
+              {item.whyCantConvert ? (
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 max-w-[220px] leading-tight space-y-1">
+                  <span className="font-semibold text-rose-500 block truncate" title={item.whyCantConvert.reason}>
+                    {item.whyCantConvert.reason}
+                  </span>
+                  {item.whyCantConvert.suggestedTargetFormats && item.whyCantConvert.suggestedTargetFormats.length > 0 && onUpdateQueueItemFormat && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[9px] text-slate-400 font-semibold">Try:</span>
+                      {item.whyCantConvert.suggestedTargetFormats.slice(0, 3).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => onUpdateQueueItemFormat(item.id, fmt)}
+                          className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[9px] font-bold hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer"
+                          title={`Switch target format to .${fmt.toUpperCase()}`}
+                        >
+                          .{fmt.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {item.whyCantConvert.alternativeWorkflow && (
+                    <p className="text-[9px] text-blue-600 dark:text-blue-400 truncate" title={item.whyCantConvert.alternativeWorkflow}>
+                      💡 {item.whyCantConvert.alternativeWorkflow}
+                    </p>
+                  )}
+                </div>
+              ) : item.error ? (
+                <div className="text-[10px] text-rose-500 truncate max-w-[150px]" title={item.error}>
+                  {item.error}
+                </div>
+              ) : null}
+            </div>
           )}
         </td>
 

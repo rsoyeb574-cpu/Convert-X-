@@ -1001,6 +1001,15 @@ export default function App() {
     );
   };
 
+  // Bulk update target format for all pending items in queue
+  const handleBulkUpdateQueueFormat = (format: string) => {
+    setQueue((prev) =>
+      prev.map((item) =>
+        item.status === 'pending' ? { ...item, outputFormat: format.toLowerCase() } : item
+      )
+    );
+  };
+
   // Remove single item from queue
   const handleRemoveQueueItem = (id: string) => {
     setQueue((prev) => prev.filter((item) => item.id !== id));
@@ -2245,6 +2254,7 @@ export default function App() {
               onConvertQueueItem={handleConvertQueueItem}
               onRetryQueueItem={handleRetryQueueItem}
               onUpdateQueueItemFormat={handleUpdateQueueItemFormat}
+              onBulkUpdateQueueFormat={handleBulkUpdateQueueFormat}
               onRemoveQueueItem={handleRemoveQueueItem}
               onClearQueue={handleClearQueue}
               onCombineToPdf={handleCombineToPdf}

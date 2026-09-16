@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { UploadZone } from './UploadZone.js';
 import { PageView } from '../types.js';
-import { Image, FileText, Box, ShieldCheck, Sparkles, Layers, Cpu, ArrowRight } from 'lucide-react';
+import { Image, FileText, Box, ShieldCheck, Sparkles, Layers, Cpu, ArrowRight, Search, Wrench, CheckCircle2, Zap } from 'lucide-react';
 
 interface HeroProps {
   onFileSelected?: (file: File) => void;
@@ -24,6 +24,37 @@ export const Hero: React.FC<HeroProps> = ({
   maxFileSizeMB = 25,
   onViewPro,
 }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const problemSolverActions = [
+    { label: 'Diagnose / Repair File', icon: <Wrench className="w-3.5 h-3.5 text-amber-500" />, action: () => onNavigate('tools') },
+    { label: 'Batch Convert', icon: <Layers className="w-3.5 h-3.5 text-blue-500" />, action: () => onNavigate('converter') },
+    { label: 'Compress File', icon: <Zap className="w-3.5 h-3.5 text-purple-500" />, action: () => onNavigate('compress') },
+    { label: 'PDF to Text', icon: <FileText className="w-3.5 h-3.5 text-emerald-500" />, action: () => onNavigate('pdf-to-text') },
+    { label: 'Text to Voice', icon: <Sparkles className="w-3.5 h-3.5 text-pink-500" />, action: () => onNavigate('text-to-voice') },
+  ];
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return;
+
+    if (query.includes('compress') || query.includes('reduce') || query.includes('shrink')) {
+      onNavigate('compress');
+    } else if (query.includes('voice') || query.includes('audio') || query.includes('speech')) {
+      onNavigate('text-to-voice');
+    } else if (query.includes('pdf to text') || query.includes('ocr') || query.includes('extract text')) {
+      onNavigate('pdf-to-text');
+    } else if (query.includes('text to pdf')) {
+      onNavigate('text-to-pdf');
+    } else if (query.includes('doctor') || query.includes('repair') || query.includes('corrupt') || query.includes('diagnos')) {
+      onNavigate('tools');
+    } else {
+      // Default to tools or converter
+      onNavigate('tools');
+    }
+  };
+
   const categories = [
     { name: 'Universal Export', icon: <FileText className="w-4 h-4 text-[#7C3AED]" />, desc: 'DOCX, XLSX, TXT, HTML to PNG/JPG/PDF' },
     { name: 'Images', icon: <Image className="w-4 h-4 text-[#2563EB]" />, desc: 'PNG, JPG, WEBP, GIF, BMP, TIFF' },
@@ -64,8 +95,44 @@ export const Hero: React.FC<HeroProps> = ({
           </h1>
 
           <p className="text-sm sm:text-lg text-[#64748B] dark:text-[#94A3B8] leading-relaxed font-medium max-w-2xl mx-auto">
-            Convert images and documents directly in your browser and server without complicated software.
+            Universal File Problem Solver: Convert, repair, compress, extract, and inspect any file format with intelligent deep diagnostics.
           </p>
+        </div>
+
+        {/* Search-First Problem Solver Bar */}
+        <div className="max-w-2xl mx-auto space-y-3">
+          <form onSubmit={handleSearchSubmit} className="relative">
+            <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="What do you want to do? (e.g. Repair corrupt PDF, Compress image, PDF to Text...)"
+              className="w-full pl-12 pr-28 py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder-slate-400 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            />
+            <button
+              type="submit"
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer"
+            >
+              Solve
+            </button>
+          </form>
+
+          {/* Quick Problem Action Pills */}
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Quick:</span>
+            {problemSolverActions.map((item, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={item.action}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-600 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Upload Zone */}

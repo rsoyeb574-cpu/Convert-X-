@@ -51,6 +51,10 @@ export interface MagicByteDetection {
   mimeType: string;
   valid: boolean;
   reason?: string;
+  extensionMismatch?: boolean;
+  declaredFormat?: string;
+  magicHex?: string;
+  isExecutable?: boolean;
 }
 
 export function detectFileFormat(buffer: Buffer, filename: string): MagicByteDetection {
@@ -61,13 +65,50 @@ export function detectFileFormat(buffer: Buffer, filename: string): MagicByteDet
   const extMatch = filename.split('.').pop() || '';
   const fileExt = extMatch.toLowerCase().trim();
 
-  // 1. Strict Security Blocklist: Reject executable files & scripts
+  // 1. Strict Security Blocklist: Reject executable files & scripts by declared extension
   if (BLOCKED_EXTENSIONS.has(fileExt)) {
     return {
       format: fileExt,
       mimeType: 'application/x-executable',
       valid: false,
+      isExecutable: true,
       reason: `Direct execution or upload of executable scripts (.${fileExt}) is strictly prohibited for system security.`,
+    };
+  }
+
+  // 1b. Check for binary executable headers regardless of filename extension (disguised malware protection)
+  // Windows / DOS PE (MZ)
+  if (buffer.length >= 2 && buffer[0] === 0x4d && buffer[1] === 0x5a) {
+    return {
+      format: 'exe',
+      mimeType: 'application/x-msdownload',
+      valid: false,
+      isExecutable: true,
+      reason: 'Executable DOS/Windows binary detected (MZ header). Execution and conversion of executable binaries is strictly prohibited.',
+    };
+  }
+  // Linux ELF
+  if (buffer.length >= 4 && buffer[0] === 0x7f && buffer[1] === 0x45 && buffer[2] === 0x4c && buffer[3] === 0x46) {
+    return {
+      format: 'elf',
+      mimeType: 'application/x-executable',
+      valid: false,
+      isExecutable: true,
+      reason: 'Linux / Unix ELF binary executable detected. Execution and conversion of executable binaries is strictly prohibited.',
+    };
+  }
+  // Mach-O
+  if (
+    buffer.length >= 4 &&
+    ((buffer[0] === 0xfe && buffer[1] === 0xed && buffer[2] === 0xfa && (buffer[3] === 0xce || buffer[3] === 0xcf)) ||
+      (buffer[0] === 0xcf && buffer[1] === 0xfa && buffer[2] === 0xed && buffer[3] === 0xfe))
+  ) {
+    return {
+      format: 'macho',
+      mimeType: 'application/x-mach-binary',
+      valid: false,
+      isExecutable: true,
+      reason: 'macOS Mach-O binary executable detected. Execution and conversion of executable binaries is strictly prohibited.',
     };
   }
 

@@ -56,6 +56,18 @@ export interface UploadedFile {
   file?: File;
   rawFile?: File;
   objectUrl?: string;
+  extensionMismatch?: boolean;
+  declaredExtension?: string;
+  detectedExtension?: string;
+  healthStatus?: string;
+  healthScore?: number;
+  canRepair?: boolean;
+  securityStatus?: string;
+  recommendedAction?: DoctorAction;
+  supportedActions?: DoctorAction[];
+  problemsFound?: DoctorProblem[];
+  structure?: Record<string, any>;
+  doctorReport?: FileDoctorReport;
 }
 
 export interface ConversionResultData {
@@ -72,6 +84,12 @@ export interface ConversionResultData {
   pdfPageSize?: string;
   pngResolution?: string;
   dpi?: number;
+  whyCantConvert?: {
+    status: string;
+    reason: string;
+    alternativeWorkflow?: string;
+    nextStepGuidance?: string;
+  } | null;
 }
 
 export interface ConversionQueueItem {
@@ -86,6 +104,12 @@ export interface ConversionQueueItem {
   progress: number;
   statusText?: string;
   error?: string | null;
+  whyCantConvert?: {
+    status: string;
+    reason: string;
+    alternativeWorkflow?: string;
+    nextStepGuidance?: string;
+  } | null;
   result?: ConversionResultData | null;
   options: ConversionOptions;
   createdAt: string;
@@ -144,6 +168,8 @@ export interface CompressionResultData {
 export type PageView =
   | 'home'
   | 'converter'
+  | 'doctor'
+  | 'batch'
   | 'compress'
   | 'text-to-voice'
   | 'text-to-pdf'
@@ -431,4 +457,90 @@ export interface SeoRouteConfig {
     steps: string[];
     faq: { question: string; answer: string }[];
   };
+}
+
+export type HealthStatus =
+  | 'HEALTHY'
+  | 'PARTIALLY_READABLE'
+  | 'CORRUPTED'
+  | 'INVALID_FORMAT'
+  | 'EXTENSION_MISMATCH'
+  | 'UNSUPPORTED';
+
+export type SecurityAuditStatus = 'SAFE' | 'LOW_RISK' | 'MEDIUM_RISK' | 'DANGEROUS';
+
+export type CapabilityState = 'SUPPORTED' | 'PARTIAL' | 'COMING_SOON' | 'UNSUPPORTED';
+
+export interface DoctorProblem {
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  description: string;
+  canRepair: boolean;
+  repairAction?: string;
+  userGuidance?: string;
+}
+
+export interface DoctorAction {
+  id: string;
+  label: string;
+  type: 'convert' | 'compress' | 'preview' | 'inspect' | 'repair' | 'extract' | 'compare' | 'export' | 'batch';
+  targetFormat?: string;
+  description: string;
+  isRecommended?: boolean;
+}
+
+export interface FileDoctorReport {
+  file: {
+    name: string;
+    size: number;
+    declaredExtension: string;
+    detectedFormat: string;
+    detectedExtension: string;
+    mimeType: string;
+    extensionMatches: boolean;
+  };
+  format: {
+    name: string;
+    category: string;
+    magicBytes: string;
+    signatureName: string;
+    containerType: string;
+    description: string;
+  };
+  validity: {
+    status: HealthStatus;
+    healthScore: number;
+    summary: string;
+    canRepair: boolean;
+  };
+  security: {
+    status: SecurityAuditStatus;
+    isExecutable: boolean;
+    containsUnsafeCode: boolean;
+    details: string;
+    riskFactors: string[];
+  };
+  structure: {
+    pages?: number;
+    dimensions?: { width: number; height: number; aspectRatio?: string };
+    layers?: { count: number; names: string[] };
+    objectsCount?: number;
+    compression?: string;
+    metadata?: Record<string, any>;
+    embeddedFiles?: string[];
+    isLinearized?: boolean;
+    isEncrypted?: boolean;
+  };
+  capability: {
+    state: CapabilityState;
+    engine: string;
+    supportedOutputs: string[];
+    previewSupport: boolean;
+    safeInspectionAvailable: boolean;
+    alternativeWorkflow?: string;
+    reason?: string;
+  };
+  supportedActions: DoctorAction[];
+  recommendedAction: DoctorAction;
+  problemsFound: DoctorProblem[];
 }

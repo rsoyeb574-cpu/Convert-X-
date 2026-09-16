@@ -31,6 +31,12 @@ export interface DurableJob {
   pdfPageSize?: string;
   pngResolution?: string;
   dpi?: number;
+  whyCantConvert?: {
+    status: 'COMING_SOON' | 'OUTPUT_NOT_SUPPORTED' | 'INVALID_FILE' | 'ENGINE_UNAVAILABLE';
+    reason: string;
+    alternativeWorkflow?: string;
+    nextStepGuidance?: string;
+  } | null;
 }
 
 export interface CreateJobParams {
