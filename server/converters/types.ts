@@ -28,7 +28,7 @@ export interface ConvertParams {
   inputFormat: string;
   outputFormat: string;
   fileName: string;
-  options: ConversionOptions;
+  options?: ConversionOptions;
 }
 
 export interface ConvertResult {
