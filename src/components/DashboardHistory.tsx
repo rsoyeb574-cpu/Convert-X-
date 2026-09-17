@@ -44,6 +44,7 @@ import {
 import { ReferralWidget } from './ReferralWidget.js';
 import { AdSlot } from './AdSlot.js';
 import { QueueItem } from './QueueItem.js';
+import { BatchQueueSummaryWidget } from './BatchQueueSummaryWidget.js';
 import { getCompressionRatio } from '../utils/estimateSize.js';
 import { toggleFavoriteTool, getStoredUserPreferences, saveUserPreferences } from '../utils/userStore.js';
 import {
@@ -2262,206 +2263,20 @@ export const DashboardHistory: React.FC<DashboardHistoryProps> = ({
         {/* Queue Table with Sorting Controls */}
         {queue.length > 0 ? (
           <div className="space-y-3">
-            {/* Global Cumulative Batch Conversion Progress Bar */}
-            <div
-              id="global-batch-progress-bar"
-              data-testid="global-batch-progress-bar"
-              className={`p-3.5 sm:p-4 rounded-xl border transition-all duration-200 ${
-                isBatchPaused
-                  ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60'
-                  : isBatchActive
-                  ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/60'
-                  : cumulativeBatchProgress === 100 && completedQueueCount > 0
-                  ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60'
-                  : 'bg-slate-50 dark:bg-[#0B1120] border-[#E2E8F0] dark:border-[#1E293B]'
-              }`}
-            >
-              {/* Top Row: Title, Status Badges & Cumulative Percentage */}
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-                <div className="flex items-center gap-2.5">
-                  {isBatchPaused ? (
-                    <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
-                      <Pause className="w-4 h-4 fill-current" />
-                    </div>
-                  ) : isBatchActive ? (
-                    <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-[#2563EB] dark:text-blue-400">
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    </div>
-                  ) : cumulativeBatchProgress === 100 && completedQueueCount > 0 ? (
-                    <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
-                      <CheckCircle2 className="w-4 h-4" />
-                    </div>
-                  ) : (
-                    <div className="p-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                      <Layers className="w-4 h-4 text-[#2563EB]" />
-                    </div>
-                  )}
-
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs sm:text-sm font-extrabold text-[#0F172A] dark:text-[#F8FAFC]">
-                        {isBatchPaused
-                          ? 'Batch Conversion Paused'
-                          : isBatchActive
-                          ? 'Batch Conversions in Progress'
-                          : cumulativeBatchProgress === 100 && completedQueueCount > 0
-                          ? 'Batch Conversions Complete'
-                          : 'Batch Queue Progress'}
-                      </span>
-                      {isBatchActive && !isBatchPaused && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-900/60 text-[#2563EB] dark:text-blue-300 animate-pulse">
-                          Running
-                        </span>
-                      )}
-                      {isBatchPaused && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
-                          Paused
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
-                      {isBatchPaused
-                        ? 'Worker loop paused to conserve resources. In-flight jobs finish gracefully.'
-                        : isBatchActive
-                        ? convertingCount > 1
-                          ? `Parallel conversion engine active — converting ${convertingCount} files concurrently`
-                          : `Converting queued files with active progress tracking`
-                        : cumulativeBatchProgress === 100 && completedQueueCount > 0
-                        ? `All ${completedQueueCount} file(s) successfully converted`
-                        : `${totalBatchItems} file(s) in queue — ready for batch conversion`}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Percentage Display & Quick Batch Controls */}
-                <div className="flex items-center gap-3">
-                  {/* Batch control buttons when active */}
-                  {isBatchActive && (
-                    <div className="flex items-center gap-1.5">
-                      {isBatchPaused ? (
-                        onResumeBatch && (
-                          <button
-                            type="button"
-                            onClick={onResumeBatch}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
-                            title="Resume batch conversion"
-                          >
-                            <Play className="w-3 h-3 fill-current" />
-                            <span>Resume</span>
-                          </button>
-                        )
-                      ) : (
-                        onPauseBatch && (
-                          <button
-                            type="button"
-                            onClick={onPauseBatch}
-                            className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
-                            title="Pause batch conversion worker loop"
-                          >
-                            <Pause className="w-3 h-3 fill-current" />
-                            <span>Pause</span>
-                          </button>
-                        )
-                      )}
-                      {onStopBatch && (
-                        <button
-                          type="button"
-                          onClick={onStopBatch}
-                          className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950 text-slate-700 dark:text-slate-300 hover:text-rose-600 text-xs font-semibold border border-slate-300 dark:border-slate-700 transition-colors cursor-pointer"
-                          title="Stop batch conversion"
-                        >
-                          <Square className="w-2.5 h-2.5 fill-current" />
-                          <span>Stop</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Cumulative Percentage */}
-                  <span
-                    id="global-batch-progress-percentage"
-                    className={`text-base sm:text-lg font-black font-mono ${
-                      isBatchPaused
-                        ? 'text-amber-600 dark:text-amber-400'
-                        : isBatchActive
-                        ? 'text-[#2563EB] dark:text-blue-400'
-                        : cumulativeBatchProgress === 100 && completedQueueCount > 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {cumulativeBatchProgress}%
-                  </span>
-                </div>
-              </div>
-
-              {/* Visual Progress Bar Track */}
-              <div
-                role="progressbar"
-                aria-valuenow={cumulativeBatchProgress}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Cumulative batch conversion progress"
-                className="w-full bg-slate-200 dark:bg-slate-700/80 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5 shadow-inner"
-              >
-                <div
-                  id="global-batch-progress-fill"
-                  className={`h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden ${
-                    isBatchPaused
-                      ? 'bg-amber-500'
-                      : isBatchActive
-                      ? 'bg-gradient-to-r from-[#2563EB] via-indigo-600 to-[#7C3AED]'
-                      : cumulativeBatchProgress === 100 && completedQueueCount > 0
-                      ? 'bg-emerald-500 dark:bg-emerald-400'
-                      : 'bg-[#2563EB]'
-                  }`}
-                  style={{ width: `${cumulativeBatchProgress}%` }}
-                >
-                  {isBatchActive && !isBatchPaused && (
-                    <div className="absolute inset-0 bg-white/20 animate-pulse" />
-                  )}
-                </div>
-              </div>
-
-              {/* Metrics Breakdown Sub-row */}
-              <div className="flex flex-wrap items-center justify-between gap-2 mt-2 text-[11px] font-semibold text-[#64748B] dark:text-[#94A3B8]">
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <span className="flex items-center gap-1">
-                    <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{completedQueueCount}</strong> of{' '}
-                    <strong className="text-[#0F172A] dark:text-[#F8FAFC]">{totalBatchItems}</strong> completed
-                  </span>
-                  {convertingCount > 0 && (
-                    <span className="flex items-center gap-1 text-[#2563EB] dark:text-blue-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-ping" />
-                      <span>{convertingCount} converting</span>
-                    </span>
-                  )}
-                  {pendingCount > 0 && (
-                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                      <span>{pendingCount} pending</span>
-                    </span>
-                  )}
-                  {failedCount > 0 && (
-                    <span className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
-                      <span>{failedCount} failed</span>
-                    </span>
-                  )}
-                </div>
-
-                {/* Batch Status Notice or Active Speed / Mode */}
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                  {isBatchActive && !isBatchPaused ? (
-                    <span>Cumulative progress: {cumulativeBatchProgress}%</span>
-                  ) : isBatchPaused ? (
-                    <span className="text-amber-600 dark:text-amber-400 font-bold">Paused by user</span>
-                  ) : cumulativeBatchProgress === 100 && completedQueueCount > 0 ? (
-                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">Batch complete</span>
-                  ) : (
-                    <span>{pendingCount > 0 ? `${pendingCount} file(s) waiting` : 'Ready'}</span>
-                  )}
-                </div>
-              </div>
-            </div>
+            {/* Animated Summary Widget for Batch Queue Job Stack */}
+            <BatchQueueSummaryWidget
+              queue={queue}
+              isConvertingAll={isConvertingAll}
+              isBatchPaused={isBatchPaused}
+              onConvertAllPending={onConvertAllPending}
+              onPauseBatch={onPauseBatch}
+              onResumeBatch={onResumeBatch}
+              onStopBatch={onStopBatch}
+              onClearQueue={onClearQueue}
+              onBulkUpdateQueueFormat={handleBulkFormatChange}
+              availableBulkFormats={availableBulkFormats}
+              activeBulkFormat={activeBulkFormat}
+            />
 
             {/* Status & Format Filters Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0B1120] border border-[#E2E8F0] dark:border-[#1E293B]">

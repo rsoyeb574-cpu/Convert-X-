@@ -27,6 +27,7 @@ import { HowItWorks } from './components/HowItWorks.js';
 import { FaqSection } from './components/FaqSection.js';
 import { PrivacyTermsContact } from './components/PrivacyTermsContact.js';
 import { DashboardHistory } from './components/DashboardHistory.js';
+import { BatchQueueSummaryWidget } from './components/BatchQueueSummaryWidget.js';
 import { SeoLandingPage } from './components/SeoLandingPage.js';
 import { SeoMetaManager } from './components/SeoMetaManager.js';
 import { PricingPage } from './components/PricingPage.js';
@@ -2366,6 +2367,33 @@ export default function App() {
           onNavigate={handleNavigate}
         />
       )}
+
+      {/* Persistent Floating Batch Queue Summary Widget when navigating other pages */}
+      {queue.length > 0 &&
+        (isConvertingAll || queue.some((q) => q.status === 'converting' || q.status === 'uploading')) &&
+        currentView !== 'dashboard' && (
+          <div className="fixed bottom-5 right-5 z-40 max-w-sm w-full animate-in fade-in slide-in-from-bottom-5 duration-300">
+            <BatchQueueSummaryWidget
+              queue={queue}
+              isConvertingAll={isConvertingAll}
+              isBatchPaused={isBatchPaused}
+              onPauseBatch={handlePauseBatch}
+              onResumeBatch={handleResumeBatch}
+              onStopBatch={handleStopBatch}
+              compact={true}
+              className="shadow-2xl ring-1 ring-black/10 dark:ring-white/10"
+            />
+            <div className="mt-1.5 text-center">
+              <button
+                type="button"
+                onClick={() => handleNavigate('dashboard')}
+                className="text-[11px] font-extrabold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 bg-white/95 dark:bg-slate-900/95 px-3 py-1 rounded-full shadow-md border border-slate-200 dark:border-slate-800 transition-all cursor-pointer"
+              >
+                Open Full Batch Queue & Job Stack →
+              </button>
+            </div>
+          </div>
+        )}
     </div>
   );
 }

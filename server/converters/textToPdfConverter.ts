@@ -170,13 +170,23 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
   const hasArabic = isArabicOrUrdu(rawText);
 
   const sansRegBuf = getCachedFontBuffer('NotoSans-Regular.ttf');
-  const mainFont = sansRegBuf ? await pdfDoc.embedFont(sansRegBuf) : await pdfDoc.embedFont(StandardFonts.Helvetica);
+  let mainFont: PDFFont;
+  try {
+    mainFont = sansRegBuf ? await pdfDoc.embedFont(sansRegBuf) : await pdfDoc.embedFont(StandardFonts.Helvetica);
+  } catch (err) {
+    console.warn('[TextToPdf] Fallback to StandardFonts.Helvetica:', err);
+    mainFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  }
 
   let devaFont: PDFFont | undefined;
   if (hasDevanagari) {
     const devaRegBuf = getCachedFontBuffer('NotoSansDevanagari-Regular.ttf');
     if (devaRegBuf) {
-      devaFont = await pdfDoc.embedFont(devaRegBuf);
+      try {
+        devaFont = await pdfDoc.embedFont(devaRegBuf);
+      } catch (err) {
+        console.warn('[TextToPdf] Failed embedding Devanagari font:', err);
+      }
     }
   }
 
@@ -184,7 +194,11 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
   if (hasArabic) {
     const arabicRegBuf = getCachedFontBuffer('NotoSansArabic-Regular.ttf');
     if (arabicRegBuf) {
-      arabicFont = await pdfDoc.embedFont(arabicRegBuf);
+      try {
+        arabicFont = await pdfDoc.embedFont(arabicRegBuf);
+      } catch (err) {
+        console.warn('[TextToPdf] Failed embedding Arabic font:', err);
+      }
     }
   }
 
@@ -192,7 +206,13 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
   if (userFontFam === 'serif' || userFontFam === 'times') {
     const serifRegBuf = getCachedFontBuffer('NotoSerif-Regular.ttf');
     if (serifRegBuf) {
-      serifFont = await pdfDoc.embedFont(serifRegBuf);
+      try {
+        serifFont = await pdfDoc.embedFont(serifRegBuf);
+      } catch {
+        serifFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+      }
+    } else {
+      serifFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
     }
   }
 
@@ -200,7 +220,13 @@ export async function generateTextToPdf(options: TextToPdfOptions): Promise<{
   if (userFontFam === 'mono' || userFontFam === 'courier') {
     const monoRegBuf = getCachedFontBuffer('NotoSansMono-Regular.ttf');
     if (monoRegBuf) {
-      monoFont = await pdfDoc.embedFont(monoRegBuf);
+      try {
+        monoFont = await pdfDoc.embedFont(monoRegBuf);
+      } catch {
+        monoFont = await pdfDoc.embedFont(StandardFonts.Courier);
+      }
+    } else {
+      monoFont = await pdfDoc.embedFont(StandardFonts.Courier);
     }
   }
 

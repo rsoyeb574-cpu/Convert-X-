@@ -10,6 +10,8 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { ConverterEngine, ConvertParams, ConvertResult, ValidationResult } from './types.js';
+import { extractTextFromPdfBuffer } from './pdfToTextExtractor.js';
+import { generateDocxFromPages } from './docxGenerator.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -19,14 +21,14 @@ export class PdfConverter implements ConverterEngine {
   description = 'Renders vector and text PDF pages to high-resolution PNG/JPG and embeds raster images into formatted PDF documents.';
 
   supportedInputFormats = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'svg'];
-  supportedOutputFormats = ['pdf', 'png', 'jpg', 'webp'];
+  supportedOutputFormats = ['pdf', 'png', 'jpg', 'webp', 'txt', 'docx'];
 
   supports(inputFormat: string, outputFormat: string): boolean {
     const inFmt = inputFormat.toLowerCase() === 'jpeg' ? 'jpg' : inputFormat.toLowerCase();
     const outFmt = outputFormat.toLowerCase() === 'jpeg' ? 'jpg' : outputFormat.toLowerCase();
 
     if (inFmt === 'pdf') {
-      return ['png', 'jpg', 'webp', 'pdf'].includes(outFmt);
+      return ['png', 'jpg', 'webp', 'pdf', 'txt', 'docx'].includes(outFmt);
     }
     if (['png', 'jpg', 'webp', 'svg'].includes(inFmt)) {
       return outFmt === 'pdf';
@@ -83,6 +85,16 @@ export class PdfConverter implements ConverterEngine {
     // 3. PDF -> PDF (Re-paginate, compress, orientation change)
     if (inFmt === 'pdf' && outFmt === 'pdf') {
       return this.reformatPdf(inputBuffer, options);
+    }
+
+    // 4. PDF -> TXT (High-fidelity text extraction)
+    if (inFmt === 'pdf' && outFmt === 'txt') {
+      return this.convertPdfToTxt(inputBuffer, options);
+    }
+
+    // 5. PDF -> DOCX (Editable Word document)
+    if (inFmt === 'pdf' && outFmt === 'docx') {
+      return this.convertPdfToDocx(inputBuffer, options);
     }
 
     throw new Error(`Conversion from .${inputFormat} to .${outputFormat} is not supported by PDF Engine.`);
@@ -481,6 +493,70 @@ export class PdfConverter implements ConverterEngine {
       mimeType: 'application/pdf',
       outputExtension: 'pdf',
       pageCount: pageIndices.length,
+    };
+  }
+
+  private async convertPdfToTxt(
+    buffer: Buffer,
+    options: any = {}
+  ): Promise<ConvertResult> {
+    const extraction = await extractTextFromPdfBuffer({
+      pdfBuffer: buffer,
+      fileName: options.filename || 'document.pdf',
+      jobId: options.jobId || crypto.randomUUID(),
+    });
+
+    const pages = extraction.pages || [];
+    const textContent = pages
+      .map((p) => {
+        if (pages.length > 1) {
+          return `--- Page ${p.pageNumber} ---\n\n${p.text || ''}`;
+        }
+        return p.text || '';
+      })
+      .join('\n\n\n');
+
+    const outBuffer = Buffer.from(textContent, 'utf8');
+    return {
+      buffer: outBuffer,
+      outputExtension: 'txt',
+      mimeType: 'text/plain; charset=utf-8',
+      pageCount: extraction.totalPages,
+      pdfPageSize: extraction.detectedPageSize,
+    };
+  }
+
+  private async convertPdfToDocx(
+    buffer: Buffer,
+    options: any = {}
+  ): Promise<ConvertResult> {
+    const extraction = await extractTextFromPdfBuffer({
+      pdfBuffer: buffer,
+      fileName: options.filename || 'document.pdf',
+      jobId: options.jobId || crypto.randomUUID(),
+    });
+
+    const docxBuffer = await generateDocxFromPages(
+      extraction.pages.map((p) => ({
+        pageNumber: p.pageNumber,
+        text: p.text || '',
+        html: p.html || '',
+        width: p.width,
+        height: p.height,
+      })),
+      {
+        title: options.title || 'Converted Document',
+        pageSize: options.pageSize || 'a4',
+        orientation: options.orientation || 'portrait',
+        margin: options.margin || 'normal',
+      }
+    );
+
+    return {
+      buffer: docxBuffer,
+      outputExtension: 'docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      pageCount: extraction.totalPages,
     };
   }
 }

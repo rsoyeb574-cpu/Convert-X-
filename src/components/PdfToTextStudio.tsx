@@ -645,40 +645,64 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
 
     try {
       const baseFilename = extraction?.fileName ? extraction.fileName.replace(/\.pdf$/i, '') : 'document';
+      let blob: Blob;
+      let downloadFilename = `${baseFilename}_${settings.mode === 'preserve_layout' ? 'preserved' : 'edited'}.${format}`;
 
-      const response = await fetch('/api/pdf-to-text/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pages: pages.map((p) => ({
-            pageNumber: p.pageNumber,
-            text: p.text,
-            html: p.html,
-            width: p.width,
-            height: p.height,
-          })),
-          format,
-          mode: settings.mode,
-          jobId: extraction?.jobId,
-          filename: baseFilename,
-          options: settings,
-        }),
-      });
+      try {
+        const response = await fetch('/api/pdf-to-text/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pages: pages.map((p) => ({
+              pageNumber: p.pageNumber,
+              text: p.text,
+              html: p.html,
+              width: p.width,
+              height: p.height,
+            })),
+            format,
+            mode: settings.mode,
+            jobId: extraction?.jobId,
+            filename: baseFilename,
+            options: settings,
+          }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to generate document.');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Server document generation failed.');
+        }
+
+        blob = await response.blob();
+      } catch (networkErr: any) {
+        // Resilient Fallback for TXT: produce file directly in-browser so plain text download never fails
+        if (format === 'txt') {
+          const textContent = pages
+            .map((p) => (pages.length > 1 ? `--- Page ${p.pageNumber} ---\n\n${p.text || ''}` : p.text || ''))
+            .join('\n\n\n');
+          blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+          downloadFilename = `${baseFilename}.txt`;
+        } else {
+          throw networkErr;
+        }
       }
 
-      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = url;
-      a.download = `${baseFilename}_${settings.mode === 'preserve_layout' ? 'preserved' : 'edited'}.${format}`;
+      a.download = downloadFilename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+
+      setTimeout(() => {
+        try {
+          window.URL.revokeObjectURL(url);
+          if (a.parentNode) {
+            document.body.removeChild(a);
+          }
+        } catch {}
+      }, 1500);
 
       const formatLabel = format === 'docx' ? 'Microsoft Word (.docx)' : format.toUpperCase();
       showToast(
@@ -805,14 +829,19 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                 <button
                   onClick={() => handleSaveDocument('txt')}
                   disabled={isSaving}
-                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition hidden sm:flex items-center gap-1.5 disabled:opacity-50 ${
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-50 ${
                     darkMode
                       ? 'border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200'
                       : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm'
                   }`}
                   title="Download plain UTF-8 text"
                 >
-                  TXT
+                  {isSaving && saveFormat === 'txt' ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5" />
+                  )}
+                  <span>TXT</span>
                 </button>
 
                 <button
