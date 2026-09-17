@@ -21,6 +21,10 @@ import {
   FileJson,
   Copy,
   Check,
+  Settings2,
+  Gauge,
+  SlidersHorizontal,
+  Info,
 } from 'lucide-react';
 import { ConversionQueueItem } from '../types.js';
 
@@ -60,6 +64,7 @@ export const BatchQueueSummaryWidget: React.FC<BatchQueueSummaryWidgetProps> = (
   const [showExportMenu, setShowExportMenu] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [exportToast, setExportToast] = useState<string | null>(null);
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
 
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const formatSelectorRef = useRef<HTMLDivElement>(null);
@@ -289,6 +294,28 @@ export const BatchQueueSummaryWidget: React.FC<BatchQueueSummaryWidgetProps> = (
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  };
+
+  // Extract and format target conversion format, DPI, and quality settings for any queue item
+  const getItemSettings = (item: ConversionQueueItem) => {
+    const opts = item.options || {};
+    const targetFormat = (item.outputFormat || 'auto').toUpperCase();
+    const dpi = opts.dpi ?? item.result?.dpi ?? 300;
+    const quality = opts.quality ?? 90;
+    const pageSize = opts.pageSize ? opts.pageSize.toUpperCase() : 'Auto';
+    const orientation = opts.orientation
+      ? opts.orientation.charAt(0).toUpperCase() + opts.orientation.slice(1)
+      : 'Portrait';
+
+    return {
+      targetFormat,
+      dpi,
+      quality,
+      pageSize,
+      orientation,
+      hasCustomDpi: opts.dpi !== undefined,
+      hasCustomQuality: opts.quality !== undefined,
+    };
   };
 
   // Structured JSON export payload generator
@@ -984,62 +1011,219 @@ export const BatchQueueSummaryWidget: React.FC<BatchQueueSummaryWidgetProps> = (
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 no-scrollbar"
+                  className="flex items-center gap-2 overflow-x-auto pt-2 pb-2 px-0.5 no-scrollbar"
                 >
                   {stackItems.map((item, index) => {
                     const isItemConverting =
                       item.status === 'converting' || item.status === 'uploading';
                     const isItemCompleted = item.status === 'completed';
                     const isItemFailed = item.status === 'failed';
+                    const settings = getItemSettings(item);
+                    const isHovered = hoveredItemId === item.id;
 
                     return (
-                      <motion.div
+                      <div
                         key={item.id}
-                        layout
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.9, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className={`p-2 rounded-xl border text-xs min-w-[170px] max-w-[200px] shrink-0 transition-all ${
-                          isItemConverting
-                            ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-300 dark:border-blue-700 shadow-xs'
-                            : isItemCompleted
-                            ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50'
-                            : isItemFailed
-                            ? 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/50'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-                        }`}
+                        className="relative shrink-0"
+                        onMouseEnter={() => setHoveredItemId(item.id)}
+                        onMouseLeave={() => setHoveredItemId((prev) => (prev === item.id ? null : prev))}
+                        tabIndex={0}
+                        onFocus={() => setHoveredItemId(item.id)}
+                        onBlur={() => setHoveredItemId((prev) => (prev === item.id ? null : prev))}
+                        role="region"
+                        aria-label={`Settings for ${item.fileName}`}
                       >
-                        <div className="flex items-center justify-between gap-1 mb-1">
-                          <span className="text-[10px] font-mono text-slate-400">
-                            #{index + 1}
-                          </span>
-                          {isItemConverting ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                              <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                              {item.progress || 0}%
+                        <motion.div
+                          layout
+                          initial={{ scale: 0.9, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          exit={{ scale: 0.9, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className={`p-2 rounded-xl border text-xs min-w-[170px] max-w-[205px] transition-all cursor-pointer select-none ${
+                            isHovered
+                              ? 'ring-2 ring-blue-500/60 shadow-md scale-[1.02]'
+                              : ''
+                          } ${
+                            isItemConverting
+                              ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-300 dark:border-blue-700 shadow-xs'
+                              : isItemCompleted
+                              ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50'
+                              : isItemFailed
+                              ? 'bg-rose-50/60 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/50'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className="text-[10px] font-mono text-slate-400">
+                              #{index + 1}
                             </span>
-                          ) : isItemCompleted ? (
-                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                          ) : isItemFailed ? (
-                            <AlertTriangle className="w-3 h-3 text-rose-500" />
-                          ) : (
-                            <span className="text-[10px] text-slate-400 font-semibold">Queued</span>
+                            <div className="flex items-center gap-1.5">
+                              {isItemConverting ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                                  <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                  {item.progress || 0}%
+                                </span>
+                              ) : isItemCompleted ? (
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                              ) : isItemFailed ? (
+                                <AlertTriangle className="w-3 h-3 text-rose-500" />
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-semibold">Queued</span>
+                              )}
+                              {/* Quick inspect info icon button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setHoveredItemId((prev) => (prev === item.id ? null : item.id));
+                                }}
+                                className="p-0.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500 transition-colors cursor-pointer"
+                                title="View format, DPI, and quality specifications"
+                                aria-label={`View conversion specifications for ${item.fileName}`}
+                              >
+                                <Info className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="font-bold text-[11px] text-slate-900 dark:text-white truncate" title={item.fileName}>
+                            {item.fileName}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-1">
+                            <div className="flex items-center gap-1">
+                              <span className="uppercase font-bold">.{item.inputFormat}</span>
+                              <ArrowRight className="w-2.5 h-2.5" />
+                              <span className="uppercase font-bold text-blue-600 dark:text-blue-400">
+                                .{item.outputFormat}
+                              </span>
+                            </div>
+
+                            {/* Micro Badges: Quick glimpse of DPI and Quality */}
+                            <div className="flex items-center gap-1 font-sans text-[9px]">
+                              <span
+                                className="px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium"
+                                title={`DPI: ${settings.dpi}`}
+                              >
+                                {settings.dpi}DPI
+                              </span>
+                              <span
+                                className="px-1 py-0.2 rounded bg-blue-100/70 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-medium"
+                                title={`Quality: ${settings.quality}%`}
+                              >
+                                {settings.quality}%
+                              </span>
+                            </div>
+                          </div>
+                        </motion.div>
+
+                        {/* Interactive Tool-tip / Hover Card */}
+                        <AnimatePresence>
+                          {isHovered && (
+                            <motion.div
+                              id={`queue-card-tooltip-${item.id}`}
+                              data-testid={`queue-card-tooltip-${item.id}`}
+                              initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 4, scale: 0.96 }}
+                              transition={{ duration: 0.15, ease: 'easeOut' }}
+                              className="absolute bottom-full left-0 mb-2 z-50 w-64 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/10 dark:shadow-black/40 pointer-events-none"
+                            >
+                              {/* Header: File Name & Status */}
+                              <div className="flex items-start justify-between gap-2 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                    {item.fileName}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                    Size: {formatBytes(item.fileSize)}
+                                  </div>
+                                </div>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase shrink-0 ${
+                                    isItemCompleted
+                                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                                      : isItemConverting
+                                      ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 animate-pulse'
+                                      : isItemFailed
+                                      ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                  }`}
+                                >
+                                  {item.status}
+                                </span>
+                              </div>
+
+                              {/* Target Conversion Format, DPI, and Quality Settings Grid */}
+                              <div className="space-y-2">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                  <Settings2 className="w-3 h-3 text-blue-500" />
+                                  <span>Conversion Specifications</span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                  {/* 1. Target Format */}
+                                  <div className="p-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                                    <span className="text-[9px] uppercase font-semibold text-slate-400 block">
+                                      Target Format
+                                    </span>
+                                    <div className="font-extrabold font-mono text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1 mt-0.5">
+                                      <span>.{settings.targetFormat}</span>
+                                      <span className="text-[9px] font-normal text-slate-400">
+                                        (from .{item.inputFormat.toUpperCase()})
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* 2. Target DPI */}
+                                  <div className="p-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                                    <span className="text-[9px] uppercase font-semibold text-slate-400 flex items-center justify-between">
+                                      <span>DPI Setting</span>
+                                      <Gauge className="w-2.5 h-2.5 text-amber-500" />
+                                    </span>
+                                    <div className="font-extrabold font-mono text-slate-900 dark:text-white text-xs mt-0.5 flex items-center gap-1">
+                                      <span>{settings.dpi} DPI</span>
+                                      <span className="text-[9px] font-semibold text-slate-400">
+                                        {settings.dpi >= 300 ? 'High' : settings.dpi >= 150 ? 'Medium' : 'Screen'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* 3. Target Quality */}
+                                  <div className="p-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                                    <span className="text-[9px] uppercase font-semibold text-slate-400 flex items-center justify-between">
+                                      <span>Quality</span>
+                                      <SlidersHorizontal className="w-2.5 h-2.5 text-indigo-500" />
+                                    </span>
+                                    <div className="font-extrabold font-mono text-slate-900 dark:text-white text-xs mt-0.5 flex items-center gap-1.5">
+                                      <span>{settings.quality}%</span>
+                                      <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full bg-indigo-500 rounded-full"
+                                          style={{ width: `${settings.quality}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* 4. Layout / Page Size */}
+                                  <div className="p-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                                    <span className="text-[9px] uppercase font-semibold text-slate-400 block">
+                                      Page Layout
+                                    </span>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200 text-xs mt-0.5">
+                                      {settings.pageSize} · {settings.orientation}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Bottom Little Triangle Pointer */}
+                              <div className="absolute top-full left-6 -mt-1 w-2.5 h-2.5 bg-white dark:bg-slate-900 border-b border-r border-slate-200 dark:border-slate-700 transform rotate-45" />
+                            </motion.div>
                           )}
-                        </div>
-
-                        <div className="font-bold text-[11px] text-slate-900 dark:text-white truncate" title={item.fileName}>
-                          {item.fileName}
-                        </div>
-
-                        <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-1">
-                          <span className="uppercase font-bold">.{item.inputFormat}</span>
-                          <ArrowRight className="w-2.5 h-2.5" />
-                          <span className="uppercase font-bold text-blue-600 dark:text-blue-400">
-                            .{item.outputFormat}
-                          </span>
-                        </div>
-                      </motion.div>
+                        </AnimatePresence>
+                      </div>
                     );
                   })}
 
