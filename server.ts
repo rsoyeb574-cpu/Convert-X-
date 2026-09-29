@@ -1496,6 +1496,7 @@ ${allRoutes
             contentType: p.contentType,
             hasImages: p.hasImages,
             ocrConfidence: p.ocrConfidence,
+            textBlocks: p.textBlocks || [],
           })),
         });
       } catch (err: any) {
@@ -1583,7 +1584,13 @@ ${allRoutes
 
       // Option 3: PDF format
       let originalPdfBuffer: Buffer | undefined;
-      if (mode === 'preserve_layout' && jobId) {
+      const visualEdits = req.body.visualEdits || options.visualEdits;
+      const isPreserveOrVisual =
+        mode === 'preserve_layout' ||
+        mode === 'visual_edit' ||
+        (visualEdits && Object.keys(visualEdits).length > 0);
+
+      if (isPreserveOrVisual && jobId) {
         const existingJob = jobStorage.getJob(jobId);
         if (existingJob && existingJob.inputPath && fs.existsSync(existingJob.inputPath)) {
           originalPdfBuffer = fs.readFileSync(existingJob.inputPath);
@@ -1606,6 +1613,7 @@ ${allRoutes
         })),
         mode,
         originalPdfBuffer,
+        visualEdits,
         pageSize: options.pageSize || 'a4',
         orientation: options.orientation || 'portrait',
         margin: options.margin || 'normal',

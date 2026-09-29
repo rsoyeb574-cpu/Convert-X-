@@ -10,6 +10,17 @@ import { ocrManager } from '../ocr/ocrProvider.js';
 
 const execFileAsync = promisify(execFile);
 
+export interface PdfVisualTextBlock {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  fontFamily?: string;
+}
+
 export interface ExtractedPageData {
   pageNumber: number;
   text: string;
@@ -29,6 +40,7 @@ export interface ExtractedPageData {
   contentType: 'text' | 'scanned' | 'mixed';
   hasImages: boolean;
   ocrConfidence?: number | null;
+  textBlocks?: PdfVisualTextBlock[];
 }
 
 export interface ExtractionResult {
@@ -176,6 +188,94 @@ function reconstructPageText(items: RawTextItem[]): string {
   }
 
   return formattedLines.join('\n');
+}
+
+/**
+ * Extracts structured visual text blocks with screen coordinates (top-left origin).
+ * Merges adjacent text items on the same line into word/phrase blocks.
+ */
+function extractVisualTextBlocks(items: RawTextItem[], pageHeight: number): PdfVisualTextBlock[] {
+  if (!items || items.length === 0) return [];
+  const valid = items.filter((i) => i.str && i.str.trim().length > 0);
+  if (valid.length === 0) return [];
+
+  // Group by vertical Y (line tolerance)
+  const lineTolerance = 4;
+  const groups: { y: number; items: RawTextItem[] }[] = [];
+  for (const it of valid) {
+    const existing = groups.find((g) => Math.abs(g.y - it.y) <= Math.max(lineTolerance, it.fontSize * 0.35));
+    if (existing) {
+      existing.items.push(it);
+    } else {
+      groups.push({ y: it.y, items: [it] });
+    }
+  }
+
+  // Sort groups top to bottom (in PDF coordinates, higher Y is top)
+  groups.sort((a, b) => b.y - a.y);
+
+  const blocks: PdfVisualTextBlock[] = [];
+  let blockIndex = 1;
+
+  for (const group of groups) {
+    // Sort items left to right
+    group.items.sort((a, b) => a.x - b.x);
+
+    let currentChunk: RawTextItem[] = [];
+    for (let i = 0; i < group.items.length; i++) {
+      const it = group.items[i];
+      if (currentChunk.length === 0) {
+        currentChunk.push(it);
+      } else {
+        const prev = currentChunk[currentChunk.length - 1];
+        const gap = it.x - (prev.x + prev.width);
+        // Group words if they are close on the line
+        if (gap < Math.max(18, it.fontSize * 1.5)) {
+          currentChunk.push(it);
+        } else {
+          // Commit current chunk
+          const minX = Math.min(...currentChunk.map((c) => c.x));
+          const maxX = Math.max(...currentChunk.map((c) => c.x + c.width));
+          const maxFontSize = Math.max(...currentChunk.map((c) => c.fontSize));
+          const avgY = currentChunk[0].y;
+          const textStr = currentChunk.map((c) => c.str).join(' ').replace(/\s+/g, ' ').trim();
+          if (textStr) {
+            blocks.push({
+              id: `tb_${blockIndex++}`,
+              text: textStr,
+              x: Math.round(minX),
+              y: Math.round(Math.max(0, pageHeight - avgY - maxFontSize)),
+              width: Math.round(maxX - minX),
+              height: Math.round(maxFontSize * 1.25),
+              fontSize: Math.round(maxFontSize),
+            });
+          }
+          currentChunk = [it];
+        }
+      }
+    }
+
+    if (currentChunk.length > 0) {
+      const minX = Math.min(...currentChunk.map((c) => c.x));
+      const maxX = Math.max(...currentChunk.map((c) => c.x + c.width));
+      const maxFontSize = Math.max(...currentChunk.map((c) => c.fontSize));
+      const avgY = currentChunk[0].y;
+      const textStr = currentChunk.map((c) => c.str).join(' ').replace(/\s+/g, ' ').trim();
+      if (textStr) {
+        blocks.push({
+          id: `tb_${blockIndex++}`,
+          text: textStr,
+          x: Math.round(minX),
+          y: Math.round(Math.max(0, pageHeight - avgY - maxFontSize)),
+          width: Math.round(maxX - minX),
+          height: Math.round(maxFontSize * 1.25),
+          fontSize: Math.round(maxFontSize),
+        });
+      }
+    }
+  }
+
+  return blocks;
 }
 
 /**
@@ -367,6 +467,7 @@ export async function extractTextFromPdfBuffer(params: {
 
     // Extract text items & detect embedded images from PDF.js
     let extractedText = '';
+    let visualTextBlocks: PdfVisualTextBlock[] = [];
     let hasImages = false;
 
     try {
@@ -390,6 +491,7 @@ export async function extractTextFromPdfBuffer(params: {
       }
 
       extractedText = reconstructPageText(rawItems);
+      visualTextBlocks = extractVisualTextBlocks(rawItems, height);
 
       // Check operator list for image drawing commands
       const ops = await page.getOperatorList();
@@ -505,6 +607,7 @@ export async function extractTextFromPdfBuffer(params: {
       contentType,
       hasImages,
       ocrConfidence: ocrApplied ? 96 : null,
+      textBlocks: visualTextBlocks,
     });
   }
 

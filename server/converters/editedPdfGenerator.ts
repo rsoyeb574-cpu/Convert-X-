@@ -12,10 +12,33 @@ export interface EditedPageInput {
   height?: number;
 }
 
+export interface PdfVisualOverlayObject {
+  id: string;
+  pageNumber: number;
+  type: 'text' | 'cover' | 'correction';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text?: string;
+  originalText?: string;
+  fontSize?: number;
+  fontFamily?: 'sans' | 'serif' | 'mono';
+  fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  textAlign?: 'left' | 'center' | 'right';
+  color?: string;
+  backgroundColor?: string;
+  opacity?: number;
+  rotation?: number;
+  isAutoDetected?: boolean;
+}
+
 export interface SaveEditedPdfOptions {
   pages: EditedPageInput[];
-  mode?: 'extract_and_edit' | 'preserve_layout';
+  mode?: 'extract_and_edit' | 'preserve_layout' | 'visual_edit';
   originalPdfBuffer?: Buffer;
+  visualEdits?: Record<number, PdfVisualOverlayObject[]>;
   pageSize?: 'a4' | 'a3' | 'letter' | 'original';
   orientation?: 'portrait' | 'landscape' | 'original';
   margin?: 'small' | 'normal' | 'large' | number;
@@ -106,51 +129,144 @@ interface EmbeddedFontSet {
 export async function generateEditedPdf(options: SaveEditedPdfOptions): Promise<GeneratedPdfResult> {
   const mode = options.mode || 'extract_and_edit';
 
-  // --- PRESERVE LAYOUT MODE ---
-  if (mode === 'preserve_layout' && options.originalPdfBuffer && options.originalPdfBuffer.length > 0) {
+  // --- PRESERVE LAYOUT & VISUAL EDIT MODE ---
+  const hasVisualEdits = options.visualEdits && Object.values(options.visualEdits).some((arr) => arr && arr.length > 0);
+  if ((mode === 'preserve_layout' || mode === 'visual_edit' || hasVisualEdits) && options.originalPdfBuffer && options.originalPdfBuffer.length > 0) {
     try {
       const origDoc = await PDFDocument.load(options.originalPdfBuffer, { ignoreEncryption: true });
       origDoc.registerFontkit(fontkit);
 
       const sansRegBuf = getCachedFontBuffer('NotoSans-Regular.ttf');
-      let font: PDFFont;
+      const devaRegBuf = getCachedFontBuffer('NotoSansDevanagari-Regular.ttf');
+      const arabicRegBuf = getCachedFontBuffer('NotoSansArabic-Regular.ttf');
+      const serifRegBuf = getCachedFontBuffer('NotoSerif-Regular.ttf');
+      const monoRegBuf = getCachedFontBuffer('NotoSansMono-Regular.ttf');
+
+      let regFont: PDFFont;
       try {
-        font = sansRegBuf ? await origDoc.embedFont(sansRegBuf) : await origDoc.embedFont(StandardFonts.Helvetica);
+        regFont = sansRegBuf ? await origDoc.embedFont(sansRegBuf) : await origDoc.embedFont(StandardFonts.Helvetica);
       } catch {
-        font = await origDoc.embedFont(StandardFonts.Helvetica);
+        regFont = await origDoc.embedFont(StandardFonts.Helvetica);
       }
 
+      let boldFont: PDFFont;
+      try {
+        boldFont = await origDoc.embedFont(StandardFonts.HelveticaBold);
+      } catch {
+        boldFont = regFont;
+      }
+
+      let devaFont: PDFFont | undefined;
+      if (devaRegBuf) {
+        try {
+          devaFont = await origDoc.embedFont(devaRegBuf);
+        } catch {
+          // ignore
+        }
+      }
+
+      let arabicFont: PDFFont | undefined;
+      if (arabicRegBuf) {
+        try {
+          arabicFont = await origDoc.embedFont(arabicRegBuf);
+        } catch {
+          // ignore
+        }
+      }
+
+      let serifFont: PDFFont | undefined;
+      if (serifRegBuf) {
+        try {
+          serifFont = await origDoc.embedFont(serifRegBuf);
+        } catch {
+          serifFont = await origDoc.embedFont(StandardFonts.TimesRoman);
+        }
+      }
+
+      let monoFont: PDFFont | undefined;
+      if (monoRegBuf) {
+        try {
+          monoFont = await origDoc.embedFont(monoRegBuf);
+        } catch {
+          monoFont = await origDoc.embedFont(StandardFonts.Courier);
+        }
+      }
+
+      const fontSet: EmbeddedFontSet = {
+        regular: regFont,
+        bold: boldFont,
+        devaRegular: devaFont,
+        arabicRegular: arabicFont,
+        serifRegular: serifFont,
+        monoRegular: monoFont,
+      };
+
+      const selectFontForText = (str: string, userFam?: string, weight?: string): PDFFont => {
+        if (isDevanagari(str) && fontSet.devaRegular) return fontSet.devaRegular;
+        if (isArabicOrUrdu(str) && fontSet.arabicRegular) return fontSet.arabicRegular;
+        if (userFam === 'serif' && fontSet.serifRegular) return fontSet.serifRegular;
+        if (userFam === 'mono' && fontSet.monoRegular) return fontSet.monoRegular;
+        if (weight === 'bold' && fontSet.bold) return fontSet.bold;
+        return fontSet.regular;
+      };
+
       const totalOrigPages = origDoc.getPageCount();
+      const visualEdits = options.visualEdits || {};
 
-      // For each edited page, if text was altered, apply overlay on that page
-      for (const editedPage of options.pages) {
-        const pageIdx = editedPage.pageNumber - 1;
-        if (pageIdx >= 0 && pageIdx < totalOrigPages) {
-          const page = origDoc.getPage(pageIdx);
-          const { width, height } = page.getSize();
+      for (let pageIdx = 0; pageIdx < totalOrigPages; pageIdx++) {
+        const pageNum = pageIdx + 1;
+        const page = origDoc.getPage(pageIdx);
+        const { height } = page.getSize();
+        const pageEdits = visualEdits[pageNum] || [];
 
-          // Overlay edited badge and summary block in bottom margin or dedicated text box
-          // This preserves 100% of underlying background graphics, logos, vector geometry
-          const textPreview = editedPage.text.trim();
-          if (textPreview) {
-            // Draw subtle bottom status indicator indicating edited version
+        // 1. Draw Cover Rectangles (Whiteout / Background patches) first
+        for (const obj of pageEdits) {
+          if (obj.type === 'cover' || obj.type === 'correction') {
+            const pdfY = height - obj.y - obj.height;
+            const bg = parseHexColor(obj.backgroundColor || '#ffffff');
+            const opacity = typeof obj.opacity === 'number' ? Math.max(0, Math.min(1, obj.opacity)) : 1.0;
             page.drawRectangle({
-              x: 20,
-              y: 10,
-              width: width - 40,
-              height: 18,
-              color: rgb(0.98, 0.98, 1.0),
-              opacity: 0.9,
-              borderColor: rgb(0.85, 0.88, 0.95),
-              borderWidth: 0.5,
+              x: Math.max(0, obj.x),
+              y: Math.max(0, pdfY),
+              width: Math.max(1, obj.width),
+              height: Math.max(1, obj.height),
+              color: rgb(bg.r, bg.g, bg.b),
+              opacity,
             });
-            page.drawText('Convert-X Preserved Layout • Text Edited', {
-              x: 28,
-              y: 15,
-              size: 8,
-              font,
-              color: rgb(0.2, 0.3, 0.5),
-            });
+          }
+        }
+
+        // 2. Draw Text (New text and replacement text)
+        for (const obj of pageEdits) {
+          if ((obj.type === 'text' || obj.type === 'correction') && obj.text && obj.text.trim()) {
+            const textToDraw = obj.text;
+            const font = selectFontForText(textToDraw, obj.fontFamily, obj.fontWeight);
+            const fontSize = Math.max(6, Math.min(96, Number(obj.fontSize) || 12));
+            const textColor = parseHexColor(obj.color || '#000000');
+            // Baseline is ~0.82 of font height from the top of bounding box
+            const pdfY = height - obj.y - (fontSize * 0.82);
+
+            try {
+              page.drawText(textToDraw, {
+                x: Math.max(0, obj.x),
+                y: Math.max(1, pdfY),
+                size: fontSize,
+                font,
+                color: rgb(textColor.r, textColor.g, textColor.b),
+              });
+            } catch (drawErr) {
+              try {
+                page.drawText(textToDraw, {
+                  x: Math.max(0, obj.x),
+                  y: Math.max(1, pdfY),
+                  size: fontSize,
+                  font: fontSet.regular,
+                  color: rgb(textColor.r, textColor.g, textColor.b),
+                });
+              } catch (fallbackErr) {
+                console.warn('[VisualEdit] Text draw warning:', fallbackErr);
+              }
+            }
           }
         }
       }
@@ -172,7 +288,7 @@ export async function generateEditedPdf(options: SaveEditedPdfOptions): Promise<
         validationPassed: true,
       };
     } catch (err) {
-      console.warn('[PreserveLayout] Fallback to clean extract & edit mode:', err);
+      console.warn('[PreserveLayout / VisualEdit] Fallback to clean extract & edit mode:', err);
       // Fall through to clean extract & edit mode
     }
   }

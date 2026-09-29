@@ -193,6 +193,39 @@ export type PageView =
   | 'seo'
   | '404';
 
+export interface PdfVisualTextBlock {
+  id: string;
+  text: string;
+  x: number; // in PDF points (relative to top-left of page)
+  y: number; // in PDF points (relative to top-left of page)
+  width: number;
+  height: number;
+  fontSize: number;
+  fontFamily?: string;
+}
+
+export interface PdfVisualOverlayObject {
+  id: string;
+  pageNumber: number;
+  type: 'text' | 'cover' | 'correction';
+  x: number; // in PDF points (relative to top-left of page)
+  y: number; // in PDF points (relative to top-left of page)
+  width: number;
+  height: number;
+  text?: string;
+  originalText?: string;
+  fontSize?: number;
+  fontFamily?: 'sans' | 'serif' | 'mono';
+  fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  textAlign?: 'left' | 'center' | 'right';
+  color?: string;
+  backgroundColor?: string;
+  opacity?: number;
+  rotation?: number;
+  isAutoDetected?: boolean;
+}
+
 export interface PdfToTextPage {
   pageNumber: number;
   text: string;
@@ -212,6 +245,7 @@ export interface PdfToTextPage {
   contentType?: 'text' | 'scanned' | 'mixed';
   hasImages?: boolean;
   ocrConfidence?: number | null;
+  textBlocks?: PdfVisualTextBlock[];
 }
 
 export interface PdfToTextExtraction {
@@ -227,7 +261,7 @@ export interface PdfToTextExtraction {
 }
 
 export interface PdfToTextSaveSettings {
-  mode: 'extract_and_edit' | 'preserve_layout';
+  mode: 'extract_and_edit' | 'preserve_layout' | 'visual_edit';
   pageSize: 'a4' | 'a3' | 'letter' | 'original';
   orientation: 'portrait' | 'landscape' | 'original';
   margin: 'small' | 'normal' | 'large' | number;
@@ -237,6 +271,7 @@ export interface PdfToTextSaveSettings {
   pageNumbers: 'none' | 'bottom-center' | 'bottom-right' | 'top-right';
   headerText: string;
   textColor: string;
+  visualEdits?: Record<number, PdfVisualOverlayObject[]>;
 }
 
 export interface TtsVoiceOption {

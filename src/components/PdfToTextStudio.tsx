@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { PageView, PdfToTextPage, PdfToTextExtraction, PdfToTextSaveSettings } from '../types.js';
+import { PageView, PdfToTextPage, PdfToTextExtraction, PdfToTextSaveSettings, PdfVisualOverlayObject } from '../types.js';
+import { PdfVisualEditorCanvas } from './PdfVisualEditorCanvas.js';
 import {
   FileText,
   Download,
@@ -121,9 +122,11 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
   const [uploadProgressText, setUploadProgressText] = useState<string>('');
   const [dragActive, setDragActive] = useState<boolean>(false);
 
-  // Layout View Modes: 'split' (side-by-side original + editor), 'editor' (focus text), 'original' (focus visual)
-  const [studioLayout, setStudioLayout] = useState<'split' | 'editor' | 'original'>('split');
-  const [mobileTab, setMobileTab] = useState<'original' | 'editor' | 'thumbnails' | 'settings'>('original');
+  // Layout View Modes: 'visual_edit' (interactive PDF canvas), 'split' (side-by-side original + editor), 'editor' (focus text), 'original' (focus visual)
+  const [studioLayout, setStudioLayout] = useState<'visual_edit' | 'split' | 'editor' | 'original'>('visual_edit');
+  const [splitLeftMode, setSplitLeftMode] = useState<'visual' | 'preview'>('visual');
+  const [pageOverlays, setPageOverlays] = useState<Record<number, PdfVisualOverlayObject[]>>({});
+  const [mobileTab, setMobileTab] = useState<'visual' | 'original' | 'editor' | 'thumbnails' | 'settings'>('visual');
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
 
   // Preview zoom level for side-by-side panel
@@ -428,14 +431,11 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
       setActivePageIndex(0);
       setHistory([{ pages: JSON.parse(JSON.stringify(processedPages)) }]);
       setHistoryIndex(0);
+      setPageOverlays({});
 
-      // Automatically default to Split View for scanned/mixed documents so original page is immediately visible
-      if (data.pdfType === 'scanned' || data.pdfType === 'mixed' || processedPages.some((p) => p.isScanned)) {
-        setStudioLayout('split');
-        setMobileTab('original');
-      } else {
-        setStudioLayout('split');
-      }
+      // Default to Visual PDF Document Editor
+      setStudioLayout('visual_edit');
+      setMobileTab('visual');
 
       showToast(
         'Document Loaded',
@@ -497,12 +497,11 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
       setActivePageIndex(0);
       setHistory([{ pages: JSON.parse(JSON.stringify(processedPages)) }]);
       setHistoryIndex(0);
+      setPageOverlays({});
 
-      // Default to Split View
-      setStudioLayout('split');
-      if (data.pdfType === 'scanned') {
-        setMobileTab('original');
-      }
+      // Default to Visual PDF Document Editor
+      setStudioLayout('visual_edit');
+      setMobileTab('visual');
 
       showToast(
         'Sample Loaded',
@@ -748,8 +747,12 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
 
     try {
       const baseFilename = extraction?.fileName ? extraction.fileName.replace(/\.pdf$/i, '') : 'document';
+      const hasVisualEdits = (Object.values(pageOverlays) as (PdfVisualOverlayObject[] | undefined)[]).some(
+        (arr) => Boolean(arr && arr.length > 0)
+      );
+      const effectiveMode = hasVisualEdits ? 'visual_edit' : settings.mode;
+      let downloadFilename = `${baseFilename}_${effectiveMode === 'preserve_layout' ? 'preserved' : 'edited'}.${format}`;
       let blob: Blob;
-      let downloadFilename = `${baseFilename}_${settings.mode === 'preserve_layout' ? 'preserved' : 'edited'}.${format}`;
 
       try {
         const response = await fetch('/api/pdf-to-text/save', {
@@ -764,10 +767,14 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
               height: p.height,
             })),
             format,
-            mode: settings.mode,
+            mode: effectiveMode,
             jobId: extraction?.jobId,
             filename: baseFilename,
-            options: settings,
+            visualEdits: pageOverlays,
+            options: {
+              ...settings,
+              visualEdits: pageOverlays,
+            },
           }),
         });
 
@@ -1012,13 +1019,25 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                 {/* STUDIO LAYOUT SWITCHER */}
                 <div className="hidden md:flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                   <button
+                    onClick={() => setStudioLayout('visual_edit')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition ${
+                      studioLayout === 'visual_edit'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                    title="Interactive visual PDF editor with text correction and cover tools"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Edit PDF</span>
+                  </button>
+                  <button
                     onClick={() => setStudioLayout('split')}
                     className={`px-3 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition ${
                       studioLayout === 'split'
                         ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
-                    title="Side-by-side original page + text editor"
+                    title="Side-by-side visual PDF + text editor"
                   >
                     <Columns className="w-3.5 h-3.5" />
                     <span>Split View</span>
@@ -1344,7 +1363,24 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
             {/* Mobile Tab Navigation */}
             <div className="flex lg:hidden border-b border-slate-200 dark:border-slate-800">
               <button
-                onClick={() => setMobileTab('original')}
+                onClick={() => {
+                  setMobileTab('visual');
+                  setStudioLayout('visual_edit');
+                }}
+                className={`flex-1 py-2.5 text-xs font-semibold border-b-2 text-center flex items-center justify-center gap-1 ${
+                  mobileTab === 'visual'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-slate-500'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Edit PDF</span>
+              </button>
+              <button
+                onClick={() => {
+                  setMobileTab('original');
+                  if (studioLayout === 'visual_edit') setStudioLayout('split');
+                }}
                 className={`flex-1 py-2.5 text-xs font-semibold border-b-2 text-center flex items-center justify-center gap-1 ${
                   mobileTab === 'original'
                     ? 'border-blue-600 text-blue-600'
@@ -1352,7 +1388,7 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                 }`}
               >
                 <ImageIcon className="w-3.5 h-3.5" />
-                <span>Original Page</span>
+                <span>Original</span>
               </button>
               <button
                 onClick={() => setMobileTab('editor')}
@@ -1489,54 +1525,115 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
               {/* --------------------------------------------------------------------- */}
               {/* COLUMN 2 & 3: MAIN DUAL-PANE STUDIO AREA */}
               {/* --------------------------------------------------------------------- */}
-              <div
-                className={`lg:col-span-10 xl:col-span-10 grid grid-cols-1 ${
-                  studioLayout === 'split' ? 'xl:grid-cols-12' : 'grid-cols-1'
-                } gap-5`}
-              >
-                {/* ------------------------------------------------------------------- */}
-                {/* PANEL A: ORIGINAL PDF PAGE PREVIEW (Complete Visual Preservation) */}
-                {/* ------------------------------------------------------------------- */}
-                <div
-                  className={`${
-                    studioLayout === 'split'
-                      ? 'xl:col-span-6'
-                      : studioLayout === 'original'
-                      ? 'block'
-                      : 'hidden'
-                  } ${mobileTab === 'original' ? 'block' : 'hidden lg:block'}`}
-                >
+              <div className="lg:col-span-10 xl:col-span-10">
+                {/* 1. DEDICATED REAL VISUAL PDF DOCUMENT EDITOR */}
+                {studioLayout === 'visual_edit' && activePage && (
+                  <div className={`${mobileTab === 'visual' ? 'block' : 'hidden lg:block'}`}>
+                    <PdfVisualEditorCanvas
+                      page={activePage}
+                      jobId={extraction.jobId}
+                      objects={pageOverlays[activePage.pageNumber] || []}
+                      onChangeObjects={(newObjs) =>
+                        setPageOverlays((prev) => ({
+                          ...prev,
+                          [activePage.pageNumber]: newObjs,
+                        }))
+                      }
+                      onSavePdf={() => handleSaveDocument('pdf')}
+                      isSaving={isSaving}
+                      darkMode={darkMode}
+                      showToast={showToast}
+                    />
+                  </div>
+                )}
+
+                {/* 2. SPLIT VIEW, ORIGINAL VIEW, OR TEXT EDITOR VIEW */}
+                {studioLayout !== 'visual_edit' && (
                   <div
-                    className={`rounded-2xl border shadow-sm flex flex-col ${
-                      darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-                    }`}
+                    className={`grid grid-cols-1 ${
+                      studioLayout === 'split' ? 'xl:grid-cols-12' : 'grid-cols-1'
+                    } gap-5`}
                   >
-                    {/* Panel A Top Bar */}
+                    {/* ------------------------------------------------------------------- */}
+                    {/* PANEL A: ORIGINAL PDF PAGE PREVIEW (Complete Visual Preservation) */}
+                    {/* ------------------------------------------------------------------- */}
                     <div
-                      className={`p-3.5 border-b rounded-t-2xl flex flex-wrap items-center justify-between gap-2 text-xs ${
-                        darkMode ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
-                      }`}
+                      className={`${
+                        studioLayout === 'split'
+                          ? 'xl:col-span-6'
+                          : studioLayout === 'original'
+                          ? 'block'
+                          : 'hidden'
+                      } ${mobileTab === 'original' ? 'block' : 'hidden lg:block'}`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                          Original Page {activePage.pageNumber}
-                        </span>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                            activePage.isScanned
-                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                              : activePage.contentType === 'mixed'
-                              ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30'
-                              : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                      {splitLeftMode === 'visual' && activePage ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Visual PDF Canvas
+                            </span>
+                            <button
+                              onClick={() => setSplitLeftMode('preview')}
+                              className="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center gap-1"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Switch to Static Preview</span>
+                            </button>
+                          </div>
+                          <PdfVisualEditorCanvas
+                            page={activePage}
+                            jobId={extraction.jobId}
+                            objects={pageOverlays[activePage.pageNumber] || []}
+                            onChangeObjects={(newObjs) =>
+                              setPageOverlays((prev) => ({
+                                ...prev,
+                                [activePage.pageNumber]: newObjs,
+                              }))
+                            }
+                            onSavePdf={() => handleSaveDocument('pdf')}
+                            isSaving={isSaving}
+                            darkMode={darkMode}
+                            showToast={showToast}
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={`rounded-2xl border shadow-sm flex flex-col ${
+                            darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
                           }`}
                         >
-                          {activePage.isScanned
-                            ? 'Scanned Page'
-                            : activePage.contentType === 'mixed'
-                            ? 'Mixed Content'
-                            : 'Text Layer'}
-                        </span>
-                      </div>
+                          {/* Panel A Top Bar */}
+                          <div
+                            className={`p-3.5 border-b rounded-t-2xl flex flex-wrap items-center justify-between gap-2 text-xs ${
+                              darkMode ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                                Original Page {activePage.pageNumber}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                  activePage.isScanned
+                                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                                    : activePage.contentType === 'mixed'
+                                    ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                }`}
+                              >
+                                {activePage.isScanned
+                                  ? 'Scanned Page'
+                                  : activePage.contentType === 'mixed'
+                                  ? 'Mixed Content'
+                                  : 'Text Layer'}
+                              </span>
+                              <button
+                                onClick={() => setSplitLeftMode('visual')}
+                                className="ml-1 px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold shadow-2xs transition"
+                              >
+                                Edit on Canvas
+                              </button>
+                            </div>
 
                       {/* Top Bar Actions for Page Image */}
                       <div className="flex items-center gap-1.5">
@@ -1641,7 +1738,8 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
+              </div>
 
                 {/* ------------------------------------------------------------------- */}
                 {/* PANEL B: EXTRACTED & OCR TEXT EDITOR */}
@@ -2054,9 +2152,11 @@ export const PdfToTextStudio: React.FC<PdfToTextStudioProps> = ({
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
+      </div>
+    )}
       </main>
     </div>
   );
