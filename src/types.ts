@@ -202,6 +202,33 @@ export interface PdfVisualTextBlock {
   height: number;
   fontSize: number;
   fontFamily?: string;
+  fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  textAlign?: 'left' | 'center' | 'right';
+  color?: string;
+  isOcr?: boolean;
+}
+
+export interface PdfTextLine {
+  id: string;
+  pageNumber: number;
+  originalText: string;
+  currentText: string;
+  isModified: boolean;
+  isDeleted: boolean;
+  x: number; // in PDF points (0 at top-left)
+  y: number; // in PDF points (0 at top-left)
+  width: number;
+  height: number;
+  fontSize: number;
+  fontFamily?: string;
+  fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  textAlign?: 'left' | 'center' | 'right';
+  color?: string;
+  coverColor?: string;
+  rotation?: number;
+  isOcr?: boolean;
 }
 
 export interface PdfVisualOverlayObject {

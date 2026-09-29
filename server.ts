@@ -1591,14 +1591,14 @@ ${allRoutes
         (visualEdits && Object.keys(visualEdits).length > 0);
 
       if (isPreserveOrVisual && jobId) {
-        const existingJob = jobStorage.getJob(jobId);
-        if (existingJob && existingJob.inputPath && fs.existsSync(existingJob.inputPath)) {
-          originalPdfBuffer = fs.readFileSync(existingJob.inputPath);
+        const pageDir = getJobPageDir(jobId);
+        const pdfPath = path.join(pageDir, 'input.pdf');
+        if (fs.existsSync(pdfPath)) {
+          originalPdfBuffer = fs.readFileSync(pdfPath);
         } else {
-          const pageDir = getJobPageDir(jobId);
-          const pdfPath = path.join(pageDir, 'input.pdf');
-          if (fs.existsSync(pdfPath)) {
-            originalPdfBuffer = fs.readFileSync(pdfPath);
+          const existingJob = jobStorage.getJob(jobId);
+          if (existingJob && existingJob.inputPath && fs.existsSync(existingJob.inputPath)) {
+            originalPdfBuffer = fs.readFileSync(existingJob.inputPath);
           }
         }
       }

@@ -19,6 +19,7 @@ export interface PdfVisualTextBlock {
   height: number;
   fontSize: number;
   fontFamily?: string;
+  isOcr?: boolean;
 }
 
 export interface ExtractedPageData {
@@ -229,11 +230,11 @@ function extractVisualTextBlocks(items: RawTextItem[], pageHeight: number): PdfV
       } else {
         const prev = currentChunk[currentChunk.length - 1];
         const gap = it.x - (prev.x + prev.width);
-        // Group words if they are close on the line
-        if (gap < Math.max(18, it.fontSize * 1.5)) {
+        // Group words into a cohesive visual line unless gap is very large (e.g. multi-column table gap)
+        if (gap < Math.max(80, it.fontSize * 4.5)) {
           currentChunk.push(it);
         } else {
-          // Commit current chunk
+          // Commit current chunk as a visual line
           const minX = Math.min(...currentChunk.map((c) => c.x));
           const maxX = Math.max(...currentChunk.map((c) => c.x + c.width));
           const maxFontSize = Math.max(...currentChunk.map((c) => c.fontSize));
@@ -245,8 +246,8 @@ function extractVisualTextBlocks(items: RawTextItem[], pageHeight: number): PdfV
               text: textStr,
               x: Math.round(minX),
               y: Math.round(Math.max(0, pageHeight - avgY - maxFontSize)),
-              width: Math.round(maxX - minX),
-              height: Math.round(maxFontSize * 1.25),
+              width: Math.max(20, Math.round(maxX - minX)),
+              height: Math.max(14, Math.round(maxFontSize * 1.25)),
               fontSize: Math.round(maxFontSize),
             });
           }
@@ -267,8 +268,8 @@ function extractVisualTextBlocks(items: RawTextItem[], pageHeight: number): PdfV
           text: textStr,
           x: Math.round(minX),
           y: Math.round(Math.max(0, pageHeight - avgY - maxFontSize)),
-          width: Math.round(maxX - minX),
-          height: Math.round(maxFontSize * 1.25),
+          width: Math.max(20, Math.round(maxX - minX)),
+          height: Math.max(14, Math.round(maxFontSize * 1.25)),
           fontSize: Math.round(maxFontSize),
         });
       }
@@ -561,6 +562,34 @@ export async function extractTextFromPdfBuffer(params: {
       mixedPagesCount++;
     } else {
       textPagesCount++;
+    }
+
+    // For scanned / image documents, convert extracted OCR text into editable visual lines
+    if (visualTextBlocks.length === 0 && extractedText.trim().length > 0) {
+      const rawLines = extractedText
+        .split(/\r\n|\r|\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      let yCursor = Math.round(height * 0.12);
+      const totalAvailableH = height * 0.76;
+      const step = Math.min(32, Math.max(16, Math.round(totalAvailableH / Math.max(1, rawLines.length))));
+      const fontSize = Math.max(10, Math.min(16, Math.round(step * 0.68)));
+
+      rawLines.forEach((lineStr, lineIdx) => {
+        const estWidth = Math.min(width - 60, Math.max(80, Math.round(lineStr.length * fontSize * 0.55)));
+        visualTextBlocks.push({
+          id: `tb_ocr_${pageNum}_${lineIdx + 1}`,
+          text: lineStr,
+          x: Math.round(width * 0.08),
+          y: yCursor,
+          width: estWidth,
+          height: Math.round(fontSize * 1.3),
+          fontSize,
+          isOcr: true,
+        });
+        yCursor += step;
+      });
     }
 
     const wordCount = extractedText.trim() ? extractedText.trim().split(/\s+/).filter(Boolean).length : 0;
