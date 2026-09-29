@@ -13,7 +13,7 @@ import JSZip from 'jszip';
 import { createServer as createViteServer } from 'vite';
 import { registry } from './server/converters/registry.js';
 import { generateTextToPdf } from './server/converters/textToPdfConverter.js';
-import { extractTextFromPdfBuffer } from './server/converters/pdfToTextExtractor.js';
+import { extractTextFromPdfBuffer, renderPdfPageImages, getJobPageDir } from './server/converters/pdfToTextExtractor.js';
 import { generateEditedPdf } from './server/converters/editedPdfGenerator.js';
 import { generateDocxFromPages } from './server/converters/docxGenerator.js';
 import { ocrManager } from './server/ocr/ocrProvider.js';
@@ -1199,18 +1199,158 @@ ${allRoutes
     }
   });
 
+  // Serve thumbnail image
   app.get('/api/pdf-to-text/thumbnail/:jobId/:pageNumber', (req, res) => {
     const { jobId, pageNumber } = req.params;
     const pageNum = parseInt(pageNumber, 10);
-    const jobThumbs = pdfThumbnailMap.get(jobId);
-    const thumbPath = jobThumbs?.get(pageNum);
+    const pageDir = getJobPageDir(jobId);
+    const thumbPath = path.join(pageDir, `page_${pageNum}_thumb.png`);
+    const fullPath = path.join(pageDir, `page_${pageNum}_full.png`);
 
-    if (thumbPath && fs.existsSync(thumbPath)) {
+    if (fs.existsSync(thumbPath)) {
       res.setHeader('Content-Type', 'image/png');
       res.setHeader('Cache-Control', 'private, max-age=3600');
       return fs.createReadStream(thumbPath).pipe(res);
+    } else if (fs.existsSync(fullPath)) {
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      return fs.createReadStream(fullPath).pipe(res);
     }
     return res.status(404).json({ success: false, error: 'Thumbnail not found.' });
+  });
+
+  // Serve full-resolution original PDF page preview image
+  app.get('/api/pdf-to-text/page-image/:jobId/:pageNumber', async (req, res) => {
+    try {
+      const { jobId, pageNumber } = req.params;
+      const pageNum = parseInt(pageNumber, 10);
+      const pageDir = getJobPageDir(jobId);
+      const fullPath = path.join(pageDir, `page_${pageNum}_full.png`);
+
+      if (fs.existsSync(fullPath)) {
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        return fs.createReadStream(fullPath).pipe(res);
+      }
+
+      // If not yet rendered, attempt on-demand render if input PDF exists
+      const job = jobStorage.getJob(jobId);
+      const pdfPath = job?.inputPath || path.join(pageDir, 'input.pdf');
+      if (fs.existsSync(pdfPath)) {
+        const { fullPath: renderedPath } = await renderPdfPageImages(pdfPath, pageNum, pageDir, undefined, 150);
+        if (renderedPath && fs.existsSync(renderedPath)) {
+          res.setHeader('Content-Type', 'image/png');
+          res.setHeader('Cache-Control', 'private, max-age=3600');
+          return fs.createReadStream(renderedPath).pipe(res);
+        }
+      }
+
+      return res.status(404).json({ success: false, error: 'Page image not found.' });
+    } catch (err: any) {
+      console.warn('[PageImage] Error serving page image:', err.message);
+      return res.status(500).json({ success: false, error: 'Failed to retrieve page image.' });
+    }
+  });
+
+  // Download complete original page image as PNG or JPG
+  app.get('/api/pdf-to-text/download-page-image/:jobId/:pageNumber', async (req, res) => {
+    try {
+      const { jobId, pageNumber } = req.params;
+      const pageNum = parseInt(pageNumber, 10);
+      const reqFormat = (req.query.format as string)?.toLowerCase() === 'jpg' ? 'jpg' : 'png';
+      const pageDir = getJobPageDir(jobId);
+      const fullPath = path.join(pageDir, `page_${pageNum}_full.png`);
+
+      let imageBuffer: Buffer | null = null;
+      if (fs.existsSync(fullPath)) {
+        imageBuffer = fs.readFileSync(fullPath);
+      } else {
+        const job = jobStorage.getJob(jobId);
+        const pdfPath = job?.inputPath || path.join(pageDir, 'input.pdf');
+        if (fs.existsSync(pdfPath)) {
+          const { fullPath: renderedPath } = await renderPdfPageImages(pdfPath, pageNum, pageDir, undefined, 180);
+          if (renderedPath && fs.existsSync(renderedPath)) {
+            imageBuffer = fs.readFileSync(renderedPath);
+          }
+        }
+      }
+
+      if (!imageBuffer) {
+        return res.status(404).json({ success: false, error: 'Page image not available for download.' });
+      }
+
+      const job = jobStorage.getJob(jobId);
+      const cleanBase = sanitizeFilename(job?.originalName || 'page').replace(/\.pdf$/i, '');
+      const outFileName = `${cleanBase}_page_${pageNum}.${reqFormat}`;
+
+      if (reqFormat === 'jpg') {
+        const jpgBuffer = await sharp(imageBuffer)
+          .flatten({ background: '#ffffff' })
+          .jpeg({ quality: 95 })
+          .toBuffer();
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Content-Disposition', `attachment; filename="${outFileName}"`);
+        res.setHeader('Content-Length', jpgBuffer.length.toString());
+        return res.send(jpgBuffer);
+      } else {
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Disposition', `attachment; filename="${outFileName}"`);
+        res.setHeader('Content-Length', imageBuffer.length.toString());
+        return res.send(imageBuffer);
+      }
+    } catch (err: any) {
+      console.error('[DownloadPageImage] Download error:', err);
+      return res.status(500).json({ success: false, error: 'Failed to download page image.' });
+    }
+  });
+
+  // Dedicated POST /api/pdf-to-text/render-page endpoint
+  app.post('/api/pdf-to-text/render-page', async (req, res) => {
+    try {
+      const { jobId, pageNumber = 1, dpi = 150, format = 'json' } = req.body;
+      const pageNum = parseInt(pageNumber, 10);
+      if (!jobId || isNaN(pageNum) || pageNum < 1) {
+        return res.status(400).json({ success: false, error: 'Valid jobId and pageNumber are required.' });
+      }
+
+      const pageDir = getJobPageDir(jobId);
+      const fullPath = path.join(pageDir, `page_${pageNum}_full.png`);
+
+      if (!fs.existsSync(fullPath)) {
+        const job = jobStorage.getJob(jobId);
+        const pdfPath = job?.inputPath || path.join(pageDir, 'input.pdf');
+        if (!fs.existsSync(pdfPath)) {
+          return res.status(404).json({ success: false, error: 'Job or source PDF not found.' });
+        }
+        await renderPdfPageImages(pdfPath, pageNum, pageDir, undefined, dpi);
+      }
+
+      if (!fs.existsSync(fullPath)) {
+        return res.status(500).json({ success: false, error: 'Could not render requested page.' });
+      }
+
+      if (format === 'image') {
+        res.setHeader('Content-Type', 'image/png');
+        return fs.createReadStream(fullPath).pipe(res);
+      }
+
+      const meta = await sharp(fullPath).metadata();
+      return res.json({
+        success: true,
+        jobId,
+        pageNumber: pageNum,
+        imageUrl: `/api/pdf-to-text/page-image/${jobId}/${pageNum}`,
+        thumbnailUrl: `/api/pdf-to-text/thumbnail/${jobId}/${pageNum}`,
+        downloadPngUrl: `/api/pdf-to-text/download-page-image/${jobId}/${pageNum}?format=png`,
+        downloadJpgUrl: `/api/pdf-to-text/download-page-image/${jobId}/${pageNum}?format=jpg`,
+        width: meta.width,
+        height: meta.height,
+        mimeType: 'image/png',
+      });
+    } catch (err: any) {
+      console.error('[RenderPage] Error:', err);
+      return res.status(500).json({ success: false, error: err.message || 'Render page failed.' });
+    }
   });
 
   app.post(
@@ -1347,9 +1487,15 @@ ${allRoutes
             height: p.height,
             isScanned: p.isScanned,
             ocrApplied: p.ocrApplied,
-            thumbnailUrl: p.thumbnailPath,
+            thumbnailUrl: p.thumbnailUrl || `/api/pdf-to-text/thumbnail/${jobId}/${p.pageNumber}`,
+            pageImageUrl: p.pageImageUrl || `/api/pdf-to-text/page-image/${jobId}/${p.pageNumber}`,
+            downloadPngUrl: p.downloadPngUrl || `/api/pdf-to-text/download-page-image/${jobId}/${p.pageNumber}?format=png`,
+            downloadJpgUrl: p.downloadJpgUrl || `/api/pdf-to-text/download-page-image/${jobId}/${p.pageNumber}?format=jpg`,
             characterCount: p.characterCount,
             wordCount: p.wordCount,
+            contentType: p.contentType,
+            hasImages: p.hasImages,
+            ocrConfidence: p.ocrConfidence,
           })),
         });
       } catch (err: any) {
@@ -1439,8 +1585,14 @@ ${allRoutes
       let originalPdfBuffer: Buffer | undefined;
       if (mode === 'preserve_layout' && jobId) {
         const existingJob = jobStorage.getJob(jobId);
-        if (existingJob && fs.existsSync(existingJob.inputPath)) {
+        if (existingJob && existingJob.inputPath && fs.existsSync(existingJob.inputPath)) {
           originalPdfBuffer = fs.readFileSync(existingJob.inputPath);
+        } else {
+          const pageDir = getJobPageDir(jobId);
+          const pdfPath = path.join(pageDir, 'input.pdf');
+          if (fs.existsSync(pdfPath)) {
+            originalPdfBuffer = fs.readFileSync(pdfPath);
+          }
         }
       }
 

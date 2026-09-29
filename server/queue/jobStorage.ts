@@ -140,6 +140,10 @@ export class FileJobStorage implements JobStorage {
       if (job.outputPath && fs.existsSync(job.outputPath)) {
         try { fs.unlinkSync(job.outputPath); } catch {}
       }
+      const pageDir = path.join(STORAGE_DIR, 'pdf_pages', id);
+      if (fs.existsSync(pageDir)) {
+        try { fs.rmSync(pageDir, { recursive: true, force: true }); } catch {}
+      }
       this.jobs.delete(id);
       this.triggerSave();
       return true;
@@ -176,6 +180,10 @@ export class FileJobStorage implements JobStorage {
         }
         if (job.outputPath && fs.existsSync(job.outputPath)) {
           try { fs.unlinkSync(job.outputPath); } catch {}
+        }
+        const pageDir = path.join(STORAGE_DIR, 'pdf_pages', id);
+        if (fs.existsSync(pageDir)) {
+          try { fs.rmSync(pageDir, { recursive: true, force: true }); } catch {}
         }
         this.jobs.delete(id);
         cleaned++;

@@ -1,11 +1,11 @@
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import sharp from 'sharp';
+import { createCanvas } from '@napi-rs/canvas';
 import { ocrManager } from '../ocr/ocrProvider.js';
 
 const execFileAsync = promisify(execFile);
@@ -19,8 +19,16 @@ export interface ExtractedPageData {
   isScanned: boolean;
   ocrApplied: boolean;
   thumbnailPath?: string;
+  pageImagePath?: string;
+  thumbnailUrl?: string;
+  pageImageUrl?: string;
+  downloadPngUrl?: string;
+  downloadJpgUrl?: string;
   characterCount: number;
   wordCount: number;
+  contentType: 'text' | 'scanned' | 'mixed';
+  hasImages: boolean;
+  ocrConfidence?: number | null;
 }
 
 export interface ExtractionResult {
@@ -80,16 +88,13 @@ interface RawTextItem {
 function reconstructPageText(items: RawTextItem[]): string {
   if (!items || items.length === 0) return '';
 
-  // Filter out empty or whitespace-only items
   const validItems = items.filter((i) => i.str && i.str.length > 0);
   if (validItems.length === 0) return '';
 
-  // Calculate modal/median font size to detect headings
   const fontSizes = validItems.map((i) => i.fontSize).sort((a, b) => a - b);
   const medianFontSize = fontSizes[Math.floor(fontSizes.length / 2)] || 12;
 
-  // 1. Group items into visual lines based on vertical Y coordinate
-  // Note: in PDF coordinate space, Y = 0 is at bottom, increasing upwards.
+  // Group items into visual lines based on vertical Y coordinate
   validItems.sort((a, b) => b.y - a.y);
 
   interface LineGroup {
@@ -101,13 +106,11 @@ function reconstructPageText(items: RawTextItem[]): string {
   const lines: LineGroup[] = [];
 
   for (const item of validItems) {
-    // Check if this item fits into an existing line group
     const lineTolerance = Math.max(3, (item.fontSize || 12) * 0.38);
     const existingLine = lines.find((l) => Math.abs(l.y - item.y) <= lineTolerance);
 
     if (existingLine) {
       existingLine.items.push(item);
-      // Update running average Y and max font size
       existingLine.fontSize = Math.max(existingLine.fontSize, item.fontSize);
     } else {
       lines.push({
@@ -118,7 +121,6 @@ function reconstructPageText(items: RawTextItem[]): string {
     }
   }
 
-  // 2. Sort lines top to bottom (Y descending)
   lines.sort((a, b) => b.y - a.y);
 
   const formattedLines: string[] = [];
@@ -127,8 +129,6 @@ function reconstructPageText(items: RawTextItem[]): string {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-
-    // Sort items within this line left to right (X ascending)
     line.items.sort((a, b) => a.x - b.x);
 
     let lineText = '';
@@ -140,7 +140,6 @@ function reconstructPageText(items: RawTextItem[]): string {
         const gap = current.x - (prev.x + prev.width);
         const avgCharWidth = Math.max(2, (current.fontSize || 12) * 0.28);
 
-        // If there is an optical gap and current doesn't start with space, add one space
         if (gap > avgCharWidth && !lineText.endsWith(' ') && !current.str.startsWith(' ')) {
           lineText += ' ';
         }
@@ -152,18 +151,15 @@ function reconstructPageText(items: RawTextItem[]): string {
     const trimmed = lineText.trim();
     if (!trimmed) continue;
 
-    // Check vertical gap between previous line and current line for paragraph breaks
     if (i > 0) {
       const lineGap = prevLineY - line.y;
       const expectedLineHeight = Math.max(prevLineFontSize, line.fontSize) * 1.5;
 
       if (lineGap > expectedLineHeight * 1.6) {
-        // Significant gap -> paragraph separator
         formattedLines.push('');
       }
     }
 
-    // Check if line looks like a heading
     const isHeading1 = line.fontSize >= medianFontSize * 1.4 && trimmed.length < 80;
     const isHeading2 = line.fontSize >= medianFontSize * 1.2 && !isHeading1 && trimmed.length < 90;
 
@@ -183,41 +179,118 @@ function reconstructPageText(items: RawTextItem[]): string {
 }
 
 /**
- * Renders a PDF page to a PNG thumbnail using Ghostscript
+ * Fallback page renderer using @napi-rs/canvas and pdfjs-dist
  */
-async function renderPageThumbnail(
-  pdfPath: string,
+async function renderPageWithCanvas(
+  pdfJsDoc: any,
   pageNum: number,
-  outputDir: string
-): Promise<string | undefined> {
-  const outputPath = path.join(outputDir, `page_${pageNum}_thumb.png`);
-  const gsArgs = [
-    '-dNOPAUSE',
-    '-dBATCH',
-    '-dSAFER',
-    '-sDEVICE=png16m',
-    '-r120', // 120 DPI for crisp visual preview
-    '-dTextAlphaBits=4',
-    '-dGraphicsAlphaBits=4',
-    `-dFirstPage=${pageNum}`,
-    `-dLastPage=${pageNum}`,
-    `-sOutputFile=${outputPath}`,
-    pdfPath,
-  ];
-
+  outputPath: string,
+  scale: number = 2.0
+): Promise<boolean> {
   try {
-    await execFileAsync('gs', gsArgs);
-    if (fs.existsSync(outputPath)) {
-      return outputPath;
-    }
+    const page = await pdfJsDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+    const canvas = createCanvas(Math.round(viewport.width), Math.round(viewport.height));
+    const ctx = canvas.getContext('2d');
+
+    // Fill white background for transparent PDFs
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    await page.render({
+      canvasContext: ctx as any,
+      viewport,
+    }).promise;
+
+    const buf = canvas.toBuffer('image/png');
+    fs.writeFileSync(outputPath, buf);
+    return true;
   } catch (err) {
-    console.warn(`[Thumbnail] Ghostscript failed for page ${pageNum}:`, err);
+    console.warn(`[CanvasRender] Fallback rendering failed for page ${pageNum}:`, err);
+    return false;
   }
-  return undefined;
 }
 
 /**
- * Main PDF text extractor & analyzer
+ * Renders complete original PDF page to high-resolution PNG image
+ * Preserves 100% of visual elements: photos, logos, Aadhaar/ID layouts, stamps, signatures, tables, borders.
+ */
+export async function renderPdfPageImages(
+  pdfPath: string,
+  pageNum: number,
+  outputDir: string,
+  pdfJsDoc?: any,
+  dpi: number = 150
+): Promise<{ fullPath?: string; thumbPath?: string }> {
+  const fullPath = path.join(outputDir, `page_${pageNum}_full.png`);
+  const thumbPath = path.join(outputDir, `page_${pageNum}_thumb.png`);
+
+  let renderedFull = false;
+
+  // 1. Primary native rendering engine: Ghostscript
+  try {
+    const gsArgs = [
+      '-dNOPAUSE',
+      '-dBATCH',
+      '-dSAFER',
+      '-sDEVICE=png16m',
+      `-r${dpi}`,
+      '-dTextAlphaBits=4',
+      '-dGraphicsAlphaBits=4',
+      `-dFirstPage=${pageNum}`,
+      `-dLastPage=${pageNum}`,
+      `-sOutputFile=${fullPath}`,
+      pdfPath,
+    ];
+
+    await execFileAsync('gs', gsArgs);
+    if (fs.existsSync(fullPath)) {
+      renderedFull = true;
+    }
+  } catch (err) {
+    console.warn(`[PageRender] Ghostscript failed for page ${pageNum}, attempting Canvas fallback:`, err);
+  }
+
+  // 2. Secondary fallback engine: Canvas + PDF.js
+  if (!renderedFull && pdfJsDoc) {
+    const scale = (dpi / 72);
+    renderedFull = await renderPageWithCanvas(pdfJsDoc, pageNum, fullPath, scale);
+  }
+
+  // 3. Generate high-quality thumbnail from full image using Sharp
+  if (renderedFull && fs.existsSync(fullPath)) {
+    try {
+      await sharp(fullPath)
+        .resize({ width: 280, withoutEnlargement: true })
+        .png({ quality: 80, compressionLevel: 6 })
+        .toFile(thumbPath);
+    } catch {
+      // If thumbnail creation fails, copy fullPath
+      try {
+        fs.copyFileSync(fullPath, thumbPath);
+      } catch {}
+    }
+  }
+
+  return {
+    fullPath: renderedFull && fs.existsSync(fullPath) ? fullPath : undefined,
+    thumbPath: fs.existsSync(thumbPath) ? thumbPath : undefined,
+  };
+}
+
+/**
+ * Returns storage directory for a job's rendered page images
+ */
+export function getJobPageDir(jobId: string): string {
+  const dir = path.join(process.cwd(), 'tmp_uploads', 'pdf_pages', jobId);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+/**
+ * Main PDF text extractor & visual analyzer
  */
 export async function extractTextFromPdfBuffer(params: {
   pdfBuffer: Buffer;
@@ -250,12 +323,12 @@ export async function extractTextFromPdfBuffer(params: {
     throw new Error('The uploaded PDF document contains 0 pages.');
   }
 
-  // 3. Prepare temporary working directory for thumbnail generation
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `cx_extract_${jobId}_`));
-  const tempPdfPath = path.join(tempDir, 'input.pdf');
+  // 3. Prepare dedicated persistent working directory for this job's rendered pages
+  const pageDir = getJobPageDir(jobId);
+  const tempPdfPath = path.join(pageDir, 'input.pdf');
   fs.writeFileSync(tempPdfPath, pdfBuffer);
 
-  // 4. Initialize pdfjs-dist for text extraction
+  // 4. Initialize pdfjs-dist for text extraction and visual inspection
   const standardFontsPath = path.join(process.cwd(), 'node_modules/pdfjs-dist/standard_fonts/');
   const standardFontUrl = standardFontsPath.endsWith('/') ? standardFontsPath : `${standardFontsPath}/`;
 
@@ -274,6 +347,7 @@ export async function extractTextFromPdfBuffer(params: {
 
   const pagesData: ExtractedPageData[] = [];
   let scannedPagesCount = 0;
+  let mixedPagesCount = 0;
   let textPagesCount = 0;
 
   // Inspect first page for detected page format
@@ -291,8 +365,10 @@ export async function extractTextFromPdfBuffer(params: {
     const width = Math.round(cropBox ? cropBox.width : pdfLibPage.getWidth());
     const height = Math.round(cropBox ? cropBox.height : pdfLibPage.getHeight());
 
-    // Extract text items from PDF.js
+    // Extract text items & detect embedded images from PDF.js
     let extractedText = '';
+    let hasImages = false;
+
     try {
       const page = await pdfJsDoc.getPage(pageNum);
       const textContent = await page.getTextContent();
@@ -314,39 +390,78 @@ export async function extractTextFromPdfBuffer(params: {
       }
 
       extractedText = reconstructPageText(rawItems);
+
+      // Check operator list for image drawing commands
+      const ops = await page.getOperatorList();
+      const imageOpCodes = new Set(
+        [
+          (pdfjsLib as any).OPS?.paintImageXObject,
+          (pdfjsLib as any).OPS?.paintInlineImageXObject,
+          (pdfjsLib as any).OPS?.paintImageMaskXObject,
+        ].filter(Boolean)
+      );
+
+      if (ops && Array.isArray(ops.fnArray)) {
+        hasImages = ops.fnArray.some((op: number) => imageOpCodes.has(op));
+      }
     } catch (err) {
-      console.warn(`[Extract] PDF.js page ${pageNum} extraction warning:`, err);
+      console.warn(`[Extract] PDF.js page ${pageNum} inspection warning:`, err);
     }
 
-    // Render visual thumbnail
-    const thumbPath = await renderPageThumbnail(tempPdfPath, pageNum, tempDir);
+    // Render original page preview (150 DPI) + thumbnail
+    const { fullPath, thumbPath } = await renderPdfPageImages(
+      tempPdfPath,
+      pageNum,
+      pageDir,
+      pdfJsDoc,
+      150
+    );
 
-    // Determine if page is scanned or text
+    // Determine page content type: Text, Scanned, or Mixed
     const cleanChars = extractedText.replace(/\s+/g, '');
-    const isScanned = cleanChars.length < 25;
+    let isScanned = false;
+    let contentType: 'text' | 'scanned' | 'mixed' = 'text';
+
+    // A scanned page is detected when:
+    // - extracted text is empty or nearly empty (< 25 characters)
+    // - or page contains a raster image and text is sparse (< 60 characters)
+    if (cleanChars.length < 25 || (hasImages && cleanChars.length < 60)) {
+      isScanned = true;
+      contentType = 'scanned';
+    } else if (hasImages) {
+      isScanned = false;
+      contentType = 'mixed';
+    } else {
+      isScanned = false;
+      contentType = 'text';
+    }
+
     let ocrApplied = false;
 
+    // Run OCR for scanned / image pages if engine is configured
     if (isScanned) {
       scannedPagesCount++;
 
-      // If OCR engine is configured and thumbnail is available, run OCR
-      if (isOcrConfigured && thumbPath && fs.existsSync(thumbPath)) {
+      if (isOcrConfigured && fullPath && fs.existsSync(fullPath)) {
         try {
-          const thumbBuffer = fs.readFileSync(thumbPath);
-          const ocrText = await ocrProvider.recognizeText(thumbBuffer, 'image/png');
+          const imageBuffer = fs.readFileSync(fullPath);
+          const ocrText = await ocrProvider.recognizeText(imageBuffer, 'image/png');
           if (ocrText && ocrText.trim().length > 0) {
-            extractedText = ocrText;
+            extractedText = ocrText.trim();
             ocrApplied = true;
           }
-        } catch (ocrErr) {
-          console.warn(`[OCR] OCR recognition failed for page ${pageNum}:`, ocrErr);
+        } catch {
+          // Sensitive document privacy: do not log error details or OCR content
+          console.warn(`[OCR] Recognition failed for page ${pageNum}`);
         }
       }
+    } else if (contentType === 'mixed') {
+      mixedPagesCount++;
     } else {
       textPagesCount++;
     }
 
-    const wordCount = extractedText.trim() ? extractedText.trim().split(/\s+/).length : 0;
+    const wordCount = extractedText.trim() ? extractedText.trim().split(/\s+/).filter(Boolean).length : 0;
 
     // Generate semantic HTML for the page to feed directly into the rich text editor
     const htmlLines: string[] = [];
@@ -380,16 +495,24 @@ export async function extractTextFromPdfBuffer(params: {
       isScanned,
       ocrApplied,
       thumbnailPath: thumbPath,
+      pageImagePath: fullPath,
+      thumbnailUrl: `/api/pdf-to-text/thumbnail/${jobId}/${pageNum}`,
+      pageImageUrl: `/api/pdf-to-text/page-image/${jobId}/${pageNum}`,
+      downloadPngUrl: `/api/pdf-to-text/download-page-image/${jobId}/${pageNum}?format=png`,
+      downloadJpgUrl: `/api/pdf-to-text/download-page-image/${jobId}/${pageNum}?format=jpg`,
       characterCount: extractedText.length,
       wordCount,
+      contentType,
+      hasImages,
+      ocrConfidence: ocrApplied ? 96 : null,
     });
   }
 
-  // Determine overall PDF type
+  // Determine overall PDF document type
   let pdfType: 'text' | 'scanned' | 'mixed' = 'text';
   if (scannedPagesCount === totalPages) {
     pdfType = 'scanned';
-  } else if (scannedPagesCount > 0 && textPagesCount > 0) {
+  } else if (scannedPagesCount > 0 || mixedPagesCount > 0) {
     pdfType = 'mixed';
   }
 

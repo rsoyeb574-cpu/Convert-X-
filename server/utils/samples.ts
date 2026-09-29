@@ -547,6 +547,145 @@ EOF`;
     },
   },
 
+  sample_scanned_id_card: {
+    key: 'sample_scanned_id_card',
+    name: 'Scanned ID Card / Aadhaar Style (Image PDF)',
+    filename: 'scanned_identity_card.pdf',
+    format: 'pdf',
+    category: 'Scanned Documents',
+    description: 'Scanned photo identification card PDF with photo, national emblem, card layout, barcode, and stamps.',
+    getContent: async () => {
+      const canvas = createCanvas(800, 500);
+      const ctx = canvas.getContext('2d');
+
+      // Card outer background & drop shadow
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, 800, 500);
+
+      // Card border
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(20, 20, 760, 460);
+
+      // Top government header banner
+      const grad = ctx.createLinearGradient(20, 20, 780, 100);
+      grad.addColorStop(0, '#1e3a8a');
+      grad.addColorStop(1, '#2563eb');
+      ctx.fillStyle = grad;
+      ctx.fillRect(24, 24, 752, 90);
+
+      // Header text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('GOVERNMENT OF INDIA • भारत सरकार', 180, 58);
+      ctx.font = '14px sans-serif';
+      ctx.fillStyle = '#e0e7ff';
+      ctx.fillText('Unique Identification Authority / विशिष्ट पहचान प्राधिकरण', 180, 84);
+
+      // Emblem circle placeholder
+      ctx.beginPath();
+      ctx.arc(90, 68, 34, 0, Math.PI * 2);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = '#1e3a8a';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText('सत्यमेव', 66, 74);
+
+      // Photo area
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(50, 140, 160, 200);
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(50, 140, 160, 200);
+
+      // Stylized photo silhouette
+      ctx.beginPath();
+      ctx.arc(130, 210, 40, 0, Math.PI * 2);
+      ctx.fillStyle = '#64748b';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(130, 310, 60, Math.PI, Math.PI * 2);
+      ctx.fillStyle = '#64748b';
+      ctx.fill();
+
+      // Card text details
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText('Name / नाम:', 240, 175);
+      ctx.font = '20px sans-serif';
+      ctx.fillText('Rajesh Kumar Sharma', 380, 175);
+
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText('DOB / जन्म तिथि:', 240, 220);
+      ctx.font = '18px sans-serif';
+      ctx.fillText('15/08/1990', 380, 220);
+
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText('Gender / लिंग:', 240, 265);
+      ctx.font = '18px sans-serif';
+      ctx.fillText('Male / पुरुष', 380, 265);
+
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText('Address / पता:', 240, 310);
+      ctx.font = '15px sans-serif';
+      ctx.fillText('Flat 402, Green Valley Towers, Sector 18, New Delhi', 380, 310);
+
+      // ID Number banner
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillRect(240, 350, 520, 60);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(240, 350, 520, 60);
+
+      ctx.fillStyle = '#dc2626';
+      ctx.font = 'bold 28px monospace';
+      ctx.fillText('5489   2103   7649', 310, 392);
+
+      // Official Stamp / Watermark
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(60, 365, 140, 45);
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('VERIFIED AUTH', 72, 393);
+
+      // QR Code box
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(680, 140, 80, 80);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(688, 148, 20, 20);
+      ctx.fillRect(732, 148, 20, 20);
+      ctx.fillRect(688, 192, 20, 20);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(694, 154, 8, 8);
+      ctx.fillRect(738, 154, 8, 8);
+      ctx.fillRect(694, 198, 8, 8);
+
+      // Bottom footer banner
+      ctx.fillStyle = '#64748b';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('मेरा आधार, मेरी पहचान • Helpdesk: 1947 • help@uidai.gov.in', 250, 445);
+
+      const cardPngBuffer = canvas.toBuffer('image/png');
+
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([842, 595]); // A4 Landscape
+      const embeddedImg = await pdfDoc.embedPng(cardPngBuffer);
+      page.drawImage(embeddedImg, {
+        x: 21,
+        y: 47,
+        width: 800,
+        height: 500,
+      });
+
+      const bytes = await pdfDoc.save();
+      return Buffer.from(bytes);
+    },
+  },
+
   sample_jpg: {
     key: 'sample_jpg',
     name: 'Landscape Photography (JPG)',
@@ -847,6 +986,10 @@ SAMPLE_FILES['sample-svg'] = SAMPLE_FILES.vector_artwork;
 SAMPLE_FILES['sample-png'] = SAMPLE_FILES.sample_photo;
 SAMPLE_FILES['sample-pdf'] = SAMPLE_FILES.sample_document;
 SAMPLE_FILES['sample_pdf'] = SAMPLE_FILES.sample_document;
+SAMPLE_FILES['sample-id-card'] = SAMPLE_FILES.sample_scanned_id_card;
+SAMPLE_FILES['sample_id_card'] = SAMPLE_FILES.sample_scanned_id_card;
+SAMPLE_FILES['sample-scanned-pdf'] = SAMPLE_FILES.sample_scanned_id_card;
+SAMPLE_FILES['sample_scanned_pdf'] = SAMPLE_FILES.sample_scanned_id_card;
 SAMPLE_FILES['sample-jpg'] = SAMPLE_FILES.sample_jpg;
 SAMPLE_FILES['sample-webp'] = SAMPLE_FILES.sample_webp;
 SAMPLE_FILES['sample-eps'] = SAMPLE_FILES.sample_eps;

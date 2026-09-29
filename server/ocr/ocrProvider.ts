@@ -65,30 +65,51 @@ Rules:
 5. Return ONLY the transcribed text. Do not include markdown meta-commentary like "Here is the transcription:".`;
 
     try {
-      const response = await this.aiClient.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: prompt,
-              },
-              {
-                inlineData: {
-                  mimeType,
-                  data: base64Data,
+      let response;
+      try {
+        response = await this.aiClient.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Data,
+                  },
                 },
-              },
-            ],
-          },
-        ],
-      });
+              ],
+            },
+          ],
+        });
+      } catch (err: any) {
+        // Fallback to gemini-2.5-flash if 3.8 is ever unavailable in standard endpoint
+        response = await this.aiClient.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Data,
+                  },
+                },
+              ],
+            },
+          ],
+        });
+      }
 
       const text = response.text || '';
       return text.trim();
     } catch (err: any) {
-      console.error('[GeminiVisionOcr] OCR transcription error:', err);
+      // Zero logging of document contents or image buffers for privacy compliance
+      console.warn('[GeminiVisionOcr] OCR transcription error:', err.status || err.message);
       throw new Error(`OCR processing error: ${err.message || 'Failed to process page image'}`);
     }
   }

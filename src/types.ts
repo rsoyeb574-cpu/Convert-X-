@@ -202,8 +202,16 @@ export interface PdfToTextPage {
   isScanned: boolean;
   ocrApplied: boolean;
   thumbnailUrl?: string;
+  pageImageUrl?: string;
+  originalPageImage?: string;
+  imageMimeType?: string;
+  downloadPngUrl?: string;
+  downloadJpgUrl?: string;
   characterCount: number;
   wordCount: number;
+  contentType?: 'text' | 'scanned' | 'mixed';
+  hasImages?: boolean;
+  ocrConfidence?: number | null;
 }
 
 export interface PdfToTextExtraction {
